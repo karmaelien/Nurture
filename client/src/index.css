@@ -1,0 +1,16 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #213d35;
+  background: #f5f8f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 800px; margin: 0 auto; padding: 80px 24px; }
+h1 { font-size: clamp(3rem, 8vw, 5rem); margin: 16px 0; }
+p { line-height: 1.7; }
+.eyebrow { font-weight: 600; }
+section { background: white; border: 1px solid #d9e4dc; border-radius: 16px; padding: 24px; margin-top: 40px; }
+h2 { margin-top: 0; }
