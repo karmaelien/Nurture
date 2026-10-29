@@ -10,6 +10,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Nurture API is running' });
 });
 
-app.listen(port, () => {
+app.listen(port, (error) => {
+  if (error) throw error;
   console.log(`Nurture API: http://localhost:${port}`);
 });
