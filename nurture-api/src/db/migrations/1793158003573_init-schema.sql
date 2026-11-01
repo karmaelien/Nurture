@@ -21,15 +21,13 @@ CREATE TABLE dashboards (
 
 
 CREATE TABLE dashboard_members (
-  id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   dashboard_id  INT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-  user_id       INT REFERENCES users(id) ON DELETE SET NULL,
+  user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   display_name  TEXT NOT NULL,
-  birthdate     DATE,
   role          TEXT NOT NULL
                 CHECK (role IN ('owner','admin','member','dependent','viewer')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (dashboard_id, user_id)
+  PRIMARY KEY (dashboard_id, user_id)
 );
 
 CREATE TABLE documents (

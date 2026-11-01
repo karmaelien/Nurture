@@ -3,28 +3,11 @@ const { z } = require('zod');
 const User = require('../models/user.model');
 const { signAccessToken } = require('../utils/tokens');
 
-const registerSchema = z.object({
-  email: z.email(),
-  username: z.string().trim().min(1).max(50),
-  password: z.string().min(8).max(72),
-});
-
-const loginSchema = z.object({
-  email: z.email(),
-  password: z.string().min(1),
-});
-
-const httpError = (status, code, message) => {
-  const err = new Error(message);
-  err.status = status;
-  err.errorCode = code;
-  return err;
-};
-
+const { registerSchema, loginSchema } = require('../validators/auth.validators');
+const { httpError } = require('../utils/httpErrors');
 exports.register = async (req, res, next) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
-    console.log('body:', req.body);
 
     if (!parsed.success) {
       console.log('zod issues:', parsed.error.issues);

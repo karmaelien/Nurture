@@ -17,6 +17,7 @@ app.get('/health', async (req, res) => {
 
 app.use('/api/v1/auth', require('./routes/auth.routes'));
 app.use('/api/v1/users', require('./routes/users.routes'));
+app.use('/api/v1/dashboards', require('./routes/dashboard.routes'));
 
 app.use((req,res) => {
   res.status(404).json({ error: 'Not Found' });
