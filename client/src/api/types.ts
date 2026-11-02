@@ -87,3 +87,15 @@ export type LoginRequest = { email: string; password: string }
 export type ApiErrorBody = {
   error: { code: string; message: string }
 }
+
+export type AppointmentFilters = { from: string; to: string; recipientId?: string }
+export type MedicationOccurrenceFilters = AppointmentFilters & { status?: MedicationOccurrence['status'] }
+export type TaskFilters = {
+  dueFrom?: string
+  dueBefore?: string
+  completedFrom?: string
+  completedBefore?: string
+  status?: CareTask['status']
+  recipientId?: string
+}
+export type ExpenseFilters = { fromDate: string; toDate: string; recipientId?: string }
