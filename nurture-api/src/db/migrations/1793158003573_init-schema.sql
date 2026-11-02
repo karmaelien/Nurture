@@ -25,7 +25,7 @@ CREATE TABLE dashboard_members (
   user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   display_name  TEXT NOT NULL,
   role          TEXT NOT NULL
-                CHECK (role IN ('owner','admin','member','dependent','viewer')),
+                CHECK (role IN ('owner','admin','member')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (dashboard_id, user_id)
 );

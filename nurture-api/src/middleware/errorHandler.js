@@ -1,7 +1,7 @@
 module.exports = (err, req, res, next) => {
   if (err.code === '23505') {
     return res.status(409).json({
-      error: { code: 'CONFLICT', message: 'That value is already in use.' },
+      error: { code: 'email_taken', message: 'That value is already in use.' },
     });
   }
 

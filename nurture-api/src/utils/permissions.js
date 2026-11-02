@@ -1,4 +1,4 @@
-const ALL = ['owner', 'admin', 'member', 'dependent', 'viewer'];
+const ALL = ['owner', 'admin', 'member'];
 
 const PERMISSIONS = {
   'dashboard:view':   ALL,

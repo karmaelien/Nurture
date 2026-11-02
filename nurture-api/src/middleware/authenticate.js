@@ -3,7 +3,7 @@ const User = require('../models/user.model');
 
 const unauthorized = (res, reason) => {
   return res.status(401).json({
-    error: { code: 'UNAUTHORIZED', message: 'Authentication required.' },
+    error: { code: 'unauthorized', message: 'Authentication required.' },
   });
 };
 module.exports = async (req, res, next) => {

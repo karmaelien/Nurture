@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const ASSIGNABLE = ['admin', 'member', 'dependent', 'viewer']; // never 'owner'
+const ASSIGNABLE = ['admin', 'member'];
 
 exports.addSchema = z.object({
   email: z.email(),

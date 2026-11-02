@@ -3,7 +3,7 @@ const Member = require('../models/member.model');
 const User = require('../models/user.model');
 const { httpError } = require('../utils/httpErrors');
 
-const ASSIGNABLE = ['admin', 'member', 'dependent', 'viewer'];
+const ASSIGNABLE = ['admin', 'member'];
 
 const { addSchema, roleSchema } = require('../validators/members.validators');
 
@@ -27,8 +27,8 @@ exports.add = async (req, res, next) => {
   try {
     const parsed = addSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw httpError(400, 'VALIDATION_ERROR',
-        "Provide the person's account email and a role (admin, member, dependent, or viewer).");
+      throw httpError(400, 'validation_error',
+        "Provide the person's account email and a role (admin or member).");
     }
     const { email, role, displayName } = parsed.data;
 
@@ -57,7 +57,7 @@ exports.updateRole = async (req, res, next) => {
     const userId = parseUserId(req);
     const parsed = roleSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw httpError(400, 'VALIDATION_ERROR', 'Provide a role: admin, member, dependent, or viewer.');
+      throw httpError(400, 'validation_error', 'Provide a role: admin or member.');
     }
     const { role } = parsed.data;
 

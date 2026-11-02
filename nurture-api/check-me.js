@@ -1,5 +1,5 @@
 (async () => {
-  const base = 'http://localhost:3000/api/v1';
+  const base = 'http://localhost:3000/api';
 
   const login = await fetch(`${base}/auth/login`, {
     method: 'POST',
