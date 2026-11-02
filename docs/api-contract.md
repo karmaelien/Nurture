@@ -75,6 +75,49 @@ type Member = {
 type CircleDetail = CircleSummary & { members: Member[] }
 
 type Session = { user: User; circles: CircleSummary[] }
+
+
+type Appointment = {
+  id: string
+  recipientId: string
+  title: string
+  startsAt: string // UTC timestamp
+  location: string | null
+  assignedCaregiverId: string | null // null means unassigned
+}
+
+type MedicationOccurrence = {
+  id: string // unique to this occurrence
+  medicationId: string
+  recipientId: string
+  name: string
+  dosage: string // display text supplied by the care-management feature
+  scheduledAt: string // UTC timestamp
+  status: 'pending' | 'completed'
+}
+
+type CareTask = {
+  id: string
+  recipientId: string
+  title: string
+  dueAt: string | null // UTC timestamp, or no due date
+  assignedCaregiverId: string | null
+  status: 'pending' | 'completed'
+  completedAt: string | null // non-null exactly when status is completed
+}
+
+type ExpenseCategory =
+  | 'medication' | 'appointment' | 'insurance' | 'utilities' | 'other'
+
+type Expense = {
+  id: string
+  recipientId: string
+  description: string
+  category: ExpenseCategory
+  amountCents: number // positive integer; sum integer cents, not floating-point dollars
+  currency: 'USD' // initial mock supports USD only
+  incurredOn: string // YYYY-MM-DD calendar date, not a UTC timestamp
+}
 ```
 
 A new user has `circles: []`. The client sends them to set up their first circle.
@@ -185,12 +228,84 @@ Body: `{ relationship }`, a `Relationship` or `null`.
 | 400 | `validation_error` |
 | 404 | `not_found` (also when the recipient isn't in this circle) |
 
+### Care resources
+
+These read-only endpoints are specified for the initial dashboard; implementation is pending.
+The dashboard uses the existing session and circle endpoints for user, recipient, and member names.
+
+All endpoints require auth and circle membership (`401 unauthorized` / `404 not_found`).
+Optional `recipientId` filters to one recipient in the circle; a missing or out-of-circle
+recipient returns `404 not_found`. Omit it to include all recipients. Check access before
+validating filters.
+
+Date bounds are inclusive at the start and exclusive at the end. Timestamp filters use
+UTC ISO 8601 strings ending in `Z`; date filters use `YYYY-MM-DD`. When both bounds are
+provided, the start must precede the end. Invalid or unsupported filters return
+`400 validation_error`. The client converts local calendar boundaries to UTC.
+
+Lists return all matching records for the initial mock, without pagination. Empty lists
+return `[]`. Equal sort values are ordered by ID ascending. Recipient and assigned
+caregiver IDs refer to the selected circle's recipients and member user IDs.
+
+#### `GET /api/circles/:circleId/appointments`
+
+Query: `{ from, to, recipientId? }`. `from` and `to` are required timestamps filtering
+`startsAt`. Returns non-cancelled appointments, sorted by `startsAt` ascending.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ appointments: Appointment[] }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `GET /api/circles/:circleId/medication-occurrences`
+
+Query: `{ from, to, status?, recipientId? }`. `from` and `to` are required timestamps
+filtering `scheduledAt`. `status` is `pending` or `completed`; omit for both.
+Returns individual scheduled doses, sorted by `scheduledAt` ascending. Medication
+and recurring schedule definitions are separate, future resources.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ medicationOccurrences: MedicationOccurrence[] }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `GET /api/circles/:circleId/tasks`
+
+Query: `{ dueFrom?, dueBefore?, completedFrom?, completedBefore?, status?, recipientId? }`.
+Date bounds are timestamps filtering `dueAt` or `completedAt`; omitted bounds are
+unbounded. `status` is `pending` or `completed`; omit for both. Filters combine with AND.
+
+Due-date filters exclude undated tasks. Completion-date filters exclude incomplete
+tasks and cannot be combined with `status=pending`. Results sort by `dueAt` ascending,
+undated tasks last. Overdue means pending with a non-null `dueAt` before the current time.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ tasks: CareTask[] }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `GET /api/circles/:circleId/expenses`
+
+Query: `{ fromDate, toDate, recipientId? }`. `fromDate` and `toDate` are required
+calendar dates filtering `incurredOn`. Results sort by `incurredOn` descending.
+The client calculates totals and category summaries from integer `amountCents` values.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ expenses: Expense[] }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Care data:** `/api/circles/:circleId/recipients/:recipientId/medications` (and appointments, documents), plus `/api/circles/:circleId/messages` and `/api/circles/:circleId/budget`.
+- **Care-data mutations and schedules:** create/update/delete operations for the resource lists above, plus medication definitions and recurring schedules.
+- **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend
 
