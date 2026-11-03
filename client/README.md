@@ -29,7 +29,7 @@ The app runs against an in-browser mock backend ([MSW](https://mswjs.io)) until 
 | `src/components/ui/`   | Shared building blocks: `Button`, `TextField`, `PasswordField`, `Alert`, `Logo`                                                                                                                 |
 | `src/app/`             | Routes and route guards                                                                                                                                                                         |
 | `src/api/`             | API client, endpoint functions, and shared request/response types                                                                                                                               |
-| `src/mocks/`           | Mock backend for the auth endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                                                                       |
+| `src/mocks/`           | Mock backend for auth, circle details, and read-only care endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                                                                       |
 | `src/features/`        | Pages, grouped by feature                                                                                                                                                                       |
 
 ## Design rules

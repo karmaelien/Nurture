@@ -4,16 +4,8 @@ import type { AuthResponse, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
 import { readDb, toUser, writeDb, type Db } from './db.ts'
 
-// The auth endpoints from docs/api-contract.md. The contract's session also includes `circles`,
-// which is always empty here until the circle endpoints are built.
-
-function error(status: number, code: string, message: string) {
-  return HttpResponse.json({ error: { code, message } }, { status })
-}
-
-const unauthorized = () => error(401, 'unauthorized', 'Your session has ended. Log in again.')
-
-const bearerToken = (request: Request) => request.headers.get('Authorization')?.replace(/^Bearer /, '')
+import { careHandlers } from './careHandlers.ts'
+import { bearerToken, error, unauthorized } from './responses.ts'
 
 async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
   const parsed = schema.safeParse(await request.json().catch(() => null))
@@ -22,9 +14,24 @@ async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
     : { failure: error(400, 'validation_error', parsed.error.issues[0].message) }
 }
 
-function toSession(db: Db, userId: string): Session & { circles: [] } {
+function toSession(db: Db, userId: string): Session {
   const user = db.users.find((u) => u.id === userId)!
-  return { user: toUser(user), circles: [] }
+  const circles = db.circles.flatMap((circle) => {
+    const member = circle.members.find((member) => member.user.id === userId)
+    if (!member) return []
+    return [
+      {
+        id: circle.id,
+        name: circle.name,
+        role: member.role,
+        recipients: circle.recipients.map((recipient) => ({
+          ...recipient,
+          relationship: member.relationships[recipient.id] ?? null,
+        })),
+      },
+    ]
+  })
+  return { user: toUser(user), circles }
 }
 
 function startSession(db: Db, userId: string): AuthResponse {
@@ -35,6 +42,19 @@ function startSession(db: Db, userId: string): AuthResponse {
 }
 
 export const handlers = [
+  ...careHandlers,
+  http.get('/api/circles/:circleId', async ({ request, params }) => {
+    await delay()
+    const db = readDb()
+    const token = bearerToken(request)
+    const userId = token ? db.sessions[token] : undefined
+    if (!userId || !db.users.some((user) => user.id === userId)) return unauthorized()
+    const circle = toSession(db, userId).circles.find((circle) => circle.id === params.circleId)
+    if (!circle) return error(404, 'not_found', 'This care circle is unavailable.')
+    return HttpResponse.json({
+      circle: { ...circle, members: db.circles.find((item) => item.id === circle.id)!.members },
+    })
+  }),
   http.post('/api/auth/register', async ({ request }) => {
     await delay()
     const body = await parseBody(request, registerSchema)
