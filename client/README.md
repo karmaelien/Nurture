@@ -32,6 +32,10 @@ The app runs against an in-browser mock backend ([MSW](https://mswjs.io)) until 
 | `src/mocks/`           | Mock backend for auth, circle details, and read-only care endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                                                                       |
 | `src/features/`        | Pages, grouped by feature                                                                                                                                                                       |
 
+## Appointment feature
+
+See [appointments documentation](../docs/appointments.md) for the current preview behavior, selection and time rules, code structure, backend integration gaps, and testing steps.
+
 ## Design rules
 
 - **Colors:** everything stays in one family, from deep pine to sage to mint, with charcoal text. Mint (`accent`) is only for small hints: the logo mark, count badges, and dots of 8px or smaller. Never use it on buttons, large fills, or text. Don't introduce a contrasting hue.
