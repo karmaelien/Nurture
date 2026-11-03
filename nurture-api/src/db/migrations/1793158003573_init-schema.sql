@@ -13,7 +13,7 @@ CREATE TABLE users (
 CREATE TABLE circles (
   id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name        TEXT NOT NULL,
-  budget      INT,  -- cents
+  budget      INT CHECK (budget >= 0),  -- cents
   created_by  INT NOT NULL REFERENCES users(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()

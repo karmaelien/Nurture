@@ -39,6 +39,15 @@ const Recipient = {
     );
     return rowCount > 0;
   },
+  setRelationship: async (userId, recipientId, relationship) => {
+    const { rowCount } = await db.query(
+      `INSERT INTO care_relationships (user_id, recipient_id, relationship)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, recipient_id) DO UPDATE SET relationship = EXCLUDED.relationship`,
+      [userId, recipientId, relationship]
+    );
+    return rowCount > 0;
+  }
 };
 
 module.exports = Recipient;

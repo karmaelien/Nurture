@@ -47,7 +47,7 @@ const Circle = {
 
   update: async (id, { name, budget }) => {
     const { rows } = await db.query(
-      `UPDATE circles SET name = $1, budget = $2, updated_at = now()
+      `UPDATE circles SET name = $1, budget = COALESCE($2, budget), updated_at = now()
        WHERE id = $3
        RETURNING ${COLUMNS}`,
       [name, budget, id]
