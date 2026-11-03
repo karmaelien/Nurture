@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
@@ -344,6 +345,9 @@ export function HomePage() {
         )}
         <p className="mt-8 text-muted">
           Signed in as {user.name} ({user.email}).
+        </p>
+        <p className="mt-6">
+          <Link to="/app/appointments" className="link">Appointments</Link>
         </p>
       </main>
     </div>
