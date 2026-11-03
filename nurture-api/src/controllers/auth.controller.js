@@ -6,9 +6,23 @@ const { signAccessToken } = require('../utils/tokens');
 const { registerSchema, loginSchema } = require('../validators/auth.validators');
 const { httpError } = require('../utils/httpErrors');
 
-exports.me = async (req, res) => {
-  res.json({ user: { id: req.user.id, email: req.user.email, username: req.user.username } });
-}
+const toUser = (u) => ({ id: String(u.id), name: u.username, email: u.email });
+
+const toCircleSummary = (c) => ({
+  id: String(c.id),
+  name: c.name,
+  role: c.role,
+  recipients: [],
+});
+
+exports.me = async (req, res, next) => {
+  try {
+    const circles = await Circle.findByOccupancy(req.user.id);
+    res.json({ user: toUser(req.user), circles: circles.map(toCircleSummary) });
+  } catch (err) {
+    next(err);
+  }
+};
 
 exports.register = async (req, res, next) => {
   try {
@@ -52,5 +66,6 @@ exports.login = async (req, res, next) => {
 };
 
 exports.logout = (req, res) => {
+
   res.status(204).end();
 };

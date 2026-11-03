@@ -17,7 +17,7 @@ const parseUserId = (req) => {
 
 exports.list = async (req, res, next) => {
   try {
-    res.json({ members: await Member.listByDashboard(req.dashboardId) });
+    res.json({ members: await Member.listByCircle(req.circleId) });
   } catch (err) {
     next(err);
   }
@@ -40,7 +40,7 @@ exports.add = async (req, res, next) => {
     if (!user) throw httpError(404, 'USER_NOT_FOUND', 'No account exists with that email.');
 
     const member = await Member.create({
-      dashboardId: req.dashboardId,
+      circleId: req.circleId,
       userId: user.id,
       displayName: displayName ?? user.username,
       role,
@@ -61,7 +61,7 @@ exports.updateRole = async (req, res, next) => {
     }
     const { role } = parsed.data;
 
-    const target = await Member.findMembership(req.dashboardId, userId);
+    const target = await Member.findMembership(req.circleId, userId);
     if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
 
     if (target.role === 'owner') throw forbidden("The owner's role can't be changed.");
@@ -69,7 +69,7 @@ exports.updateRole = async (req, res, next) => {
       throw forbidden('Only the owner can grant or change the admin role.');
     }
 
-    const member = await Member.updateRole(req.dashboardId, userId, role);
+    const member = await Member.updateRole(req.circleId, userId, role);
     res.json({ member });
   } catch (err) {
     next(err);
@@ -80,7 +80,7 @@ exports.remove = async (req, res, next) => {
   try {
     const userId = parseUserId(req);
 
-    const target = await Member.findMembership(req.dashboardId, userId);
+    const target = await Member.findMembership(req.circleId, userId);
     if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
 
     if (target.role === 'owner') throw forbidden("The owner can't be removed.");
@@ -88,7 +88,7 @@ exports.remove = async (req, res, next) => {
       throw forbidden('Only the owner can remove an admin.');
     }
 
-    await Member.remove(req.dashboardId, userId);
+    await Member.remove(req.circleId, userId);
     res.status(204).end();
   } catch (err) {
     next(err);

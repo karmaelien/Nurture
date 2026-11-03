@@ -1,8 +1,8 @@
 const ALL = ['owner', 'admin', 'member'];
 
 const PERMISSIONS = {
-  'dashboard:view':   ALL,
-  'dashboard:delete': ['owner'],
+  'circle:view':   ALL,
+  'circle:delete': ['owner'],
   'members:view':     ALL,
   'members:manage':   ['owner', 'admin'],
   'content:edit':     ['owner', 'admin', 'member'],

@@ -2,10 +2,10 @@ const db = require('../config/db');
 
 const COLUMNS = 'id, name, budget, created_by, created_at, updated_at';
 
-const Dashboard = {
+const Circle = {
   create: async ({ name, budget, createdBy }) => {
     const { rows } = await db.query(
-      `INSERT INTO dashboards (name, budget, created_by)
+      `INSERT INTO circles (name, budget, created_by)
        VALUES ($1, $2, $3)
        RETURNING ${COLUMNS}`,
       [name, budget, createdBy]
@@ -14,18 +14,18 @@ const Dashboard = {
   },
 
   findAll: async () => {
-    const { rows } = await db.query(`SELECT ${COLUMNS} FROM dashboards ORDER BY name`);
+    const { rows } = await db.query(`SELECT ${COLUMNS} FROM circles ORDER BY name`);
     return rows;
   },
 
   findById: async (id) => {
-    const { rows } = await db.query(`SELECT ${COLUMNS} FROM dashboards WHERE id = $1`, [id]);
+    const { rows } = await db.query(`SELECT ${COLUMNS} FROM circles WHERE id = $1`, [id]);
     return rows[0] || null;
   },
 
   findByOwnerId: async (ownerId) => {
     const { rows } = await db.query(
-      `SELECT ${COLUMNS} FROM dashboards
+      `SELECT ${COLUMNS} FROM circles
        WHERE created_by = $1
        ORDER BY name`,
       [ownerId]
@@ -36,8 +36,8 @@ const Dashboard = {
   findByOccupancy: async (userId) => {
     const { rows } = await db.query(
       `SELECT d.id, d.name, d.budget, d.created_by, d.created_at, d.updated_at, dm.role
-       FROM dashboards d
-       JOIN dashboard_members dm ON dm.dashboard_id = d.id
+       FROM circles d
+       JOIN circle_members dm ON dm.circle_id = d.id
        WHERE dm.user_id = $1
        ORDER BY d.name`,
       [userId]
@@ -47,7 +47,7 @@ const Dashboard = {
 
   update: async (id, { name, budget }) => {
     const { rows } = await db.query(
-      `UPDATE dashboards SET name = $1, budget = $2, updated_at = now()
+      `UPDATE circles SET name = $1, budget = $2, updated_at = now()
        WHERE id = $3
        RETURNING ${COLUMNS}`,
       [name, budget, id]
@@ -56,9 +56,9 @@ const Dashboard = {
   },
 
   remove: async (id) => {
-    const { rows } = await db.query(`DELETE FROM dashboards WHERE id = $1 RETURNING ${COLUMNS}`, [id]);
+    const { rows } = await db.query(`DELETE FROM circles WHERE id = $1 RETURNING ${COLUMNS}`, [id]);
     return rows[0] || null;
   },
 };
 
-module.exports = Dashboard;
+module.exports = Circle;

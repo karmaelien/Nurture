@@ -1,51 +1,51 @@
 const db = require('../config/db');
 
-const COLUMNS = 'dashboard_id, user_id, display_name, role, created_at';
+const COLUMNS = 'circle_id, name, role, created_at';
 
 const Member = {
-  findMembership: async (dashboardId, userId) => {
+  findMembership: async (circleId, userId) => {
     const { rows } = await db.query(
-      `SELECT ${COLUMNS} FROM dashboard_members
-       WHERE dashboard_id = $1 AND user_id = $2`,
-      [dashboardId, userId]
+      `SELECT ${COLUMNS} FROM circle_members
+       WHERE circle_id = $1 AND user_id = $2`,
+      [circleId, userId]
     );
     return rows[0] || null;
   },
 
-  listByDashboard: async (dashboardId) => {
+  listByCircle: async (circleId) => {
     const { rows } = await db.query(
-      `SELECT ${COLUMNS} FROM dashboard_members
-       WHERE dashboard_id = $1
+      `SELECT ${COLUMNS} FROM circle_members
+       WHERE circle_id = $1
        ORDER BY created_at, user_id`,
-      [dashboardId]
+      [circleId]
     );
     return rows;
   },
 
-  create: async ({ dashboardId, userId, displayName, role }) => {
+  create: async ({ circleId, userId, displayName, role }) => {
     const { rows } = await db.query(
-      `INSERT INTO dashboard_members (dashboard_id, user_id, display_name, role)
+      `INSERT INTO circle_members (circle_id, user_id, display_name, role)
        VALUES ($1, $2, $3, $4)
        RETURNING ${COLUMNS}`,
-      [dashboardId, userId, displayName, role]
+      [circleId, userId, displayName, role]
     );
     return rows[0];
   },
 
-  updateRole: async (dashboardId, userId, role) => {
+  updateRole: async (circleId, userId, role) => {
     const { rows } = await db.query(
-      `UPDATE dashboard_members SET role = $1
-       WHERE dashboard_id = $2 AND user_id = $3
+      `UPDATE circle_members SET role = $1
+       WHERE circle_id = $2 AND user_id = $3
        RETURNING ${COLUMNS}`,
-      [role, dashboardId, userId]
+      [role, circleId, userId]
     );
     return rows[0] || null;
   },
 
-  remove: async (dashboardId, userId) => {
+  remove: async (circleId, userId) => {
     const { rowCount } = await db.query(
-      'DELETE FROM dashboard_members WHERE dashboard_id = $1 AND user_id = $2',
-      [dashboardId, userId]
+      'DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+      [circleId, userId]
     );
     return rowCount > 0;
   },
