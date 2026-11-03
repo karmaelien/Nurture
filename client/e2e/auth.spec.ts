@@ -18,11 +18,11 @@ test('registers, keeps the session after reload, logs out, and logs back in', as
   await page.getByRole('button', { name: 'Create account' }).click()
 
   await expect(page).toHaveURL('/app')
-  await expect(page.getByRole('heading', { name: "You're logged in" })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
   await expect(page.getByText(`Signed in as Daniel Alvarez (${email}).`)).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: "You're logged in" })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL('/login')
