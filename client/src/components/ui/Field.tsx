@@ -35,7 +35,7 @@ const controlClasses = (invalid: boolean) =>
   clsx(
     'w-full rounded-control border bg-surface px-3.5 text-body text-ink outline-none transition-[border-color,box-shadow]',
     'placeholder:text-muted/70 focus:border-primary focus:ring-3 focus:ring-primary/25',
-    invalid ? 'border-danger' : 'border-line-strong',
+    invalid ? 'border-danger' : 'border-field',
   )
 
 type TextFieldProps = Omit<ComponentProps<'input'>, 'id'> & {
