@@ -14,10 +14,10 @@ User ──< Membership >── Circle ──< Recipient
 
 | Entity | What it is | Key fields |
 | --- | --- | --- |
-| **User** | Someone with a login: a caregiver. | `id`, `name`, `email` (unique), password hash |
+| **User** | Someone with a login: a caregiver. | `id`, `name`, `email` (unique), `phone`, `timeZone`, password hash |
 | **Circle** | A group that shares care, such as "Alvarez family". | `id`, `name`, `createdAt` |
 | **Membership** | Joins a user to a circle. A user can be in many circles, and a circle has many users. | `circleId`, `userId`, `role` (`owner` or `member`), `joinedAt`. Unique on (`circleId`, `userId`). |
-| **Recipient** | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `createdAt` |
+| **Recipient** | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `preferredName`, `dateOfBirth`, `notes`, `createdAt` |
 | **CareRelationship** | Optional label for how one caregiver relates to one recipient: Daniel is Rose's child and Frank's child-in-law. For display only; it never grants access. | `userId`, `recipientId`, `relationship`. Unique on (`userId`, `recipientId`). |
 
 Rules:
@@ -42,7 +42,14 @@ Rules:
 ## Types
 
 ```ts
-type User = { id: string; name: string; email: string }
+type User = {
+  id: string
+  name: string
+  email: string
+  // Visible to everyone who shares a circle with this user, so the family can reach them.
+  phone: string | null // as entered, trimmed: 7-20 characters of digits, spaces, and + - ( )
+  timeZone: string | null // IANA name, such as "America/New_York". Null until the user sets it.
+}
 
 type Role = 'owner' | 'member'
 
@@ -52,6 +59,9 @@ type Relationship = 'parent' | 'grandparent' | 'spouse' | 'sibling' | 'child' | 
 type Recipient = {
   id: string
   name: string
+  preferredName: string | null // what the family calls them, such as "Grandma Rose"; 1-80 characters
+  dateOfBirth: string | null // YYYY-MM-DD calendar date, from 1900-01-01 up to today
+  notes: string | null // up to 500 characters of free text for the family; not a medical record
   // The signed-in user's own label for this recipient, if they set one.
   relationship: Relationship | null
 }
@@ -120,7 +130,19 @@ type Expense = {
 }
 ```
 
-A new user has `circles: []`. The client sends them to set up their first circle.
+A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
+
+`RecipientInput` is the body for creating a recipient. Optional text fields are trimmed, and an empty string is stored as `null`.
+
+```ts
+type RecipientInput = {
+  name: string // 1-80 characters
+  preferredName: string | null
+  dateOfBirth: string | null
+  notes: string | null
+  relationship: Relationship | null // saved as the signed-in user's own label
+}
+```
 
 ## Endpoints
 
@@ -132,7 +154,7 @@ Body: `{ name, email, password }`. `name` is 1-80 characters and `password` is 8
 
 | Status | Body |
 | --- | --- |
-| 201 | `Session & { token }`. `circles` is always `[]`. |
+| 201 | `Session & { token }`. `circles` is always `[]`, and `phone` and `timeZone` are `null`. |
 | 400 | `validation_error` |
 | 409 | `email_taken` |
 
@@ -159,6 +181,18 @@ Requires auth.
 
 Requires auth. Ends the current token only. Returns **204** with no body. It's fine to return 204 for an already-invalid token.
 
+### Users
+
+#### `PATCH /api/users/me`
+
+Requires auth. Updates the signed-in user's own profile. Send only the fields to change: `name` (1-80 characters), `phone` (or `null` to clear it), and `timeZone` (an IANA time zone name, or `null`).
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ user: User }` |
+| 400 | `validation_error` |
+| 401 | `unauthorized` |
+
 ### Circles
 
 Every endpoint below requires auth and returns `401 unauthorized` without it. Any endpoint with a `:circleId` returns `404 not_found` if the circle doesn't exist or the user isn't a member.
@@ -172,10 +206,7 @@ Body:
 ```ts
 {
   name: string // 1-80 characters, for example "Alvarez family"
-  recipient: {
-    name: string // 1-80 characters
-    relationship: Relationship | null
-  }
+  recipient: RecipientInput
 }
 ```
 
@@ -208,7 +239,7 @@ Owner only. Body: `{ name }`, 1-80 characters.
 
 Any member can add someone the circle cares for.
 
-Body: `{ name, relationship }`. `name` is 1-80 characters and `relationship` is a `Relationship` or `null`. The relationship is saved as the signed-in user's own label.
+Body: `RecipientInput`. The relationship is saved as the signed-in user's own label.
 
 | Status | Body |
 | --- | --- |
