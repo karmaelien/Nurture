@@ -1,7 +1,8 @@
 import { Navigate, Outlet, type RouteObject } from 'react-router'
 import { FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
 import { AuthLayout } from '../layouts/AuthLayout.tsx'
-import { GuestOnly, RequireSession } from './guards.tsx'
+import type { SetupHandle } from '../features/setup/SetupLayout.tsx'
+import { GuestOnly, RequireCircle, RequireSession } from './guards.tsx'
 import { NotFoundPage } from './NotFoundPage.tsx'
 
 // Pages load on demand so each one ships only the code it needs.
@@ -34,12 +35,40 @@ export const routes: RouteObject[] = [
         element: <RequireSession />,
         children: [
           {
+            // Setup is open to anyone signed in: the contract also lets existing users start another circle.
+            path: '/setup',
+            lazy: async () => ({ Component: (await import('../features/setup/SetupLayout.tsx')).SetupLayout }),
+            children: [
+              {
+                index: true,
+                handle: { setupStep: 1 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/ProfileStep.tsx')).ProfileStep }),
+              },
+              {
+                path: 'circle',
+                handle: { setupStep: 2 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/CircleStep.tsx')).CircleStep }),
+              },
+              {
+                path: 'circles/:circleId/people',
+                handle: { setupStep: 3 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/PeopleStep.tsx')).PeopleStep }),
+              },
+            ],
+          },
+          {
             path: '/app',
-            element: <Outlet />,
+            element: <RequireCircle />,
             children: [
               {
                 index: true,
                 lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+              },
+              {
+                path: 'circles/:circleId/people/new',
+                lazy: async () => ({
+                  Component: (await import('../features/profiles/AddRecipientPage.tsx')).AddRecipientPage,
+                }),
               },
               {
                 path: 'appointments',
