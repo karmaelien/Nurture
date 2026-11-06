@@ -8,11 +8,12 @@ import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { Logo } from '../../components/ui/Logo.tsx'
+import { ThemeSwitch } from '../../components/ui/ThemeSwitch.tsx'
 import { useLogout, useRequiredSession } from '../auth/session.ts'
 import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
-const selectClass = 'max-w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body'
+const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
   medication: 'Medication',
   appointment: 'Appointments',
@@ -300,9 +301,12 @@ export function HomePage() {
               Documents · soon
             </span>
           </nav>
-          <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-            Log out
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeSwitch />
+            <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
+              Log out
+            </Button>
+          </div>
         </div>
       </header>
       <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">

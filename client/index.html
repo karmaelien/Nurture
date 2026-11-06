@@ -10,6 +10,15 @@
       content="Nurture keeps your family's caregiving in one place: medications, appointments, documents, costs, and updates."
     />
     <title>Nurture</title>
+    <script>
+      // Apply the saved theme before first paint. Keep the key in sync with src/app/theme.ts.
+      try {
+        const theme = localStorage.getItem('nurture.theme')
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+      } catch {
+        // Storage is unavailable; follow the system theme.
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
