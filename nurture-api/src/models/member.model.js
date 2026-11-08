@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-const COLUMNS = 'circle_id, name, role, created_at';
+const COLUMNS = 'circle_id, user_id, display_name, role, created_at';
 
 const Member = {
   findMembership: async (circleId, userId) => {
@@ -14,9 +14,11 @@ const Member = {
 
   listByCircle: async (circleId) => {
     const { rows } = await db.query(
-      `SELECT ${COLUMNS} FROM circle_members
-       WHERE circle_id = $1
-       ORDER BY created_at, user_id`,
+      `SELECT m.circle_id, m.user_id, m.display_name, m.role, m.created_at, u.email, u.username
+      FROM circle_members m
+      JOIN users u ON u.id = m.user_id
+      WHERE m.circle_id = $1
+      ORDER BY m.created_at, m.user_id`,
       [circleId]
     );
     return rows;
@@ -26,7 +28,7 @@ const Member = {
     const { rows } = await db.query(
       `INSERT INTO circle_members (circle_id, user_id, display_name, role)
        VALUES ($1, $2, $3, $4)
-       RETURNING ${COLUMNS}`,
+       RETURNING ${COLUMNS};`,
       [circleId, userId, displayName, role]
     );
     return rows[0];
@@ -43,12 +45,19 @@ const Member = {
   },
 
   remove: async (circleId, userId) => {
+    const { crRowCount } = await db.query(
+      `DELETE FROM care_relationships cr
+      USING recipients r
+      WHERE cr.recipient_id = r.id AND r.circle_id = $1 AND cr.user_id = $2`,
+      [circleId, userId]
+    );
     const { rowCount } = await db.query(
-      'DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2',
+      `DELETE FROM circle_members WHERE circle_id = $1 AND user_id = $2;`,
       [circleId, userId]
     );
     return rowCount > 0;
   },
+  
 };
 
 module.exports = Member;

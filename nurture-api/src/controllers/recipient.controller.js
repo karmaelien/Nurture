@@ -1,5 +1,6 @@
 const { addSchema, relationshipSchema } = require('../validators/recipients.validators');
-
+const Recipient = require('../models/recipient.model');
+const { httpError } = require('../utils/httpErrors');
 const toRecipient = (r, relationship) => ({ id: String(r.id), name: r.name, relationship });
 
 exports.add = async (req, res, next) => {

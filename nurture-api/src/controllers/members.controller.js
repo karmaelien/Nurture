@@ -7,11 +7,11 @@ const ASSIGNABLE = ['admin', 'member'];
 
 const { addSchema, roleSchema } = require('../validators/members.validators');
 
-const forbidden = (message) => httpError(403, 'FORBIDDEN', message);
+const forbidden = (message) => httpError(403, 'forbidden', message);
 
 const parseUserId = (req) => {
   const id = Number(req.params.userId);
-  if (!Number.isInteger(id) || id < 1) throw httpError(404, 'NOT_FOUND', 'Member not found.');
+  if (!Number.isInteger(id) || id < 1) throw httpError(404, 'not_found', 'Member not found.');
   return id;
 };
 
@@ -37,7 +37,7 @@ exports.add = async (req, res, next) => {
     }
 
     const user = await User.findByEmail(email);
-    if (!user) throw httpError(404, 'USER_NOT_FOUND', 'No account exists with that email.');
+    if (!user) throw httpError(404, 'user_not_found', 'No account exists with that email.');
 
     const member = await Member.create({
       circleId: req.circleId,
@@ -62,7 +62,7 @@ exports.updateRole = async (req, res, next) => {
     const { role } = parsed.data;
 
     const target = await Member.findMembership(req.circleId, userId);
-    if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
+    if (!target) throw httpError(404, 'not_found', 'Member not found.');
 
     if (target.role === 'owner') throw forbidden("The owner's role can't be changed.");
     if ((target.role === 'admin' || role === 'admin') && req.membership.role !== 'owner') {
@@ -81,7 +81,7 @@ exports.remove = async (req, res, next) => {
     const userId = parseUserId(req);
 
     const target = await Member.findMembership(req.circleId, userId);
-    if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
+    if (!target) throw httpError(404, 'not_found', 'Member not found.');
 
     if (target.role === 'owner') throw forbidden("The owner can't be removed.");
     if (target.role === 'admin' && req.membership.role !== 'owner') {

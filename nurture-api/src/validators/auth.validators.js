@@ -5,8 +5,8 @@ const email = z.string().trim().toLowerCase().pipe(z.email());
 
 exports.registerSchema = z.object({
   email: email,
-  username: z.string().trim().min(1).max(50),
-  password: z.string().min(8).max(72),
+  name: z.string().trim().min(1).max(80),
+  password: z.string().min(8).max(128),
 });
 
 exports.loginSchema = z.object({

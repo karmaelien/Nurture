@@ -59,6 +59,22 @@ const Circle = {
     const { rows } = await db.query(`DELETE FROM circles WHERE id = $1 RETURNING ${COLUMNS}`, [id]);
     return rows[0] || null;
   },
+  getRelationships: async (circleId) => {
+    const { rows } = await db.query(
+      `SELECT cr.user_id, cr.recipient_id, cr.relationship
+      FROM care_relationships cr
+      JOIN recipients r ON r.id = cr.recipient_id
+      WHERE r.circle_id = $1`,
+      [circleId]
+    );
+
+    const byUser = {};
+    for (const { user_id, recipient_id, relationship } of rows) {
+      byUser[user_id] ??= {};
+      byUser[user_id][recipient_id] = relationship;
+    }
+    return byUser;
+  },
 };
 
 module.exports = Circle;

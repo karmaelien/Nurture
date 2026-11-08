@@ -20,7 +20,7 @@ app.use('/api/users', require('./routes/users.routes'));
 app.use('/api/circles', require('./routes/circles.routes'));
 
 app.use((req,res) => {
-  res.status(404).json({ error: { code: 'not_found', message } });
+  res.status(404).json({ error: { code: 'not_found', message: 'Not found.' } });
 });
 app.use(errorHandler);
 module.exports = app;

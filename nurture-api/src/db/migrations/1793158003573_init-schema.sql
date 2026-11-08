@@ -81,14 +81,16 @@ CREATE INDEX idx_members_circle ON circle_members(circle_id);
 CREATE INDEX idx_documents_dash    ON documents(circle_id);
 CREATE INDEX idx_tasks_dash        ON tasks(circle_id);
 CREATE INDEX idx_refresh_hash      ON refresh_tokens(token_hash);
+CREATE INDEX idx_recipients_circle ON recipients(circle_id);
+CREATE INDEX idx_care_rel_recipient ON care_relationships(recipient_id);
 
 
 -- Down Migration
+DROP TABLE care_relationships;
+DROP TABLE recipients;
 DROP TABLE refresh_tokens;
 DROP TABLE tasks;
 DROP TABLE documents;
 DROP TABLE circle_members;
 DROP TABLE circles;
 DROP TABLE users;
-DROP TABLE care_relationships;
-DROP TABLE recipients;
