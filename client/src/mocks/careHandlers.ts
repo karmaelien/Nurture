@@ -1,4 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
+import { expenseCategorySchema } from '../features/expenses/schemas.ts'
 import { readDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
@@ -54,9 +55,16 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
     const query = new URL(request.url).searchParams
     const recipientId = query.get('recipientId')
     if (recipientId !== null && !circle.recipients.some((recipient) => recipient.id === recipientId)) return notFound()
-    const allowed: string[] = [...config.dates, 'recipientId', ...(config.statuses ? ['status'] : [])]
+    const allowed: string[] = [
+      ...config.dates,
+      'recipientId',
+      ...(config.statuses ? ['status'] : []),
+      ...(resource === 'expenses' ? ['category'] : []),
+    ]
     if ([...query.keys()].some((key) => !allowed.includes(key) || query.getAll(key).length !== 1)) return invalid()
     if (config.required.some((key) => !query.has(key))) return invalid()
+    const category = query.get('category')
+    if (category !== null && !expenseCategorySchema.safeParse(category).success) return invalid()
     const dateOnly = resource === 'expenses'
     if (config.dates.some((key) => query.has(key) && !validDate(query.get(key)!, dateOnly))) return invalid()
     for (let i = 0; i < config.dates.length; i += 2) {
@@ -99,7 +107,10 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       return HttpResponse.json({ tasks: tasks.sort(byDate((record) => record.dueAt)) })
     }
     const expenses = db.care.expenses.filter(
-      (record) => included(record) && inRange(record.incurredOn, query.get('fromDate'), query.get('toDate'), true),
+      (record) =>
+        included(record) &&
+        (!category || record.category === category) &&
+        inRange(record.incurredOn, query.get('fromDate'), query.get('toDate'), true),
     )
     return HttpResponse.json({ expenses: expenses.sort(byDate((record) => record.incurredOn, true)) })
   }),

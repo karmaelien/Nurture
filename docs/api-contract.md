@@ -308,7 +308,7 @@ The existing date bounds support one-, six-, and twelve-month views without sepa
 
 ### Expense mutations
 
-These endpoints and the expense list's category filter are proposed; implementation is pending.
+These endpoints and the expense list's category filter are implemented in the browser mock; server implementation is pending.
 Any circle member can create, edit, or delete its expenses. All endpoints require auth
 (`401 unauthorized`). A missing/inaccessible circle, an expense outside that circle,
 or a supplied recipient outside that circle returns `404 not_found`. Check circle
