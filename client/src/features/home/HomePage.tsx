@@ -6,6 +6,7 @@ import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
+import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { Logo } from '../../components/ui/Logo.tsx'
 import { useLogout, useRequiredSession } from '../auth/session.ts'
 import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
@@ -28,6 +29,7 @@ function Panel({
   icon,
   query,
   empty,
+  action,
   children,
 }: {
   id: string
@@ -35,6 +37,7 @@ function Panel({
   icon: ReactNode
   query: QueryState
   empty: boolean
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -67,6 +70,7 @@ function Panel({
       ) : (
         children
       )}
+      {action && <div className="mt-6">{action}</div>}
     </section>
   )
 }
@@ -245,7 +249,18 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel id="expenses" title="Care spending" icon={<Wallet />} query={expenses} empty={!expenses.data?.length}>
+        <Panel
+          id="expenses"
+          title="Care spending"
+          icon={<Wallet />}
+          query={expenses}
+          empty={!expenses.data?.length}
+          action={
+            <Link to="/app/expenses" className={buttonClasses({ variant: 'secondary' })}>
+              View all expenses
+            </Link>
+          }
+        >
           <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
           <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
           {categories.map(({ label, amount }) => (
@@ -291,10 +306,13 @@ export function HomePage() {
                   <CalendarDays className="size-5" aria-hidden />
                   Care
                 </a>
-                <a href="#expenses" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
+                <Link
+                  to="/app/expenses"
+                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
+                >
                   <Wallet className="size-5" aria-hidden />
                   Expenses
-                </a>
+                </Link>
               </>
             )}
             <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
@@ -347,7 +365,9 @@ export function HomePage() {
           Signed in as {user.name} ({user.email}).
         </p>
         <p className="mt-6">
-          <Link to="/app/appointments" className="link">Appointments</Link>
+          <Link to="/app/appointments" className="link">
+            Appointments
+          </Link>
         </p>
       </main>
     </div>
