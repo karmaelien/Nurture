@@ -23,7 +23,7 @@ const create = async (req, res, next) => {
     });
     const dependent = await Recipient.create({ 
       circleId: circle.id, 
-      displayName: recipient.name,
+      name: recipient.name,
     });
     const relationship = await Recipient.setRelationship(
       req.user.id,

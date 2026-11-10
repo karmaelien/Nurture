@@ -6,6 +6,7 @@ CREATE TABLE users (
   email         CITEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   username      TEXT NOT NULL,
+  is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -25,7 +26,7 @@ CREATE TABLE circle_members (
   user_id       INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   display_name  TEXT NOT NULL,
   role          TEXT NOT NULL
-                CHECK (role IN ('owner','admin','member')),
+                CHECK (role IN ('owner','member')),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (circle_id, user_id)
 );
@@ -84,12 +85,6 @@ CREATE INDEX idx_refresh_hash      ON refresh_tokens(token_hash);
 CREATE INDEX idx_recipients_circle ON recipients(circle_id);
 CREATE INDEX idx_care_rel_recipient ON care_relationships(recipient_id);
 
-CREATE TABLE sessions (
-  id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at  TIMESTAMPTZ NOT NULL
-);
 
 -- Down Migration
 DROP TABLE care_relationships;
@@ -100,4 +95,3 @@ DROP TABLE documents;
 DROP TABLE circle_members;
 DROP TABLE circles;
 DROP TABLE users;
-DROP TABLE sessions;

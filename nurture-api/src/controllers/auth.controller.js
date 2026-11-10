@@ -1,13 +1,17 @@
 const argon = require('argon2');
-const { z } = require('zod');
 const User = require('../models/user.model');
 const Circle = require('../models/circle.model');
-const { signAccessToken } = require('../utils/tokens');
 const Recipient = require('../models/recipient.model');
 const { registerSchema, loginSchema } = require('../validators/auth.validators');
 const { httpError } = require('../utils/httpErrors');
-
+const { generateToken, hashToken } = require('../utils/tokens');
 const toUser = (u) => ({ id: String(u.id), name: u.username, email: u.email });
+
+const startSession = async (userId) => {
+  const token = generateToken();
+  await User.createSession(userId, hashToken(token));
+  return token;
+};
 
 const toCircleSummary = async (c, userId) => {
   const recipients = await Recipient.listByCircle(c.id, userId);
@@ -22,6 +26,7 @@ const toCircleSummary = async (c, userId) => {
     })),
   };
 };
+
 exports.me = async (req, res, next) => {
   try {
     const circles = await Circle.findByOccupancy(req.user.id);
@@ -49,7 +54,7 @@ exports.register = async (req, res, next) => {
     const user = await User.create({ email, username: name, passwordHash });
 
     res.status(201).json({
-      token: signAccessToken(user.id),
+      token: await startSession(user.id),
       user: toUser(user),
       circles: [],
     });
@@ -75,16 +80,21 @@ exports.login = async (req, res, next) => {
     const circles = await Circle.findByOccupancy(row.id);
 
     res.json({
-      token: signAccessToken(row.id),
+      token: await startSession(row.id),
       user: toUser(row),
-      circles: circles.map(toCircleSummary),
+      circles: await Promise.all(circles.map((c) => toCircleSummary(c, row.id))),
     });
   } catch (err) {
     next(err);
   }
 };
 
-exports.logout = (req, res) => {
-
-  res.status(204).end();
+exports.logout = async (req, res, next) => {
+  try {
+    const [scheme, token] = req.headers.authorization?.split(' ') || [];
+    if (scheme === 'Bearer' && token) await User.revokeSession(hashToken(token));
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 };

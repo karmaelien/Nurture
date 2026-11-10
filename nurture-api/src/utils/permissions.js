@@ -1,12 +1,12 @@
-const ALL = ['owner', 'admin', 'member'];
+const ALL = ['owner', 'member'];
 
 const PERMISSIONS = {
   'circle:view':   ALL,
   'circle:delete': ['owner'],
-  'circle:edit':   ['owner', 'admin'],
+  'circle:edit':   ['owner'],
   'members:view':     ALL,
-  'members:manage':   ['owner', 'admin'],
-  'content:edit':     ['owner', 'admin', 'member'],
+  'members:manage':   ['owner'],
+  'content:edit':     ['owner', 'member'],
 };
 
 exports.hasAccess = (role, permission) =>

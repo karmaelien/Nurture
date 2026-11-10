@@ -1,8 +1,21 @@
+const CONFLICTS = {
+  users_email_key: {
+    code: 'email_taken',
+    message: 'That email already has an account. Log in instead, or use a different email.',
+  },
+  circle_members_pkey: {
+    code: 'already_member',
+    message: 'That person is already in this circle.',
+  },
+};
+
 module.exports = (err, req, res, next) => {
   if (err.code === '23505') {
-    return res.status(409).json({
-      error: { code: 'email_taken', message: 'That value is already in use.' },
-    });
+    const conflict = CONFLICTS[err.constraint] ?? {
+      code: 'conflict',
+      message: 'That already exists.',
+    };
+    return res.status(409).json({ error: conflict });
   }
 
   const status = err.status || 500;
@@ -10,7 +23,7 @@ module.exports = (err, req, res, next) => {
 
   res.status(status).json({
     error: {
-      code: err.errorCode || (status === 500 ? 'INTERNAL_ERROR' : 'ERROR'),
+      code: err.errorCode || (status === 500 ? 'internal_error' : 'error'),
       message: status === 500 ? 'Something went wrong.' : err.message,
     },
   });
