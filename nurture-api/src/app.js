@@ -1,8 +1,10 @@
 const express = require('express')
+const helmet = require('helmet')
 const db = require('./config/db')
 const errorHandler = require('./middleware/errorHandler')
 
 const app = express()
+app.use(helmet())
 app.use(express.json())
 
 app.get('/health', async (req, res) => {
@@ -16,7 +18,6 @@ app.get('/health', async (req, res) => {
 });
 
 app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api/users', require('./routes/users.routes'));
 app.use('/api/circles', require('./routes/circles.routes'));
 
 app.use('/api/admin', require('./routes/admin.routes'));

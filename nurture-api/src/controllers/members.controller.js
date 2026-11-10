@@ -4,6 +4,7 @@ const User = require('../models/user.model');
 const { httpError } = require('../utils/httpErrors');
 const { addSchema, roleSchema } = require('../validators/members.validators');
 const { toMember } = require('../utils/serializers');
+const Circle = require('../models/circle.model');
 
 const forbidden = (message) => httpError(403, 'forbidden', message);
 
@@ -31,7 +32,7 @@ exports.add = async (req, res, next) => {
       throw httpError(400, 'validation_error',
         "Provide the person's account email and a role.");
     }
-    const { email, role, displayName } = parsed.data;
+    const { email, role } = parsed.data;
 
     const user = await User.findByEmail(email);
     if (!user) throw httpError(404, 'user_not_found', 'No account exists with that email.');
@@ -39,25 +40,12 @@ exports.add = async (req, res, next) => {
     const member = await Member.create({
       circleId: req.circleId,
       userId: user.id,
-      displayName: displayName ?? user.username,
+      displayName: user.username,
       role,
     });
 
     res.status(201).json({
       member: toMember({ ...member, username: user.username, email: user.email }),
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-exports.updateRole = async (req, res, next) => {
-  try {
-    const updated = await Member.updateRole(req.circleId, userId, role);
-    const user = await User.findById(userId);
-    const relationships = await Circle.getRelationships(req.circleId);
-    res.json({
-      member: toMember({ ...updated, username: user.username, email: user.email }, relationships[userId]),
     });
   } catch (err) {
     next(err);

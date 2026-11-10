@@ -77,6 +77,16 @@ CREATE TABLE care_relationships(
   PRIMARY KEY (user_id, recipient_id)
 );
 
+CREATE TABLE audit_log (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id     INT REFERENCES users(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,        -- 'recipient.view', 'login.failed', 'member.remove'
+  circle_id   INT,
+  target_id   TEXT,
+  ip          TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_members_user      ON circle_members(user_id);
 CREATE INDEX idx_members_circle ON circle_members(circle_id);
 CREATE INDEX idx_documents_dash    ON documents(circle_id);

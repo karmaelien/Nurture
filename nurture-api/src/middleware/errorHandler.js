@@ -20,7 +20,12 @@ module.exports = (err, req, res, next) => {
 
   const status = err.status || 500;
   if (status === 500) console.error(err); // log real bugs, but don't leak details
-
+  
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      error: { code: 'validation_error', message: 'The request body must be valid JSON.' },
+    });
+}
   res.status(status).json({
     error: {
       code: err.errorCode || (status === 500 ? 'internal_error' : 'error'),
