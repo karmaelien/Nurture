@@ -3,8 +3,8 @@ const db = require('../config/db');
 const COLUMNS = 'id, name, budget, created_by, created_at, updated_at';
 
 const Circle = {
-  create: async ({ name, budget, createdBy }) => {
-    const { rows } = await db.query(
+  create: async ({ name, budget, createdBy }, conn = db) => {
+    const { rows } = await conn.query(
       `INSERT INTO circles (name, budget, created_by)
        VALUES ($1, $2, $3)
        RETURNING ${COLUMNS}`,
@@ -45,8 +45,8 @@ const Circle = {
     return rows;
   },
 
-  update: async (id, { name, budget }) => {
-    const { rows } = await db.query(
+  update: async (id, { name, budget }, conn = db) => {
+    const { rows } = await conn.query(
       `UPDATE circles SET name = $1, budget = COALESCE($2, budget), updated_at = now()
        WHERE id = $3
        RETURNING ${COLUMNS}`,
@@ -55,12 +55,12 @@ const Circle = {
     return rows[0] || null;
   },
 
-  remove: async (id) => {
-    const { rows } = await db.query(`DELETE FROM circles WHERE id = $1 RETURNING ${COLUMNS}`, [id]);
+  remove: async (id, conn = db) => {
+    const { rows } = await conn.query(`DELETE FROM circles WHERE id = $1 RETURNING ${COLUMNS}`, [id]);
     return rows[0] || null;
   },
-  getRelationships: async (circleId) => {
-    const { rows } = await db.query(
+  getRelationships: async (circleId, conn = db) => {
+    const { rows } = await conn.query(
       `SELECT cr.user_id, cr.recipient_id, cr.relationship
       FROM care_relationships cr
       JOIN recipients r ON r.id = cr.recipient_id

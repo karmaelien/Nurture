@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const db = require('../config/db');
 const Circle = require('../models/circle.model');
 const { httpError } = require('../utils/httpErrors');
 const Member = require('../models/member.model');
@@ -14,22 +15,26 @@ const create = async (req, res, next) => {
     }
     const { name, budget, recipient } = parsed.data;
 
-    const circle = await Circle.create({ name, budget: budget ?? null, createdBy: req.user.id });
-    const owner = await Member.create({ 
-      circleId: circle.id, 
-      userId: req.user.id, 
-      displayName: req.user.username,
-      role: 'owner'
+    const { circle, dependent, relationship } = await db.transaction(async (tx) => {
+      const circle = await Circle.create({ name, budget: budget ?? null, createdBy: req.user.id }, tx);
+      await Member.create({
+        circleId: circle.id, 
+        userId: req.user.id, 
+        displayName: req.user.username,
+        role: 'owner'
+      }, tx);
+      const dependent = await Recipient.create({ 
+        circleId: circle.id, 
+        name: recipient.name,
+      }, tx);
+      const relationship = await Recipient.setRelationship(
+        req.user.id,
+        dependent.id, 
+        recipient.relationship,
+        tx
+      );
+      return { circle, dependent, relationship };
     });
-    const dependent = await Recipient.create({ 
-      circleId: circle.id, 
-      name: recipient.name,
-    });
-    const relationship = await Recipient.setRelationship(
-      req.user.id,
-      dependent.id, 
-      recipient.relationship
-    );
     res.status(201).json({ circle:{
       id: String(circle.id),
       name: circle.name,

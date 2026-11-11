@@ -3,8 +3,8 @@ const db = require('../config/db');
 const COLUMNS = 'id, circle_id, name, created_at';
 
 const Recipient = {
-  findInCircle: async (circleId, recipientId) => {
-    const { rows } = await db.query(
+  findInCircle: async (circleId, recipientId, conn = db) => {
+    const { rows } = await conn.query(
       `SELECT ${COLUMNS} FROM recipients
        WHERE circle_id = $1 AND id = $2`,
       [circleId, recipientId]
@@ -12,8 +12,8 @@ const Recipient = {
     return rows[0] || null;
   },
 
-  listByCircle: async (circleId,userId) => {
-    const { rows } = await db.query(
+  listByCircle: async (circleId,userId, conn = db) => {
+    const { rows } = await conn.query(
       `SELECT r.id, r.name, cr.relationship
         FROM recipients r
         LEFT JOIN care_relationships cr
@@ -25,8 +25,8 @@ const Recipient = {
     return rows;
   },
 
-  create: async ({ circleId, name }) => {
-    const { rows } = await db.query(
+  create: async ({ circleId, name }, conn = db) => {
+    const { rows } = await conn.query(
       `INSERT INTO recipients (circle_id, name, updated_at)
        VALUES ($1, $2, $3)
        RETURNING ${COLUMNS}`,
@@ -35,16 +35,16 @@ const Recipient = {
     return rows[0];
   },
 
-  remove: async (recipientId) => {
-    const { rowCount } = await db.query(
+  remove: async (recipientId, conn = db) => {
+    const { rowCount } = await conn.query(
       'DELETE FROM recipients WHERE id = $1',
       [recipientId]
     );
     return rowCount > 0;
   },
-  setRelationship: async (userId, recipientId, relationship) => {
+  setRelationship: async (userId, recipientId, relationship, conn = db) => {
     if (relationship === null) {
-      const { rowCount } = await db.query(
+      const { rowCount } = await conn.query(
         `DELETE FROM care_relationships
          WHERE user_id = $1 AND recipient_id = $2`,
         [userId, recipientId]
@@ -52,7 +52,7 @@ const Recipient = {
       return null;
     }
     else {
-      const { rowCount } = await db.query(
+      const { rowCount } = await conn.query(
         `INSERT INTO care_relationships (user_id, recipient_id, relationship)
          VALUES ($1, $2, $3)
          ON CONFLICT (user_id, recipient_id) DO UPDATE SET relationship = EXCLUDED.relationship`,
@@ -62,8 +62,8 @@ const Recipient = {
     }
   },
 
-  getRelationships: async (userId, circleId) => {
-    const { rows } = await db.query(
+  getRelationships: async (userId, circleId, conn = db) => {
+    const { rows } = await conn.query(
       `SELECT r.id, cr.relationship
         FROM recipients r
         LEFT JOIN care_relationships cr ON r.id = cr.recipient_id AND cr.user_id = $1

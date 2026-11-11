@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const CONFLICTS = {
   users_email_key: {
     code: 'email_taken',
@@ -19,7 +20,7 @@ module.exports = (err, req, res, next) => {
   }
 
   const status = err.status || 500;
-  if (status === 500) console.error(err); // log real bugs, but don't leak details
+  if (status === 500) logger.logError(err, req); // log real bugs, but don't leak details
   
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({

@@ -1,15 +1,22 @@
 const argon = require('argon2');
+const db = require('../config/db');
 const User = require('../models/user.model');
 const Circle = require('../models/circle.model');
 const Recipient = require('../models/recipient.model');
 const { registerSchema, loginSchema } = require('../validators/auth.validators');
 const { httpError } = require('../utils/httpErrors');
 const { generateToken, hashToken } = require('../utils/tokens');
+const crypto = require('crypto');
+
+// Checked against when the email doesn't exist, so unknown emails take as long as wrong passwords.
+// Protect against timing attacks that could reveal whether an email is registered.
+const DUMMY_HASH = argon.hash(crypto.randomBytes(32).toString('hex'));
+
 const toUser = (u) => ({ id: String(u.id), name: u.username, email: u.email });
 
-const startSession = async (userId) => {
+const startSession = async (userId, conn) => {
   const token = generateToken();
-  await User.createSession(userId, hashToken(token));
+  await User.createSession(userId, hashToken(token), conn);
   return token;
 };
 
@@ -46,15 +53,20 @@ exports.register = async (req, res, next) => {
     if (!parsed.success) {
       console.log('zod issues:', parsed.error.issues);
       throw httpError(400, 'validation_error',
-        'Provide a valid email, a username, and a password of at most 128 characters.');
+        'Provide a valid email, a username, and a password of at least 12 characters and at most 128 characters.');
     }
     const { email, name, password } = parsed.data;
 
+    // Hash before the transaction so the slow work doesn't hold a database connection.
     const passwordHash = await argon.hash(password);
-    const user = await User.create({ email, username: name, passwordHash });
+    const { user, token } = await db.transaction(async (tx) => {
+      const user = await User.create({ email, username: name, passwordHash }, tx);
+      const token = await startSession(user.id, tx);
+      return { user, token };
+    });
 
     res.status(201).json({
-      token: await startSession(user.id),
+      token,
       user: toUser(user),
       circles: [],
     });
@@ -72,8 +84,9 @@ exports.login = async (req, res, next) => {
     const { email, password } = parsed.data;
 
     const row = await User.findByEmail(email);
-    const valid = row && (await argon.verify(row.password_hash, password));
-    if (!valid) {
+    const passwordOk = await argon.verify(row?.password_hash ?? (await DUMMY_HASH), password);
+    if (!row || !passwordOk) {
+      // Use the dummy hash to prevent timing attacks
       throw httpError(401, 'invalid_credentials', 'Invalid email or password.');
     }
 

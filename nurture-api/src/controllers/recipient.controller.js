@@ -1,4 +1,5 @@
 const { addSchema, relationshipSchema } = require('../validators/recipients.validators');
+const db = require('../config/db');
 const Recipient = require('../models/recipient.model');
 const { httpError } = require('../utils/httpErrors');
 const toRecipient = (r, relationship) => ({ id: String(r.id), name: r.name, relationship });
@@ -11,8 +12,11 @@ exports.add = async (req, res, next) => {
     }
     const { name, relationship } = parsed.data;
 
-    const recipient = await Recipient.create({ circleId: req.circleId, name });
-    const label = await Recipient.setRelationship(req.user.id, recipient.id, relationship);
+    const { recipient, label } = await db.transaction(async (tx) => {
+      const recipient = await Recipient.create({ circleId: req.circleId, name }, tx);
+      const label = await Recipient.setRelationship(req.user.id, recipient.id, relationship, tx);
+      return { recipient, label };
+    });
     res.status(201).json({ recipient: toRecipient(recipient, label) });
   } catch (err) {
     next(err);

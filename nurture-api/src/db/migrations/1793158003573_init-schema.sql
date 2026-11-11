@@ -58,7 +58,8 @@ CREATE TABLE refresh_tokens (
   token_hash  TEXT NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL,
   revoked_at  TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE recipients(
