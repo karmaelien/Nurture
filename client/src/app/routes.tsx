@@ -35,7 +35,19 @@ export const routes: RouteObject[] = [
         children: [
           {
             path: '/app',
-            lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+            element: <Outlet />,
+            children: [
+              {
+                index: true,
+                lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+              },
+              {
+                path: 'appointments',
+                lazy: async () => ({
+                  Component: (await import('../features/appointments/AppointmentsPage.tsx')).AppointmentsPage,
+                }),
+              },
+            ],
           },
         ],
       },
