@@ -5,8 +5,9 @@ const { httpError } = require('../utils/httpErrors');
 const Member = require('../models/member.model');
 const Recipient = require('../models/recipient.model');
 const { createSchema, updateSchema } = require('../validators/circles.validators');
-const { toRecipient } = require('../utils/serializers');
+const { toCircleSummary, toMember, toRecipient } = require('../utils/serializers');
 
+// POST /api/circles
 const create = async (req, res, next) => {
   try {
     const parsed = createSchema.safeParse(req.body);
@@ -52,6 +53,7 @@ const create = async (req, res, next) => {
   }
 };
 
+// PATCH /api/circles/:circleId
 const update = async (req, res, next) => {
   try {
     const parsed = updateSchema.safeParse(req.body);
@@ -75,22 +77,28 @@ const update = async (req, res, next) => {
   }
 };
 
+// GET /api/circles
+// Not in the contract (the client gets this list from /api/auth/me), so it returns the same CircleSummary shape.
 const list = async (req, res, next) => {
   try {
     const circles = await Circle.findByOccupancy(req.user.id);
-    res.json({ circles });
+    const summaries = await Promise.all(circles.map(async (c) =>
+      toCircleSummary(c, c.role, await Recipient.listByCircle(c.id, req.user.id))
+    ));
+    res.json({ circles: summaries });
   } catch (err) {
     next(err);
   }
 };
 
+// GET /api/circles/:circleId
 const get = async (req, res, next) => {
   try {
     // requirePermission already confirmed membership and set req.circleId
     const circle = await Circle.findById(req.circleId);
     const members = await Member.listByCircle(req.circleId);
     const recipients = await Recipient.listByCircle(req.circleId, req.user.id);
-    const relationships = await Circle.getRelationships(req.circleId, req.user.id);
+    const relationships = await Circle.getRelationships(req.circleId);
 
     res.json({
       circle: {
@@ -98,7 +106,7 @@ const get = async (req, res, next) => {
         name: circle.name,
         role: req.membership.role,
         recipients: recipients.map((r) => toRecipient(r)),
-        members: members.map((m) => (toMember(m, relationships[m.user_id] ?? null))),
+        members: members.map((m) => (toMember(m, relationships[m.user_id] ?? {}))),
       },
     });
   } catch (err) {

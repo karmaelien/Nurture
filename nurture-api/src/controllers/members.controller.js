@@ -14,6 +14,7 @@ const parseUserId = (req) => {
   return id;
 };
 
+// GET /api/circles/:circleId/members
 exports.list = async (req, res, next) => {
   try {
     const members = await Member.listByCircle(req.circleId);
@@ -25,6 +26,7 @@ exports.list = async (req, res, next) => {
   }
 };
 
+// POST /api/circles/:circleId/members
 exports.add = async (req, res, next) => {
   try {
     const parsed = addSchema.safeParse(req.body);
@@ -45,13 +47,14 @@ exports.add = async (req, res, next) => {
     });
 
     res.status(201).json({
-      member: toMember({ ...member, username: user.username, email: user.email }),
+      member: toMember({ ...member, username: user.username, email: user.email, phone: user.phone, timezone: user.timezone }, {}),
     });
   } catch (err) {
     next(err);
   }
 };
 
+// DELETE /api/circles/:circleId/members/:userId
 exports.remove = async (req, res, next) => {
   try {
     const userId = parseUserId(req);

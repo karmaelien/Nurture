@@ -106,3 +106,4 @@ DROP TABLE documents;
 DROP TABLE circle_members;
 DROP TABLE circles;
 DROP TABLE users;
+DROP TABLE audit_log;

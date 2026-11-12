@@ -12,3 +12,10 @@ exports.toRecipient = (r, relationship = r.relationship ?? null) => ({
   notes: r.notes ?? null,
   relationship,
 });
+// The contract's CircleSummary. recipients are rows from Recipient.listByCircle for the signed-in user.
+exports.toCircleSummary = (c, role, recipients) => ({
+  id: String(c.id),
+  name: c.name,
+  role,
+  recipients: recipients.map((r) => exports.toRecipient(r)),
+});

@@ -7,7 +7,7 @@ const { registerSchema, loginSchema, profileSchema } = require('../validators/au
 const { httpError } = require('../utils/httpErrors');
 const { generateToken, hashToken } = require('../utils/tokens');
 const logger = require('../utils/logger')
-const { toRecipient } = require('../utils/serializers');
+const { toCircleSummary: summarize } = require('../utils/serializers');
 const crypto = require('crypto');
 
 // Checked against when the email doesn't exist, so unknown emails take as long as wrong passwords.
@@ -22,16 +22,10 @@ const startSession = async (userId, conn) => {
   return token;
 };
 
-const toCircleSummary = async (c, userId) => {
-  const recipients = await Recipient.listByCircle(c.id, userId);
-  return {
-    id: String(c.id),
-    name: c.name,
-    role: c.role,
-    recipients: recipients.map((r) => toRecipient(r)),
-  };
-};
+const toCircleSummary = async (c, userId) =>
+  summarize(c, c.role, await Recipient.listByCircle(c.id, userId));
 
+// GET /api/auth/me
 exports.me = async (req, res, next) => {
   try {
     const circles = await Circle.findByOccupancy(req.user.id);
@@ -44,6 +38,7 @@ exports.me = async (req, res, next) => {
   }
 };
 
+// POST /api/auth/register
 exports.register = async (req, res, next) => {
   try {
     const parsed = registerSchema.safeParse(req.body);
@@ -73,6 +68,7 @@ exports.register = async (req, res, next) => {
   }
 };
 
+// POST /api/auth/login
 exports.login = async (req, res, next) => {
   try {
     const parsed = loginSchema.safeParse(req.body);
@@ -100,6 +96,7 @@ exports.login = async (req, res, next) => {
   }
 };
 
+// POST /api/auth/logout
 exports.logout = async (req, res, next) => {
   try {
     const [scheme, token] = req.headers.authorization?.split(' ') || [];
@@ -115,6 +112,7 @@ exports.logout = async (req, res, next) => {
   // Validate the input with zod, using the same 12–128 limits as register:
 // };
 
+// PATCH /api/users/me (mounted in users.routes.js)
 exports.updateProfile = async (req, res, next) => {
   try {
     const parsed = profileSchema.safeParse(req.body);

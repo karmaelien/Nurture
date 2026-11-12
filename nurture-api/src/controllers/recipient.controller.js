@@ -4,6 +4,7 @@ const Recipient = require('../models/recipient.model');
 const { httpError } = require('../utils/httpErrors');
 const { toRecipient } = require('../utils/serializers');
 
+// POST /api/circles/:circleId/recipients
 exports.add = async (req, res, next) => {
   try {
     const parsed = addSchema.safeParse(req.body);
@@ -23,6 +24,7 @@ exports.add = async (req, res, next) => {
   }
 };
 
+// PUT /api/circles/:circleId/recipients/:recipientId/relationship
 exports.updateRelationship = async (req, res, next) => {
   try {
     const recipientId = Number(req.params.recipientId);

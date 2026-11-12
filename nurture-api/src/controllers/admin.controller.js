@@ -1,5 +1,6 @@
 const User = require('../models/user.model');
 
+// GET /api/admin/users
 exports.listUsers = async (req, res, next) => {
   try {
     const users = await User.findAll();
@@ -16,6 +17,7 @@ exports.listUsers = async (req, res, next) => {
   }
 };
 
+// POST /api/admin/users/:userId/sessions/revoke
 exports.revokeSessions = async (req, res, next) => {
   try {
     await User.revokeAllSessions(Number(req.params.userId));

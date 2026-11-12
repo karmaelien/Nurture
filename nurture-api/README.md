@@ -50,6 +50,28 @@ Never commit `.env`.
 
 The schema is still a single migration (`src/db/migrations/…_init-schema.sql`). While it's changing, reset with `npm run migrate:down && npm run migrate:up`. This deletes all data.
 
+## Testing
+
+The tests run against a separate database, which they rebuild from the migrations before every run and empty before every test. Create it once:
+
+```bash
+createdb nurture_test
+```
+
+Then add its URL to `.env`:
+
+```text
+TEST_DATABASE_URL=postgres://user:password@localhost:5432/nurture_test
+```
+
+The suite refuses to start if `TEST_DATABASE_URL` is missing, matches `DATABASE_URL`, or names a database without "test" in it, so it can't wipe your development data.
+
+| File | Covers |
+| --- | --- |
+| `tests/auth.test.mjs` | Registration, login, rate limits, sessions, logout, and expiry |
+| `tests/rbac.test.mjs` | Circle roles: outsiders get 404, members get 403 on owner actions, and staff admins get no circle access |
+| `tests/profile-sharing.test.mjs` | Editing your own profile, who can see it, and recipient profiles |
+
 ## Project structure
 
 ```text
