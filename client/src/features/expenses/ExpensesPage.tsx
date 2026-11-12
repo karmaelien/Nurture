@@ -1,3 +1,5 @@
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { CircleSummary, Expense, ExpenseCategory } from '../../api/types.ts'
@@ -63,7 +65,8 @@ function ExpenseForm({
   const [amount, setAmount] = useState(expense ? (expense.amountCents / 100).toFixed(2) : '')
   const [recipientId, setRecipientId] = useState(expense?.recipientId ?? circle.recipients[0]?.id ?? '')
   const [category, setCategory] = useState<ExpenseCategory>(expense?.category ?? 'other')
-  const [date, setDate] = useState(() => expense?.incurredOn ?? dateString(new Date()))
+  const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => expense?.incurredOn ?? today)
   const [error, setError] = useState('')
   const pending = create.isPending || update.isPending
   async function submit(event: FormEvent) {
@@ -77,7 +80,10 @@ function ExpenseForm({
       incurredOn: date,
     })
     if (!/^\d+(\.\d{1,2})?$/.test(amount) || !parsed.success) {
-      setError('Enter a description, recipient, valid date, and positive USD amount with at most two decimal places.')
+      setError(
+        (!parsed.success && parsed.error.issues.find((issue) => issue.path[0] === 'incurredOn')?.message) ||
+          'Enter a description, recipient, valid date, and positive USD amount with at most two decimal places.',
+      )
       return
     }
     setError('')
@@ -123,7 +129,15 @@ function ExpenseForm({
             </option>
           ))}
         </Select>
-        <TextField label="Expense date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <TextField
+          label="Expense date"
+          type="date"
+          max={today}
+          hint="Today or earlier (UTC)."
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          required
+        />
       </fieldset>
       {error && (
         <div className="mt-4">
@@ -336,15 +350,14 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
 export function ExpensesPage() {
   const { circles } = useRequiredSession()
   const logout = useLogout()
-  const [circleId, setCircleId] = useState('')
-  const circle = circles.find((c) => c.id === circleId) ?? circles[0]
+  const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
           <Logo />
           <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2">
-            <Link className="rounded-control px-3 py-2 hover:bg-wash" to="/app">
+            <Link className="rounded-control px-3 py-2 hover:bg-wash" to={circleLink('/app', circle?.id)}>
               Overview
             </Link>
             <Link className="rounded-control px-3 py-2 hover:bg-wash" to="/app/appointments">
@@ -353,7 +366,7 @@ export function ExpensesPage() {
             <Link
               className="rounded-control bg-wash px-3 py-2 font-semibold text-primary"
               aria-current="page"
-              to="/app/expenses"
+              to={circleLink('/app/expenses', circle?.id)}
             >
               Expenses
             </Link>
@@ -365,21 +378,17 @@ export function ExpensesPage() {
         </div>
       </header>
       <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-        {circles.length > 1 && (
-          <Select label="Care circle" value={circle.id} onChange={setCircleId}>
-            {circles.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        )}
+        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
         {circle ? (
           <CircleExpenses key={circle.id} circle={circle} />
         ) : (
           <section className={panel}>
             <h1 className="font-display text-h1 font-bold">Care expenses</h1>
-            <p className="mt-3 text-muted">Create or join a care circle to track expenses.</p>
+            <p className="mt-3 text-muted">
+              {circles.length
+                ? 'Choose an available circle above to view its expenses.'
+                : 'Create or join a care circle to track expenses.'}
+            </p>
           </section>
         )}
       </main>

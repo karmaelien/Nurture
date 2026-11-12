@@ -316,7 +316,7 @@ access and, for edits/deletes, expense ownership before validating the body.
 
 Body validation: `description` is trimmed and must be 1-200 characters; `amountCents`
 is a positive safe integer; `category` is an `ExpenseCategory`; `currency` must be
-`USD`; `incurredOn` is a valid `YYYY-MM-DD` date. `recipientId` must be a non-empty
+`USD`; `incurredOn` is a valid `YYYY-MM-DD` date no later than today in UTC. Both client and server use UTC for this cutoff; future dates return `400 validation_error` on create or update. `recipientId` must be a non-empty
 string identifying a recipient in the circle. Null values and unknown fields
 (including a client-supplied `id`) return `400 validation_error`. Validation failures
 leave saved data unchanged.

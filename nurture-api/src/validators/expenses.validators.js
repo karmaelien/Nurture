@@ -7,7 +7,7 @@ const createSchema = z.object({
   category,
   amountCents: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   currency: z.literal('USD'),
-  incurredOn: z.iso.date(),
+  incurredOn: z.iso.date().refine(date => date <= new Date().toISOString().slice(0, 10), 'Expense date cannot be in the future (UTC).'),
 }).strict();
 const updateSchema = createSchema.partial().refine(body => Object.keys(body).length > 0);
 const querySchema = z.object({

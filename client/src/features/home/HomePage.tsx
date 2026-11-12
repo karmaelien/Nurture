@@ -1,3 +1,5 @@
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Wallet } from 'lucide-react'
@@ -256,7 +258,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
           query={expenses}
           empty={!expenses.data?.length}
           action={
-            <Link to="/app/expenses" className={buttonClasses({ variant: 'secondary' })}>
+            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
               View all expenses
             </Link>
           }
@@ -284,8 +286,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 export function HomePage() {
   const { user, circles } = useRequiredSession()
   const logout = useLogout()
-  const [selectedCircle, setSelectedCircle] = useState('')
-  const circle = circles.find((item) => item.id === selectedCircle) ?? circles[0]
+  const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">
@@ -307,7 +308,7 @@ export function HomePage() {
                   Care
                 </a>
                 <Link
-                  to="/app/expenses"
+                  to={circleLink('/app/expenses', circle.id)}
                   className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
                 >
                   <Wallet className="size-5" aria-hidden />
@@ -331,33 +332,19 @@ export function HomePage() {
             <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
             <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
           </div>
-          {circles.length > 1 ? (
-            <label className="grid gap-2">
-              Care circle
-              <select
-                aria-label="Care circle"
-                className={selectClass}
-                value={circle.id}
-                onChange={(event) => setSelectedCircle(event.target.value)}
-              >
-                {circles.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            circle && <p className="font-semibold">{circle.name}</p>
-          )}
+          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
         </div>
         {circle ? (
           <CircleDashboard key={circle.id} circle={circle} />
         ) : (
           <section className="rounded-panel border border-line bg-surface p-6">
-            <h2 className="font-display text-h2 font-semibold">No care circle yet</h2>
+            <h2 className="font-display text-h2 font-semibold">
+              {circles.length ? 'Select a care circle' : 'No care circle yet'}
+            </h2>
             <p className="mt-2 text-muted">
-              Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.
+              {circles.length
+                ? 'Choose an available circle above to view its dashboard.'
+                : 'Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.'}
             </p>
           </section>
         )}

@@ -5,7 +5,7 @@ const notFound = () => httpError(404, 'not_found', 'Expense, recipient, or care 
 const validId = value => /^[1-9]\d*$/.test(String(value)) && Number(value) <= 2147483647;
 const parse = (schema, value) => {
   const result = schema.safeParse(value);
-  if (!result.success) throw httpError(400, 'validation_error', 'Provide valid expense fields and date filters.');
+  if (!result.success) throw httpError(400, 'validation_error', result.error.issues.find(issue => issue.path[0] === 'incurredOn')?.message || 'Provide valid expense fields and date filters.');
   return result.data;
 };
 

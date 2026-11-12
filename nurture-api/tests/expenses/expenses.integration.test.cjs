@@ -31,9 +31,9 @@ const migrationPath = path.join(__dirname, '../../src/db/migrations');
 const expenseSql = fs.readFileSync(path.join(migrationPath, '1794355200000_create-expenses.sql'), 'utf8');
 const up = sql => sql.split('-- Down Migration')[0].replace('-- Up Migration', '');
 const insert = async (sql, values = []) => String((await db.query(sql + ' RETURNING id', values)).rows[0].id);
-const body = (overrides = {}) => ({ recipientId, description: 'Pharmacy', category: 'medication', amountCents: 1250, currency: 'USD', incurredOn: '2026-11-10', ...overrides });
+const body = (overrides = {}) => ({ recipientId, description: 'Pharmacy', category: 'medication', amountCents: 1250, currency: 'USD', incurredOn: '2025-11-10', ...overrides });
 const route = () => `/api/circles/${circleId}/expenses`;
-const query = { fromDate: '2026-11-01', toDate: '2026-12-01' };
+const query = { fromDate: '2025-11-01', toDate: '2025-12-01' };
 const auth = req => req.set('x-test-user', userId);
 const create = async (overrides = {}) => (await auth(request(app).post(route())).send(body(overrides)).expect(201)).body.expense;
 
@@ -73,11 +73,11 @@ test('CRUD persists data, serializes dates/IDs/cents, and preserves omitted fiel
 });
 
 test('date bounds, category and recipient combine; date sorting and tie breaks are stable', async () => {
-  await create({ incurredOn: '2026-10-31' });
-  const start = await create({ incurredOn: '2026-11-01' });
-  const latest = await create({ incurredOn: '2026-11-30' });
-  const tied = await create({ incurredOn: '2026-11-30' });
-  await create({ incurredOn: '2026-12-01' });
+  await create({ incurredOn: '2025-10-31' });
+  const start = await create({ incurredOn: '2025-11-01' });
+  const latest = await create({ incurredOn: '2025-11-30' });
+  const tied = await create({ incurredOn: '2025-11-30' });
+  await create({ incurredOn: '2025-12-01' });
   await create({ category: 'other' });
   await create({ recipientId: secondRecipientId });
   const response = await auth(request(app).get(route())).query({ ...query, category: 'medication', recipientId }).expect(200);
@@ -113,7 +113,7 @@ test('cross-circle recipients and expenses cannot be read or modified', async ()
 
 test('invalid writes leave persisted data unchanged', async () => {
   const expense = await create();
-  for (const patch of [{}, { amountCents: 0 }, { amountCents: -1 }, { amountCents: 1.2 }, { amountCents: Number.MAX_SAFE_INTEGER + 1 }, { amountCents: '100' }, { description: ' ' }, { description: 'x'.repeat(201) }, { description: null }, { currency: 'EUR' }, { category: 'unknown' }, { incurredOn: '2026-02-30' }, { id: '99' }]) {
+  for (const patch of [{}, { amountCents: 0 }, { amountCents: -1 }, { amountCents: 1.2 }, { amountCents: Number.MAX_SAFE_INTEGER + 1 }, { amountCents: '100' }, { description: ' ' }, { description: 'x'.repeat(201) }, { description: null }, { currency: 'EUR' }, { category: 'unknown' }, { incurredOn: '2025-02-30' }, { id: '99' }]) {
     const response = await auth(request(app).patch(`${route()}/${expense.id}`)).send(patch).expect(400);
     assert.equal(response.body.error.code, 'validation_error');
   }
@@ -150,7 +150,7 @@ test('simultaneous creates and disjoint updates do not overwrite each other', as
 });
 
 test('database constraints reject cross-circle records and invalid cents even without HTTP', async () => {
-  const sql = "INSERT INTO expenses(circle_id,recipient_id,description,category,amount_cents,currency,incurred_on) VALUES ($1,$2,'Test','other',$3,'USD','2026-11-10')";
+  const sql = "INSERT INTO expenses(circle_id,recipient_id,description,category,amount_cents,currency,incurred_on) VALUES ($1,$2,'Test','other',$3,'USD','2025-11-10')";
   await assert.rejects(db.query(sql, [circleId, foreignRecipientId, 100]), { code: '23503' });
   await assert.rejects(db.query(sql, [circleId, recipientId, 0]), { code: '23514' });
 });
@@ -160,4 +160,19 @@ test('expense migration rolls back and reapplies without changing shared tables'
   assert.equal((await db.query('SELECT count(*) FROM recipients')).rows[0].count, '3');
   await db.query(up(expenseSql));
   await create();
+});
+
+
+test('future dates are rejected on create and update without changing saved data', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const expense = await create({ incurredOn: today });
+  const created = await auth(request(app).post(route())).send(body({ incurredOn: tomorrow })).expect(400);
+  assert.equal(created.body.error.code, 'validation_error');
+  assert.match(created.body.error.message, /future/);
+  await auth(request(app).patch(`${route()}/${expense.id}`)).send({ incurredOn: tomorrow }).expect(400);
+  const saved = await db.query('SELECT count(*)::int AS count FROM expenses');
+  assert.equal(saved.rows[0].count, 1);
+  const listed = await auth(request(app).get(route())).query({ fromDate: today, toDate: tomorrow }).expect(200);
+  assert.deepEqual(listed.body.expenses, [expense]);
 });
