@@ -5,6 +5,7 @@ const { httpError } = require('../utils/httpErrors');
 const Member = require('../models/member.model');
 const Recipient = require('../models/recipient.model');
 const { createSchema, updateSchema } = require('../validators/circles.validators');
+const { toRecipient } = require('../utils/serializers');
 
 const create = async (req, res, next) => {
   try {
@@ -14,7 +15,7 @@ const create = async (req, res, next) => {
         'Provide a circle name, and optionally a budget as a whole number of cents.');
     }
     const { name, budget, recipient } = parsed.data;
-
+    
     const { circle, dependent, relationship } = await db.transaction(async (tx) => {
       const circle = await Circle.create({ name, budget: budget ?? null, createdBy: req.user.id }, tx);
       await Member.create({
@@ -24,8 +25,12 @@ const create = async (req, res, next) => {
         role: 'owner'
       }, tx);
       const dependent = await Recipient.create({ 
-        circleId: circle.id, 
+        circleId: circle.id,
         name: recipient.name,
+        preferredName: recipient.preferredName,
+        dateOfBirth: recipient.dateOfBirth,
+        notes: recipient.notes,
+
       }, tx);
       const relationship = await Recipient.setRelationship(
         req.user.id,
@@ -39,11 +44,7 @@ const create = async (req, res, next) => {
       id: String(circle.id),
       name: circle.name,
       role: 'owner',
-      recipients: [{
-        id: String(dependent.id),
-        name: dependent.name,
-        relationship
-      }],
+      recipients: [toRecipient(dependent, relationship)],
       } 
     });
   } catch (err) {
@@ -66,11 +67,7 @@ const update = async (req, res, next) => {
       id: String(circle.id),
       name: circle.name,
       role: req.membership.role,
-      recipients: recipients.map((r) => ({
-        id: String(r.id),
-        name: r.name,
-        relationship: r.relationship
-      })),
+      recipients: recipients.map((r) => toRecipient(r)),
       } 
     });
   } catch (err) {
@@ -100,17 +97,8 @@ const get = async (req, res, next) => {
         id: String(circle.id),
         name: circle.name,
         role: req.membership.role,
-        recipients: recipients.map((r) => ({
-          id: String(r.id),
-          name: r.name,
-          relationship: r.relationship,
-        })),
-        members: members.map((m) => ({
-          user: { id: String(m.user_id), name: m.username, email: m.email },
-          role: m.role,
-          joinedAt: m.created_at,
-          relationships: relationships[m.user_id] ?? {},
-        })),
+        recipients: recipients.map((r) => toRecipient(r)),
+        members: members.map((m) => (toMember(m, relationships[m.user_id] ?? null))),
       },
     });
   } catch (err) {

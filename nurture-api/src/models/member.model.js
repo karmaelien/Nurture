@@ -14,7 +14,7 @@ const Member = {
 
   listByCircle: async (circleId, conn = db) => {
     const { rows } = await conn.query(
-      `SELECT m.circle_id, m.user_id, m.display_name, m.role, m.created_at, u.email, u.username
+      `SELECT m.circle_id, m.user_id, m.display_name, m.role, m.created_at, u.email, u.username, u.phone, u.timezone
       FROM circle_members m
       JOIN users u ON u.id = m.user_id
       WHERE m.circle_id = $1

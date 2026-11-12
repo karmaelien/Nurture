@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-const PUBLIC_COLUMNS = 'id, email, username, created_at, updated_at';
+const PUBLIC_COLUMNS = 'id, email, username, phone, timezone, created_at, updated_at';
 
 const User = {
     create: async ({ email, passwordHash, username }, conn = db) => {
@@ -21,9 +21,10 @@ const User = {
       return rows[0] || null;
     },
     findByEmail: async (email, conn = db) => {
-      const { rows } = await conn.query(`SELECT id, email, username, password_hash FROM users WHERE email = $1`, [email]);
+      const { rows } = await conn.query(`SELECT id, email, username, password_hash, phone, timezone FROM users WHERE email = $1`, [email]);
       return rows[0] || null;
     },
+
     update: async (id, { email, passwordHash, username }, conn = db) => {
       const { rows } = await conn.query(
       `UPDATE users SET email = $1, password_hash = $2, username = $3 WHERE id = $4 RETURNING ${PUBLIC_COLUMNS}`,
@@ -31,6 +32,18 @@ const User = {
       );
       return rows[0] || null;
     },
+    updateProfile: async (id, fields, conn = db) => {
+      const columns = { name: 'username', phone: 'phone', timeZone: 'timezone' };
+      const entries = Object.entries(fields).filter(([key]) => key in columns);
+      const sets = entries.map(([key], i) => `${columns[key]} = $${i + 2}`);
+      const { rows } = await conn.query(
+        `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE id = $1
+        RETURNING id, email, username, phone, timezone`,
+        [id, ...entries.map(([, value]) => value)]
+      );
+      return rows[0] || null;
+    },
+
     remove: async (id, conn = db) => {
       const { rows } = await conn.query(`DELETE FROM users WHERE id = $1 RETURNING ${PUBLIC_COLUMNS}`, [id]);
       return rows[0] || null;
@@ -54,7 +67,7 @@ const User = {
           AND last_used_at > now() - interval '30 minutes'
           RETURNING user_id
         )
-        SELECT u.id, u.email, u.username, u.is_admin, u.created_at, u.updated_at
+        SELECT u.id, u.email, u.username, u.is_admin, u.created_at, u.updated_at, u.phone, u.timezone
         FROM session
         JOIN users u ON u.id = session.user_id`,
         [tokenHash]

@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-const COLUMNS = 'id, circle_id, name, created_at';
+const COLUMNS = 'id, circle_id, name, created_at, preferred_name, date_of_birth, notes';
 
 const Recipient = {
   findInCircle: async (circleId, recipientId, conn = db) => {
@@ -14,7 +14,7 @@ const Recipient = {
 
   listByCircle: async (circleId,userId, conn = db) => {
     const { rows } = await conn.query(
-      `SELECT r.id, r.name, cr.relationship
+      `SELECT r.id, r.name, cr.relationship, r.preferred_name, r.date_of_birth, r.notes
         FROM recipients r
         LEFT JOIN care_relationships cr
           ON cr.recipient_id = r.id AND cr.user_id = $2
@@ -25,12 +25,12 @@ const Recipient = {
     return rows;
   },
 
-  create: async ({ circleId, name }, conn = db) => {
+  create: async ({ circleId, name, preferredName = null, dateOfBirth = null, notes = null }, conn = db) => {
     const { rows } = await conn.query(
-      `INSERT INTO recipients (circle_id, name, updated_at)
-       VALUES ($1, $2, $3)
-       RETURNING ${COLUMNS}`,
-      [circleId, name, new Date()]
+      `INSERT INTO recipients (circle_id, name, preferred_name, date_of_birth, notes)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING ${COLUMNS}`,
+      [circleId, name, preferredName, dateOfBirth, notes]
     );
     return rows[0];
   },
