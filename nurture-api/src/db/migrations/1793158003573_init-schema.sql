@@ -31,27 +31,6 @@ CREATE TABLE circle_members (
   PRIMARY KEY (circle_id, user_id)
 );
 
-CREATE TABLE documents (
-  id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  circle_id  INT NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
-  title         TEXT NOT NULL,
-  contents      TEXT,
-  created_by    INT REFERENCES users(id) ON DELETE SET NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE tasks (
-  id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  circle_id  INT NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
-  type          TEXT,
-  description   TEXT,
-  deadline      TIMESTAMPTZ,
-  created_by    INT REFERENCES users(id) ON DELETE SET NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 CREATE TABLE refresh_tokens (
   id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -101,8 +80,6 @@ CREATE INDEX idx_care_rel_recipient ON care_relationships(recipient_id);
 DROP TABLE care_relationships;
 DROP TABLE recipients;
 DROP TABLE refresh_tokens;
-DROP TABLE tasks;
-DROP TABLE documents;
 DROP TABLE circle_members;
 DROP TABLE circles;
 DROP TABLE users;
