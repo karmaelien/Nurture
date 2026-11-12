@@ -4,6 +4,7 @@ import type { AuthResponse, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
 import { readDb, toUser, writeDb, type Db } from './db.ts'
 
+import { expenseHandlers } from './expenseHandlers.ts'
 import { careHandlers } from './careHandlers.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
@@ -43,6 +44,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 
 export const handlers = [
   ...careHandlers,
+  ...expenseHandlers,
   http.get('/api/circles/:circleId', async ({ request, params }) => {
     await delay()
     const db = readDb()

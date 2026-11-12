@@ -1,5 +1,7 @@
 import { request } from './client.ts'
 import type {
+  CreateExpenseRequest,
+  UpdateExpenseRequest,
   Appointment,
   AppointmentFilters,
   CareTask,
@@ -20,6 +22,15 @@ function resourcePath(circleId: string, resource: string, filters: Record<string
 }
 
 export const careApi = {
+  createExpense: (circleId: string, body: CreateExpenseRequest) =>
+    request<{ expense: Expense }>(resourcePath(circleId, 'expenses', {}), { method: 'POST', body }),
+  updateExpense: (circleId: string, expenseId: string, body: UpdateExpenseRequest) =>
+    request<{ expense: Expense }>(resourcePath(circleId, `expenses/${encodeURIComponent(expenseId)}`, {}), {
+      method: 'PATCH',
+      body,
+    }),
+  deleteExpense: (circleId: string, expenseId: string) =>
+    request<void>(resourcePath(circleId, `expenses/${encodeURIComponent(expenseId)}`, {}), { method: 'DELETE' }),
   appointments: (circleId: string, filters: AppointmentFilters) =>
     request<{ appointments: Appointment[] }>(resourcePath(circleId, 'appointments', filters)),
   medicationOccurrences: (circleId: string, filters: MedicationOccurrenceFilters) =>

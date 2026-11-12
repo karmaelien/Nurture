@@ -98,4 +98,7 @@ export type TaskFilters = {
   status?: CareTask['status']
   recipientId?: string
 }
-export type ExpenseFilters = { fromDate: string; toDate: string; recipientId?: string }
+export type ExpenseFilters = { fromDate: string; toDate: string; recipientId?: string; category?: ExpenseCategory }
+
+export type CreateExpenseRequest = Omit<Expense, 'id'>
+export type UpdateExpenseRequest = Partial<CreateExpenseRequest>
