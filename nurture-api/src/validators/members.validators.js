@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const ASSIGNABLE = ['admin', 'member'];
+const ASSIGNABLE = ['member'];
 
 exports.addSchema = z.object({
   email: z.email(),

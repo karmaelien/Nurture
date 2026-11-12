@@ -2,91 +2,67 @@ const { z } = require('zod');
 const Member = require('../models/member.model');
 const User = require('../models/user.model');
 const { httpError } = require('../utils/httpErrors');
-
-const ASSIGNABLE = ['admin', 'member'];
-
 const { addSchema, roleSchema } = require('../validators/members.validators');
+const { toMember } = require('../utils/serializers');
+const Circle = require('../models/circle.model');
 
-const forbidden = (message) => httpError(403, 'FORBIDDEN', message);
+const forbidden = (message) => httpError(403, 'forbidden', message);
 
 const parseUserId = (req) => {
   const id = Number(req.params.userId);
-  if (!Number.isInteger(id) || id < 1) throw httpError(404, 'NOT_FOUND', 'Member not found.');
+  if (!Number.isInteger(id) || id < 1) throw httpError(404, 'not_found', 'Member not found.');
   return id;
 };
 
+// GET /api/circles/:circleId/members
 exports.list = async (req, res, next) => {
   try {
-    res.json({ members: await Member.listByCircle(req.circleId) });
+    const members = await Member.listByCircle(req.circleId);
+    const relationships = await Circle.getRelationships(req.circleId);
+    res.json({ members: members.map((m) => toMember(m, relationships[m.user_id])) });
+
   } catch (err) {
     next(err);
   }
 };
 
+// POST /api/circles/:circleId/members
 exports.add = async (req, res, next) => {
   try {
     const parsed = addSchema.safeParse(req.body);
     if (!parsed.success) {
       throw httpError(400, 'validation_error',
-        "Provide the person's account email and a role (admin or member).");
+        "Provide the person's account email and a role.");
     }
-    const { email, role, displayName } = parsed.data;
-
-    if (role === 'admin' && req.membership.role !== 'owner') {
-      throw forbidden('Only the owner can make someone an admin.');
-    }
+    const { email, role } = parsed.data;
 
     const user = await User.findByEmail(email);
-    if (!user) throw httpError(404, 'USER_NOT_FOUND', 'No account exists with that email.');
+    if (!user) throw httpError(404, 'user_not_found', 'No account exists with that email.');
 
     const member = await Member.create({
       circleId: req.circleId,
       userId: user.id,
-      displayName: displayName ?? user.username,
+      displayName: user.username,
       role,
     });
 
-    res.status(201).json({ member });
+    res.status(201).json({
+      member: toMember({ ...member, username: user.username, email: user.email, phone: user.phone, timezone: user.timezone }, {}),
+    });
   } catch (err) {
     next(err);
   }
 };
 
-exports.updateRole = async (req, res, next) => {
-  try {
-    const userId = parseUserId(req);
-    const parsed = roleSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw httpError(400, 'validation_error', 'Provide a role: admin or member.');
-    }
-    const { role } = parsed.data;
-
-    const target = await Member.findMembership(req.circleId, userId);
-    if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
-
-    if (target.role === 'owner') throw forbidden("The owner's role can't be changed.");
-    if ((target.role === 'admin' || role === 'admin') && req.membership.role !== 'owner') {
-      throw forbidden('Only the owner can grant or change the admin role.');
-    }
-
-    const member = await Member.updateRole(req.circleId, userId, role);
-    res.json({ member });
-  } catch (err) {
-    next(err);
-  }
-};
-
+// DELETE /api/circles/:circleId/members/:userId
 exports.remove = async (req, res, next) => {
   try {
     const userId = parseUserId(req);
 
     const target = await Member.findMembership(req.circleId, userId);
-    if (!target) throw httpError(404, 'NOT_FOUND', 'Member not found.');
+    if (!target) throw httpError(404, 'not_found', 'Member not found.');
 
     if (target.role === 'owner') throw forbidden("The owner can't be removed.");
-    if (target.role === 'admin' && req.membership.role !== 'owner') {
-      throw forbidden('Only the owner can remove an admin.');
-    }
 
     await Member.remove(req.circleId, userId);
     res.status(204).end();
