@@ -38,7 +38,7 @@ export function RelationshipPicker() {
             <span
               className={clsx(
                 'inline-flex h-10 cursor-pointer items-center rounded-full border px-4 text-small font-semibold transition-colors',
-                'border-line-strong bg-surface text-ink hover:bg-wash',
+                'border-field bg-surface text-ink hover:bg-wash',
                 'peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground',
                 // Keep the selected chip filled while the pointer is over it.
                 'peer-checked:hover:border-primary-hover peer-checked:hover:bg-primary-hover',
