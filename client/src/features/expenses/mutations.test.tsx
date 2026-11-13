@@ -114,7 +114,16 @@ describe('expense mutations', () => {
     db.circles.push({
       ...db.circles[0],
       id: 'c_other',
-      recipients: [{ id: 'r_other', name: 'Other recipient', relationship: null }],
+      recipients: [
+        {
+          id: 'r_other',
+          name: 'Other recipient',
+          preferredName: null,
+          dateOfBirth: null,
+          notes: null,
+          relationship: null,
+        },
+      ],
     })
     writeDb(db)
     await expect(careApi.createExpense('c_demo', { ...body, recipientId: 'r_other' })).rejects.toMatchObject({

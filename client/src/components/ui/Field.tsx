@@ -1,15 +1,17 @@
 import { clsx } from 'clsx'
-import { Eye, EyeOff } from 'lucide-react'
+import { ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { useId, useState, type ComponentProps, type ReactNode } from 'react'
 
 type FieldShellProps = {
   label: string
+  /** Marks the field as optional in its label. */
+  optional?: boolean
   error?: string
   hint?: ReactNode
   children: (control: { id: string; describedBy?: string; invalid: boolean }) => ReactNode
 }
 
-function FieldShell({ label, error, hint, children }: FieldShellProps) {
+function FieldShell({ label, optional, error, hint, children }: FieldShellProps) {
   const id = useId()
   const messageId = `${id}-message`
   const message = error ?? hint
@@ -17,6 +19,7 @@ function FieldShell({ label, error, hint, children }: FieldShellProps) {
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-small font-semibold text-ink">
         {label}
+        {optional && <span className="font-normal text-muted"> (optional)</span>}
       </label>
       {children({ id, describedBy: message ? messageId : undefined, invalid: Boolean(error) })}
       {message && (
@@ -30,28 +33,29 @@ function FieldShell({ label, error, hint, children }: FieldShellProps) {
 
 const controlClasses = (invalid: boolean) =>
   clsx(
-    'h-12 w-full rounded-control border bg-surface px-3.5 text-body text-ink outline-none transition-[border-color,box-shadow]',
+    'w-full rounded-control border bg-surface px-3.5 text-body text-ink outline-none transition-[border-color,box-shadow]',
     'placeholder:text-muted/70 focus:border-primary focus:ring-3 focus:ring-primary/25',
     invalid ? 'border-danger' : 'border-line-strong',
   )
 
 type TextFieldProps = Omit<ComponentProps<'input'>, 'id'> & {
   label: string
+  optional?: boolean
   error?: string
   hint?: ReactNode
   trailing?: ReactNode
 }
 
-export function TextField({ label, error, hint, trailing, className, ...props }: TextFieldProps) {
+export function TextField({ label, optional, error, hint, trailing, className, ...props }: TextFieldProps) {
   return (
-    <FieldShell label={label} error={error} hint={hint}>
+    <FieldShell label={label} optional={optional} error={error} hint={hint}>
       {({ id, describedBy, invalid }) => (
         <div className="relative">
           <input
             id={id}
             aria-invalid={invalid || undefined}
             aria-describedby={describedBy}
-            className={clsx(controlClasses(invalid), trailing && 'pr-12', className)}
+            className={clsx(controlClasses(invalid), 'h-12', trailing && 'pr-12', className)}
             {...props}
           />
           {trailing && <div className="absolute inset-y-0 right-1 flex items-center">{trailing}</div>}
@@ -80,5 +84,59 @@ export function PasswordField(props: Omit<TextFieldProps, 'type' | 'trailing'>) 
         </button>
       }
     />
+  )
+}
+
+type SelectFieldProps = Omit<ComponentProps<'select'>, 'id'> & {
+  label: string
+  optional?: boolean
+  error?: string
+  hint?: ReactNode
+}
+
+export function SelectField({ label, optional, error, hint, className, children, ...props }: SelectFieldProps) {
+  return (
+    <FieldShell label={label} optional={optional} error={error} hint={hint}>
+      {({ id, describedBy, invalid }) => (
+        <div className="relative">
+          <select
+            id={id}
+            aria-invalid={invalid || undefined}
+            aria-describedby={describedBy}
+            className={clsx(controlClasses(invalid), 'h-12 appearance-none pr-11', className)}
+            {...props}
+          >
+            {children}
+          </select>
+          <ChevronDown
+            className="pointer-events-none absolute top-1/2 right-3.5 size-5 -translate-y-1/2 text-muted"
+            aria-hidden
+          />
+        </div>
+      )}
+    </FieldShell>
+  )
+}
+
+type TextAreaFieldProps = Omit<ComponentProps<'textarea'>, 'id'> & {
+  label: string
+  optional?: boolean
+  error?: string
+  hint?: ReactNode
+}
+
+export function TextAreaField({ label, optional, error, hint, className, ...props }: TextAreaFieldProps) {
+  return (
+    <FieldShell label={label} optional={optional} error={error} hint={hint}>
+      {({ id, describedBy, invalid }) => (
+        <textarea
+          id={id}
+          aria-invalid={invalid || undefined}
+          aria-describedby={describedBy}
+          className={clsx(controlClasses(invalid), 'min-h-28 resize-y py-3', className)}
+          {...props}
+        />
+      )}
+    </FieldShell>
   )
 }

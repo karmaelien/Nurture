@@ -65,7 +65,7 @@ function ExpenseForm({
   const [amount, setAmount] = useState(expense ? (expense.amountCents / 100).toFixed(2) : '')
   const [recipientId, setRecipientId] = useState(expense?.recipientId ?? circle.recipients[0]?.id ?? '')
   const [category, setCategory] = useState<ExpenseCategory>(expense?.category ?? 'other')
-  const [today] = useState(() => new Date().toISOString().slice(0, 10))
+  const [today] = useState(() => dateString(new Date()))
   const [date, setDate] = useState(() => expense?.incurredOn ?? today)
   const [error, setError] = useState('')
   const pending = create.isPending || update.isPending

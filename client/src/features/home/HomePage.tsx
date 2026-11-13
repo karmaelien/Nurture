@@ -2,7 +2,7 @@ import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Wallet } from 'lucide-react'
+import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
@@ -332,20 +332,26 @@ export function HomePage() {
             <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
             <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
           </div>
-          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+          <div className="flex flex-wrap items-end gap-3">
+            <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+            {circle && (
+              <Link
+                to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+                className={buttonClasses({ variant: 'secondary', size: 'sm' })}
+              >
+                <UserPlus className="size-4" aria-hidden />
+                Add a person
+              </Link>
+            )}
+          </div>
         </div>
+        {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
         {circle ? (
           <CircleDashboard key={circle.id} circle={circle} />
         ) : (
           <section className="rounded-panel border border-line bg-surface p-6">
-            <h2 className="font-display text-h2 font-semibold">
-              {circles.length ? 'Select a care circle' : 'No care circle yet'}
-            </h2>
-            <p className="mt-2 text-muted">
-              {circles.length
-                ? 'Choose an available circle above to view its dashboard.'
-                : 'Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.'}
-            </p>
+            <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+            <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
           </section>
         )}
         <p className="mt-8 text-muted">
