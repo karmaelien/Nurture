@@ -1,18 +1,30 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useEffect, useState } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router'
+import { Link, Navigate, useNavigate } from 'react-router'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { TextField } from '../../components/ui/Field.tsx'
+import { useRequiredSession } from '../auth/session.ts'
 import { useCreateCircle } from '../profiles/mutations.ts'
 import { RecipientFields } from '../profiles/RecipientFields.tsx'
 import { createCircleSchema, emptyRecipient, suggestCircleName, type CreateCircleValues } from '../profiles/schemas.ts'
 
-/** Setup step 2: the first person being cared for, and the circle that will hold their care. */
+const peopleStepPath = (circleId: string) => `/setup/circles/${encodeURIComponent(circleId)}/people`
+
+/**
+ * Setup step 2: the first person being cared for, and the circle that will hold their care.
+ * Setup only ever creates the first circle, so once one exists (for example after pressing Back
+ * from step 3) this step moves on to step 3 instead of offering to create a duplicate.
+ */
 export function CircleStep() {
+  const { circles } = useRequiredSession()
+  return circles.length > 0 ? <Navigate to={peopleStepPath(circles[0].id)} replace /> : <CircleForm />
+}
+
+function CircleForm() {
   const navigate = useNavigate()
   const createCircle = useCreateCircle()
   const form = useForm({
@@ -28,7 +40,8 @@ export function CircleStep() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       const { circle } = await createCircle.mutateAsync(values)
-      navigate(`/setup/circles/${encodeURIComponent(circle.id)}/people`)
+      // Replace step 2 in history so Back from step 3 skips it rather than bouncing off the redirect.
+      navigate(peopleStepPath(circle.id), { replace: true })
     } catch (error) {
       setError('root', { message: errorMessage(error) })
     }

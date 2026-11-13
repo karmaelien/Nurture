@@ -35,7 +35,7 @@ export const routes: RouteObject[] = [
         element: <RequireSession />,
         children: [
           {
-            // Setup is open to anyone signed in: the contract also lets existing users start another circle.
+            // Setup is for a user's first circle; step 2 moves on to step 3 once a circle exists.
             path: '/setup',
             lazy: async () => ({ Component: (await import('../features/setup/SetupLayout.tsx')).SetupLayout }),
             children: [

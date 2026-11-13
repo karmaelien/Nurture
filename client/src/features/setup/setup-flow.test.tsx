@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { authApi } from '../../api/auth.ts'
+import { circlesApi } from '../../api/circles.ts'
 import { setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
@@ -67,6 +68,20 @@ describe('setup flow', () => {
     await user.type(circleName, 'Team Rose')
     await user.type(screen.getByLabelText('Full name'), 'Rose Alvarez')
     expect(circleName).toHaveValue('Team Rose')
+  })
+
+  it('moves on to step 3 instead of creating a second circle', async () => {
+    await signUp()
+    const { circle } = await circlesApi.create({
+      name: 'Alvarez family',
+      recipient: { name: 'Rose Alvarez', preferredName: null, dateOfBirth: null, notes: null, relationship: null },
+    })
+    const router = renderApp('/setup/circle')
+
+    expect(await screen.findByRole('heading', { name: 'Anyone else in Alvarez family?' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe(`/setup/circles/${circle.id}/people`)
+    expect(screen.queryByRole('button', { name: 'Create care circle' })).not.toBeInTheDocument()
+    expect((await authApi.me()).circles).toHaveLength(1)
   })
 
   it('shows field errors and focuses the first one', async () => {

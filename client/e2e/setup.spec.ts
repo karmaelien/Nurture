@@ -34,3 +34,23 @@ test('a new caregiver sets up their profile and the people they care for', async
   await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
   await expect(page.getByText('Alvarez family')).toBeVisible()
 })
+
+test('going back after creating the circle does not offer to create another', async ({ page }) => {
+  await page.goto('/register')
+  await page.getByLabel('Your name').fill('Maya Alvarez')
+  await page.getByLabel('Email').fill(`e2e-setup-back-${Date.now()}@example.com`)
+  await page.getByLabel('Password', { exact: true }).fill('password123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByLabel('Full name').fill('Rose Alvarez')
+  await page.getByRole('button', { name: 'Create care circle' }).click()
+  const people = page.getByRole('heading', { name: 'Anyone else in Alvarez family?' })
+  await expect(people).toBeVisible()
+
+  // Step 2 was replaced in history, so Back lands on step 1, and continuing returns to step 3.
+  await page.goBack()
+  await expect(page).toHaveURL('/setup')
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(people).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create care circle' })).toHaveCount(0)
+})
