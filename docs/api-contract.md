@@ -24,7 +24,7 @@ Rules:
 
 - **Access comes from membership.** A member of a circle can read and write everything in it. A non-member can't tell the circle exists (requests return 404, not 403).
 - **Owners** can also rename the circle and, later, manage members. Every circle has at least one owner. The user who creates a circle is its owner.
-- **Where future data lives:** medications, appointments, and documents belong to a recipient. Messages and budgets belong to the circle.
+- **Where care data lives:** medications, appointments, tasks, expenses, and documents belong to a recipient. Messages and budgets belong to the circle.
 - **Not in scope yet:** invites, removing members, leaving or deleting a circle, finer-grained roles (such as view-only), and linking a recipient to their own user account. The model leaves room for each without restructuring.
 
 ## Conventions
@@ -128,6 +128,11 @@ type Expense = {
   currency: 'USD' // initial mock supports USD only
   incurredOn: string // YYYY-MM-DD calendar date, not a UTC timestamp
 }
+
+type CreateExpenseRequest = Omit<Expense, 'id'>
+
+// At least one field is required. Omitted fields keep their existing values.
+type UpdateExpenseRequest = Partial<CreateExpenseRequest>
 ```
 
 A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
@@ -320,9 +325,11 @@ undated tasks last. Overdue means pending with a non-null `dueAt` before the cur
 
 #### `GET /api/circles/:circleId/expenses`
 
-Query: `{ fromDate, toDate, recipientId? }`. `fromDate` and `toDate` are required
-calendar dates filtering `incurredOn`. Results sort by `incurredOn` descending.
+Query: `{ fromDate, toDate, recipientId?, category? }`. `fromDate` and `toDate` are required
+calendar dates filtering `incurredOn`. `category` is an `ExpenseCategory`; omit for all
+categories. Filters combine with AND. Results sort by `incurredOn` descending.
 The client calculates totals and category summaries from integer `amountCents` values.
+The existing date bounds support one-, six-, and twelve-month views without separate endpoints.
 
 | Status | Body |
 | --- | --- |
@@ -330,12 +337,58 @@ The client calculates totals and category summaries from integer `amountCents` v
 | 400 | `validation_error` |
 | 404 | `not_found` |
 
+### Expense mutations
+
+These endpoints and the expense list's category filter are implemented in the browser mock; server implementation is pending.
+Any circle member can create, edit, or delete its expenses. All endpoints require auth
+(`401 unauthorized`). A missing/inaccessible circle, an expense outside that circle,
+or a supplied recipient outside that circle returns `404 not_found`. Check circle
+access and, for edits/deletes, expense ownership before validating the body.
+
+Body validation: `description` is trimmed and must be 1-200 characters; `amountCents`
+is a positive safe integer; `category` is an `ExpenseCategory`; `currency` must be
+`USD`; `incurredOn` is a valid `YYYY-MM-DD` date no later than today in UTC. Both client and server use UTC for this cutoff; future dates return `400 validation_error` on create or update. `recipientId` must be a non-empty
+string identifying a recipient in the circle. Null values and unknown fields
+(including a client-supplied `id`) return `400 validation_error`. Validation failures
+leave saved data unchanged.
+
+#### `POST /api/circles/:circleId/expenses`
+
+Body: `CreateExpenseRequest`. All fields are required. The server generates the ID.
+
+| Status | Body |
+| --- | --- |
+| 201 | `{ expense: Expense }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `PATCH /api/circles/:circleId/expenses/:expenseId`
+
+Body: `UpdateExpenseRequest`. Requires at least one field. Updates only supplied
+fields and returns the full saved expense. A changed recipient must remain in the
+same circle; the expense ID cannot change.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ expense: Expense }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `DELETE /api/circles/:circleId/expenses/:expenseId`
+
+No body. Deletes the expense. A missing or already-deleted expense returns `404`.
+
+| Status | Body |
+| --- | --- |
+| 204 | No body |
+| 404 | `not_found` |
+
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Care-data mutations and schedules:** create/update/delete operations for the resource lists above, plus medication definitions and recurring schedules.
+- **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend

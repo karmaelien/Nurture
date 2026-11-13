@@ -1,3 +1,5 @@
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
@@ -29,6 +31,7 @@ function Panel({
   icon,
   query,
   empty,
+  action,
   children,
 }: {
   id: string
@@ -36,6 +39,7 @@ function Panel({
   icon: ReactNode
   query: QueryState
   empty: boolean
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -68,6 +72,7 @@ function Panel({
       ) : (
         children
       )}
+      {action && <div className="mt-6">{action}</div>}
     </section>
   )
 }
@@ -246,7 +251,18 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel id="expenses" title="Care spending" icon={<Wallet />} query={expenses} empty={!expenses.data?.length}>
+        <Panel
+          id="expenses"
+          title="Care spending"
+          icon={<Wallet />}
+          query={expenses}
+          empty={!expenses.data?.length}
+          action={
+            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
+              View all expenses
+            </Link>
+          }
+        >
           <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
           <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
           {categories.map(({ label, amount }) => (
@@ -270,9 +286,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 export function HomePage() {
   const { user, circles } = useRequiredSession()
   const logout = useLogout()
-  const [selectedCircle, setSelectedCircle] = useState('')
-  // RequireCircle guarantees at least one circle.
-  const circle = circles.find((item) => item.id === selectedCircle) ?? circles[0]
+  const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">
@@ -287,14 +301,21 @@ export function HomePage() {
               <LayoutDashboard className="size-5" aria-hidden />
               Overview
             </a>
-            <a href="#tasks" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-              <CalendarDays className="size-5" aria-hidden />
-              Care
-            </a>
-            <a href="#expenses" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-              <Wallet className="size-5" aria-hidden />
-              Expenses
-            </a>
+            {circle && (
+              <>
+                <a href="#tasks" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
+                  <CalendarDays className="size-5" aria-hidden />
+                  Care
+                </a>
+                <Link
+                  to={circleLink('/app/expenses', circle.id)}
+                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
+                >
+                  <Wallet className="size-5" aria-hidden />
+                  Expenses
+                </Link>
+              </>
+            )}
             <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
               <Files className="size-5" aria-hidden />
               Documents · soon
@@ -311,36 +332,28 @@ export function HomePage() {
             <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
             <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {circles.length > 1 ? (
-              <label className="grid gap-2">
-                Care circle
-                <select
-                  aria-label="Care circle"
-                  className={selectClass}
-                  value={circle.id}
-                  onChange={(event) => setSelectedCircle(event.target.value)}
-                >
-                  {circles.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <p className="font-semibold">{circle.name}</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+            {circle && (
+              <Link
+                to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+                className={buttonClasses({ variant: 'secondary', size: 'sm' })}
+              >
+                <UserPlus className="size-4" aria-hidden />
+                Add a person
+              </Link>
             )}
-            <Link
-              to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
-              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-            >
-              <UserPlus className="size-4" aria-hidden />
-              Add a person
-            </Link>
           </div>
         </div>
-        <CircleDashboard key={circle.id} circle={circle} />
+        {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
+        {circle ? (
+          <CircleDashboard key={circle.id} circle={circle} />
+        ) : (
+          <section className="rounded-panel border border-line bg-surface p-6">
+            <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+            <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
+          </section>
+        )}
         <p className="mt-8 text-muted">
           Signed in as {user.name} ({user.email}).
         </p>

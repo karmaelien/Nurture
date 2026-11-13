@@ -32,7 +32,7 @@ test('a new caregiver sets up their profile and the people they care for', async
   await expect(page).toHaveURL('/app')
   await page.reload()
   await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
-  await expect(page.getByText('Alvarez family')).toBeVisible()
+  await expect(page.getByLabel('Care circle').locator('option:checked')).toHaveText('Alvarez family')
 })
 
 test('going back after creating the circle does not offer to create another', async ({ page }) => {
