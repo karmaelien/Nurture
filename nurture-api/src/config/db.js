@@ -2,7 +2,10 @@ require('pg').types.setTypeParser(1082, (value) => value);
 
 const { Pool } = require('pg');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: true } : false,
+});
 // set rejectUnauthorized to true for prod
 // Runs fn on one connection inside BEGIN/COMMIT, and rolls everything back if it throws.
 // Every query inside fn must use the tx it's given, not db.query.

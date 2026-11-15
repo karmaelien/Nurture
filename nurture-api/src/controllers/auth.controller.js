@@ -14,7 +14,7 @@ const crypto = require('crypto');
 // Protect against timing attacks that could reveal whether an email is registered.
 const DUMMY_HASH = argon.hash(crypto.randomBytes(32).toString('hex'));
 
-const toUser = (u) => ({ id: String(u.id), name: u.username, email: u.email, phone: u.phone ?? null, timeZone: u.timezone ?? null, createdAt: u.created_at, updatedAt: u.updated_at });
+const toUser = (u) => ({ id: String(u.id), name: u.username, email: u.email, phone: u.phone ?? null, timeZone: u.timezone ?? null });
 
 const startSession = async (userId, conn) => {
   const token = generateToken();
@@ -46,7 +46,7 @@ exports.register = async (req, res, next) => {
     if (!parsed.success) {
       // logger.logError('zod issues:', parsed.error.issues);
       throw httpError(400, 'validation_error',
-        'Provide a valid email, a username, and a password of at least 12 characters and at most 128 characters.');
+        'Enter your name, a valid email, and a password of 12 to 128 characters.');
     }
     const { email, name, password } = parsed.data;
 

@@ -2,6 +2,7 @@ const { z } = require('zod');
 const Member = require('../models/member.model');
 const User = require('../models/user.model');
 const { httpError } = require('../utils/httpErrors');
+const { parseId } = require('../utils/ids');
 const { addSchema, roleSchema } = require('../validators/members.validators');
 const { toMember } = require('../utils/serializers');
 const Circle = require('../models/circle.model');
@@ -9,8 +10,8 @@ const Circle = require('../models/circle.model');
 const forbidden = (message) => httpError(403, 'forbidden', message);
 
 const parseUserId = (req) => {
-  const id = Number(req.params.userId);
-  if (!Number.isInteger(id) || id < 1) throw httpError(404, 'not_found', 'Member not found.');
+  const id = parseId(req.params.userId);
+  if (id === null) throw httpError(404, 'not_found', 'Member not found.');
   return id;
 };
 
