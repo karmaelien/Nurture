@@ -1,11 +1,14 @@
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Wallet } from 'lucide-react'
+import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
+import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { Logo } from '../../components/ui/Logo.tsx'
 import { useLogout, useRequiredSession } from '../auth/session.ts'
 import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
@@ -28,6 +31,7 @@ function Panel({
   icon,
   query,
   empty,
+  action,
   children,
 }: {
   id: string
@@ -35,6 +39,7 @@ function Panel({
   icon: ReactNode
   query: QueryState
   empty: boolean
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -67,6 +72,7 @@ function Panel({
       ) : (
         children
       )}
+      {action && <div className="mt-6">{action}</div>}
     </section>
   )
 }
@@ -245,7 +251,18 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel id="expenses" title="Care spending" icon={<Wallet />} query={expenses} empty={!expenses.data?.length}>
+        <Panel
+          id="expenses"
+          title="Care spending"
+          icon={<Wallet />}
+          query={expenses}
+          empty={!expenses.data?.length}
+          action={
+            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
+              View all expenses
+            </Link>
+          }
+        >
           <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
           <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
           {categories.map(({ label, amount }) => (
@@ -269,8 +286,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 export function HomePage() {
   const { user, circles } = useRequiredSession()
   const logout = useLogout()
-  const [selectedCircle, setSelectedCircle] = useState('')
-  const circle = circles.find((item) => item.id === selectedCircle) ?? circles[0]
+  const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">
@@ -291,10 +307,13 @@ export function HomePage() {
                   <CalendarDays className="size-5" aria-hidden />
                   Care
                 </a>
-                <a href="#expenses" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
+                <Link
+                  to={circleLink('/app/expenses', circle.id)}
+                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
+                >
                   <Wallet className="size-5" aria-hidden />
                   Expenses
-                </a>
+                </Link>
               </>
             )}
             <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
@@ -313,41 +332,35 @@ export function HomePage() {
             <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
             <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
           </div>
-          {circles.length > 1 ? (
-            <label className="grid gap-2">
-              Care circle
-              <select
-                aria-label="Care circle"
-                className={selectClass}
-                value={circle.id}
-                onChange={(event) => setSelectedCircle(event.target.value)}
+          <div className="flex flex-wrap items-end gap-3">
+            <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+            {circle && (
+              <Link
+                to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+                className={buttonClasses({ variant: 'secondary', size: 'sm' })}
               >
-                {circles.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            circle && <p className="font-semibold">{circle.name}</p>
-          )}
+                <UserPlus className="size-4" aria-hidden />
+                Add a person
+              </Link>
+            )}
+          </div>
         </div>
+        {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
         {circle ? (
           <CircleDashboard key={circle.id} circle={circle} />
         ) : (
           <section className="rounded-panel border border-line bg-surface p-6">
-            <h2 className="font-display text-h2 font-semibold">No care circle yet</h2>
-            <p className="mt-2 text-muted">
-              Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.
-            </p>
+            <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+            <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
           </section>
         )}
         <p className="mt-8 text-muted">
           Signed in as {user.name} ({user.email}).
         </p>
         <p className="mt-6">
-          <Link to="/app/appointments" className="link">Appointments</Link>
+          <Link to="/app/appointments" className="link">
+            Appointments
+          </Link>
         </p>
       </main>
     </div>

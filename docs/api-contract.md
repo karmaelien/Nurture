@@ -14,17 +14,17 @@ User ──< Membership >── Circle ──< Recipient
 
 | Entity | What it is | Key fields |
 | --- | --- | --- |
-| **User** | Someone with a login: a caregiver. | `id`, `name`, `email` (unique), password hash |
+| **User** | Someone with a login: a caregiver. | `id`, `name`, `email` (unique), `phone`, `timeZone`, password hash |
 | **Circle** | A group that shares care, such as "Alvarez family". | `id`, `name`, `createdAt` |
 | **Membership** | Joins a user to a circle. A user can be in many circles, and a circle has many users. | `circleId`, `userId`, `role` (`owner` or `member`), `joinedAt`. Unique on (`circleId`, `userId`). |
-| **Recipient** | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `createdAt` |
+| **Recipient** | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `preferredName`, `dateOfBirth`, `notes`, `createdAt` |
 | **CareRelationship** | Optional label for how one caregiver relates to one recipient: Daniel is Rose's child and Frank's child-in-law. For display only; it never grants access. | `userId`, `recipientId`, `relationship`. Unique on (`userId`, `recipientId`). |
 
 Rules:
 
 - **Access comes from membership.** A member of a circle can read and write everything in it. A non-member can't tell the circle exists (requests return 404, not 403).
 - **Owners** can also rename the circle and, later, manage members. Every circle has at least one owner. The user who creates a circle is its owner.
-- **Where future data lives:** medications, appointments, and documents belong to a recipient. Messages and budgets belong to the circle.
+- **Where care data lives:** medications, appointments, tasks, expenses, and documents belong to a recipient. Messages and budgets belong to the circle.
 - **Not in scope yet:** invites, removing members, leaving or deleting a circle, finer-grained roles (such as view-only), and linking a recipient to their own user account. The model leaves room for each without restructuring.
 
 ## Conventions
@@ -42,7 +42,14 @@ Rules:
 ## Types
 
 ```ts
-type User = { id: string; name: string; email: string }
+type User = {
+  id: string
+  name: string
+  email: string
+  // Visible to everyone who shares a circle with this user, so the family can reach them.
+  phone: string | null // as entered, trimmed: 7-20 characters of digits, spaces, and + - ( )
+  timeZone: string | null // IANA name, such as "America/New_York". Null until the user sets it.
+}
 
 type Role = 'owner' | 'member'
 
@@ -52,6 +59,9 @@ type Relationship = 'parent' | 'grandparent' | 'spouse' | 'sibling' | 'child' | 
 type Recipient = {
   id: string
   name: string
+  preferredName: string | null // what the family calls them, such as "Grandma Rose"; 1-80 characters
+  dateOfBirth: string | null // YYYY-MM-DD calendar date, from 1900-01-01 up to today
+  notes: string | null // up to 500 characters of free text for the family; not a medical record
   // The signed-in user's own label for this recipient, if they set one.
   relationship: Relationship | null
 }
@@ -118,9 +128,26 @@ type Expense = {
   currency: 'USD' // initial mock supports USD only
   incurredOn: string // YYYY-MM-DD calendar date, not a UTC timestamp
 }
+
+type CreateExpenseRequest = Omit<Expense, 'id'>
+
+// At least one field is required. Omitted fields keep their existing values.
+type UpdateExpenseRequest = Partial<CreateExpenseRequest>
 ```
 
-A new user has `circles: []`. The client sends them to set up their first circle.
+A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
+
+`RecipientInput` is the body for creating a recipient. Optional text fields are trimmed, and an empty string is stored as `null`.
+
+```ts
+type RecipientInput = {
+  name: string // 1-80 characters
+  preferredName: string | null
+  dateOfBirth: string | null
+  notes: string | null
+  relationship: Relationship | null // saved as the signed-in user's own label
+}
+```
 
 ## Endpoints
 
@@ -132,7 +159,7 @@ Body: `{ name, email, password }`. `name` is 1-80 characters and `password` is 8
 
 | Status | Body |
 | --- | --- |
-| 201 | `Session & { token }`. `circles` is always `[]`. |
+| 201 | `Session & { token }`. `circles` is always `[]`, and `phone` and `timeZone` are `null`. |
 | 400 | `validation_error` |
 | 409 | `email_taken` |
 
@@ -159,6 +186,18 @@ Requires auth.
 
 Requires auth. Ends the current token only. Returns **204** with no body. It's fine to return 204 for an already-invalid token.
 
+### Users
+
+#### `PATCH /api/users/me`
+
+Requires auth. Updates the signed-in user's own profile. Send only the fields to change: `name` (1-80 characters), `phone` (or `null` to clear it), and `timeZone` (an IANA time zone name, or `null`).
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ user: User }` |
+| 400 | `validation_error` |
+| 401 | `unauthorized` |
+
 ### Circles
 
 Every endpoint below requires auth and returns `401 unauthorized` without it. Any endpoint with a `:circleId` returns `404 not_found` if the circle doesn't exist or the user isn't a member.
@@ -172,10 +211,7 @@ Body:
 ```ts
 {
   name: string // 1-80 characters, for example "Alvarez family"
-  recipient: {
-    name: string // 1-80 characters
-    relationship: Relationship | null
-  }
+  recipient: RecipientInput
 }
 ```
 
@@ -208,7 +244,7 @@ Owner only. Body: `{ name }`, 1-80 characters.
 
 Any member can add someone the circle cares for.
 
-Body: `{ name, relationship }`. `name` is 1-80 characters and `relationship` is a `Relationship` or `null`. The relationship is saved as the signed-in user's own label.
+Body: `RecipientInput`. The relationship is saved as the signed-in user's own label.
 
 | Status | Body |
 | --- | --- |
@@ -289,9 +325,11 @@ undated tasks last. Overdue means pending with a non-null `dueAt` before the cur
 
 #### `GET /api/circles/:circleId/expenses`
 
-Query: `{ fromDate, toDate, recipientId? }`. `fromDate` and `toDate` are required
-calendar dates filtering `incurredOn`. Results sort by `incurredOn` descending.
+Query: `{ fromDate, toDate, recipientId?, category? }`. `fromDate` and `toDate` are required
+calendar dates filtering `incurredOn`. `category` is an `ExpenseCategory`; omit for all
+categories. Filters combine with AND. Results sort by `incurredOn` descending.
 The client calculates totals and category summaries from integer `amountCents` values.
+The existing date bounds support one-, six-, and twelve-month views without separate endpoints.
 
 | Status | Body |
 | --- | --- |
@@ -299,12 +337,58 @@ The client calculates totals and category summaries from integer `amountCents` v
 | 400 | `validation_error` |
 | 404 | `not_found` |
 
+### Expense mutations
+
+These endpoints and the expense list's category filter are implemented in the browser mock; server implementation is pending.
+Any circle member can create, edit, or delete its expenses. All endpoints require auth
+(`401 unauthorized`). A missing/inaccessible circle, an expense outside that circle,
+or a supplied recipient outside that circle returns `404 not_found`. Check circle
+access and, for edits/deletes, expense ownership before validating the body.
+
+Body validation: `description` is trimmed and must be 1-200 characters; `amountCents`
+is a positive safe integer; `category` is an `ExpenseCategory`; `currency` must be
+`USD`; `incurredOn` is a valid `YYYY-MM-DD` date no later than today in UTC. Both client and server use UTC for this cutoff; future dates return `400 validation_error` on create or update. `recipientId` must be a non-empty
+string identifying a recipient in the circle. Null values and unknown fields
+(including a client-supplied `id`) return `400 validation_error`. Validation failures
+leave saved data unchanged.
+
+#### `POST /api/circles/:circleId/expenses`
+
+Body: `CreateExpenseRequest`. All fields are required. The server generates the ID.
+
+| Status | Body |
+| --- | --- |
+| 201 | `{ expense: Expense }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `PATCH /api/circles/:circleId/expenses/:expenseId`
+
+Body: `UpdateExpenseRequest`. Requires at least one field. Updates only supplied
+fields and returns the full saved expense. A changed recipient must remain in the
+same circle; the expense ID cannot change.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ expense: Expense }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `DELETE /api/circles/:circleId/expenses/:expenseId`
+
+No body. Deletes the expense. A missing or already-deleted expense returns `404`.
+
+| Status | Body |
+| --- | --- |
+| 204 | No body |
+| 404 | `not_found` |
+
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Care-data mutations and schedules:** create/update/delete operations for the resource lists above, plus medication definitions and recurring schedules.
+- **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend

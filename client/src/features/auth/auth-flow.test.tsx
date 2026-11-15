@@ -41,7 +41,7 @@ describe('auth flow', () => {
     expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true')
   })
 
-  it('registers and lands on the logged-in page', async () => {
+  it('registers and continues to setup', async () => {
     const user = userEvent.setup()
     const router = renderApp('/register')
 
@@ -50,9 +50,9 @@ describe('auth flow', () => {
     await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
-    expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
-    expect(screen.getByText('Signed in as Daniel Alvarez (daniel@example.com).')).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/app')
+    expect(await screen.findByRole('heading', { name: 'Tell us about you' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Your name')).toHaveValue('Daniel Alvarez')
+    expect(router.state.location.pathname).toBe('/setup')
   })
 
   it('points a duplicate email at the email field', async () => {

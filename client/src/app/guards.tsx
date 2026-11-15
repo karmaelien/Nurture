@@ -1,7 +1,7 @@
 import { Navigate, Outlet, useLocation, useSearchParams } from 'react-router'
 import { errorMessage } from '../api/client.ts'
 import { FullPageError, FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
-import { safeNext, useSession } from '../features/auth/session.ts'
+import { safeNext, useRequiredSession, useSession } from '../features/auth/session.ts'
 
 /** Only for people who are logged out: login and registration. */
 export function GuestOnly() {
@@ -25,4 +25,10 @@ export function RequireSession() {
     return <Navigate to={next === '/app' ? '/login' : `/login?next=${encodeURIComponent(next)}`} replace />
   }
   return <Outlet />
+}
+
+/** Sends signed-in users without a care circle to setup. Use inside RequireSession. */
+export function RequireCircle() {
+  const { circles } = useRequiredSession()
+  return circles.length === 0 ? <Navigate to="/setup" replace /> : <Outlet />
 }

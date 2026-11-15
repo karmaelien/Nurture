@@ -26,11 +26,21 @@ The app runs against an in-browser mock backend ([MSW](https://mswjs.io)) until 
 | Path                   | Contents                                                                                                                                                                                        |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/styles/theme.css` | Design tokens: colors, fonts, type scale, radii, dark mode. Use these through Tailwind classes such as `bg-primary`, `text-muted`, `rounded-panel`, and `font-display`. Don't hard-code colors. |
-| `src/components/ui/`   | Shared building blocks: `Button`, `TextField`, `PasswordField`, `Alert`, `Logo`                                                                                                                 |
+| `src/components/ui/`   | Shared building blocks: `Button`, `TextField`, `PasswordField`, `SelectField`, `TextAreaField`, `Alert`, `Logo`                                                                                 |
 | `src/app/`             | Routes and route guards                                                                                                                                                                         |
 | `src/api/`             | API client, endpoint functions, and shared request/response types                                                                                                                               |
-| `src/mocks/`           | Mock backend for auth, circle details, and read-only care endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                                                                       |
+| `src/mocks/`           | Mock backend for auth, profiles, circles and recipients, and read-only care endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                     |
 | `src/features/`        | Pages, grouped by feature                                                                                                                                                                       |
+
+## Setup and profiles
+
+A signed-in user with no care circle is sent to `/setup`, which has three steps:
+
+1. Their own profile: phone and time zone.
+2. The first person they care for, including how they're related, and a name for the care circle.
+3. Anyone else the circle cares for.
+
+The fields that describe one person are shared by setup step 2, setup step 3, and the dashboard's "Add a person" page. They live in `RecipientFields` (`src/features/profiles/`). The zod schemas next to it are used by both the forms and the mock backend.
 
 ## Appointment feature
 
