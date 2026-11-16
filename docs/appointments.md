@@ -61,6 +61,10 @@ The UI appointment shape requires `id`, `circleId`, `recipientId`, `title`, `sta
 
 ### Backend integration still needed
 
+The standalone PostgreSQL router in `nurture-api/src/routes/appointments.routes.js` implements listing, creation, editing, completion and deletion. It is ready to mount at `/api/circles/:circleId/appointments` after the shared authentication middleware. The browser mock still serves the frontend.
+
+The appointments migration requires PostgreSQL 15 or later. To verify the router independently, install dependencies in `nurture-api`, set `APPOINTMENT_TEST_DATABASE_URL` to a local PostgreSQL database named `nurture_appointments_test`, and run `node --test tests/appointments/appointments.integration.test.cjs` from `nurture-api`. The test applies migrations in an isolated schema and removes it afterward.
+
 The [API contract](api-contract.md) accepts an optional end time and defines the appointment writes used by the browser mock. The client supplies circle context from the request and resolves caregiver names against circle members. The real backend still needs appointment writes, recurrence, and reminder delivery.
 
 ## Verification
