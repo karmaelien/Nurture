@@ -96,10 +96,10 @@ export function AppLayout() {
                 <CalendarDays className="size-5" aria-hidden />
                 Appointments
               </NavLink>
-              <Link to={circleLink('/app/expenses', circle.id)} className={`${navClass} hover:bg-wash`}>
+              <NavLink to={circleLink('/app/expenses', circle.id)} className={activeNavClass}>
                 <Wallet className="size-5" aria-hidden />
                 Expenses
-              </Link>
+              </NavLink>
               <Link
                 to={profilePaths.family(circle.id)}
                 aria-current={inFamily ? 'page' : undefined}
