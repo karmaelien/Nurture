@@ -3,6 +3,7 @@ import { circlesApi } from '../../api/circles.ts'
 import type { RecipientInput, Session } from '../../api/types.ts'
 import { usersApi } from '../../api/users.ts'
 import { sessionKey, useRequiredSession } from '../auth/session.ts'
+import { circleDetailKey } from './queries.ts'
 
 // Each mutation writes its result into the cached session, so guards and pages update without a refetch.
 
@@ -41,8 +42,7 @@ export function useAddRecipient(circleId: string) {
           circle.id === circleId ? { ...circle, recipients: [...circle.recipients, recipient] } : circle,
         ),
       }))
-      // The dashboard caches circle details under this key (see HomePage).
-      return queryClient.invalidateQueries({ queryKey: ['circle', user.id, circleId] })
+      return queryClient.invalidateQueries({ queryKey: circleDetailKey(user.id, circleId) })
     },
   })
 }

@@ -19,7 +19,13 @@ export function RecipientCard({ recipient, to }: { recipient: Recipient; to?: st
       <div className="min-w-0">
         <p className="truncate font-semibold">
           {displayName(recipient)}
-          {recipient.preferredName && <span className="font-normal text-muted"> · {recipient.name}</span>}
+          {/* The space sits outside the span so assistive tech reads "Grandma Rose · Rose Alvarez". */}
+          {recipient.preferredName && (
+            <>
+              {' '}
+              <span className="font-normal text-muted">· {recipient.name}</span>
+            </>
+          )}
         </p>
         {details.length > 0 && <p className="text-small text-muted">{details.join(' · ')}</p>}
       </div>
