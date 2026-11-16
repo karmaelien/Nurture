@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { circlesApi } from '../../api/circles.ts'
-import type { RecipientInput, Session } from '../../api/types.ts'
+import type { Recipient, RecipientInput, Relationship, Session, UpdateRecipientRequest } from '../../api/types.ts'
 import { usersApi } from '../../api/users.ts'
 import { sessionKey, useRequiredSession } from '../auth/session.ts'
 import { circleDetailKey } from './queries.ts'
@@ -44,5 +44,41 @@ export function useAddRecipient(circleId: string) {
       }))
       return queryClient.invalidateQueries({ queryKey: circleDetailKey(user.id, circleId) })
     },
+  })
+}
+
+/** Swaps one recipient in the cached session, then refetches the circle's details. */
+function useRecipientSaved(circleId: string) {
+  const queryClient = useQueryClient()
+  const updateSession = useUpdateSession()
+  const { user } = useRequiredSession()
+  return ({ recipient }: { recipient: Recipient }) => {
+    updateSession((session) => ({
+      ...session,
+      circles: session.circles.map((circle) =>
+        circle.id === circleId
+          ? { ...circle, recipients: circle.recipients.map((item) => (item.id === recipient.id ? recipient : item)) }
+          : circle,
+      ),
+    }))
+    return queryClient.invalidateQueries({ queryKey: circleDetailKey(user.id, circleId) })
+  }
+}
+
+export function useUpdateRecipient(circleId: string, recipientId: string) {
+  const onSuccess = useRecipientSaved(circleId)
+  return useMutation({
+    mutationFn: (body: UpdateRecipientRequest) => circlesApi.updateRecipient(circleId, recipientId, body),
+    onSuccess,
+  })
+}
+
+export function useSetRelationship(circleId: string, recipientId: string) {
+  const onSuccess = useRecipientSaved(circleId)
+  return useMutation({
+    mutationFn: (relationship: Relationship | null) => circlesApi.setRelationship(circleId, recipientId, relationship),
+    // Arrowing through the chips saves each one; run those saves in order so the last choice wins.
+    scope: { id: `relationship:${circleId}:${recipientId}` },
+    onSuccess,
   })
 }

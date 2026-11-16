@@ -78,6 +78,18 @@ export const routes: RouteObject[] = [
                     path: 'circles/:circleId/family',
                     lazy: async () => ({ Component: (await import('../features/profiles/FamilyPage.tsx')).FamilyPage }),
                   },
+                  {
+                    path: 'circles/:circleId/people/:recipientId',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/RecipientProfilePage.tsx')).RecipientProfilePage,
+                    }),
+                  },
+                  {
+                    path: 'circles/:circleId/people/:recipientId/edit',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/EditRecipientPage.tsx')).EditRecipientPage,
+                    }),
+                  },
                 ],
               },
               {

@@ -114,6 +114,9 @@ export const createCircleSchema = z.object({
 /** Forms that add one person nest the fields under `recipient`, so RecipientFields works in every form. */
 export const addRecipientFormSchema = z.object({ recipient: recipientSchema })
 
+/** Editing someone's details: the same fields, without the relationship, which saves on its own. */
+export const editRecipientFormSchema = z.object({ recipient: recipientSchema.omit({ relationship: true }) })
+
 export type ProfileValues = z.input<typeof profileSchema>
 export type RecipientValues = z.input<typeof recipientSchema>
 export type CreateCircleValues = z.input<typeof createCircleSchema>
