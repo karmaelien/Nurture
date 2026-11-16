@@ -296,9 +296,17 @@ Query: `{ from, to, recipientId? }`. `from` and `to` are required timestamps fil
 | 400 | `validation_error` |
 | 404 | `not_found` |
 
+#### `POST /api/circles/:circleId/appointments`
+
+Body: `{ recipientId, title, startsAt, endsAt, location, assignedCaregiverId }`. The end must be later than the start. Location and caregiver may be null. The recipient and any assigned caregiver must belong to the circle. Returns `201` with `{ appointment: Appointment }` and initial status `scheduled`.
+
 #### `PATCH /api/circles/:circleId/appointments/:appointmentId`
 
-Body: `{ status: 'scheduled' | 'completed' }`. Updates the appointment for a member of its care circle and returns `{ appointment: Appointment }`. Invalid statuses return `400`; an unavailable circle or appointment returns `404`. Currently implemented by the browser mock.
+Accepts either the same fields as creation (preserving completion status) or `{ status: 'scheduled' | 'completed' }`. Returns `200` with `{ appointment: Appointment }`.
+
+#### `DELETE /api/circles/:circleId/appointments/:appointmentId`
+
+Removes the appointment and returns `204`. Appointment writes are currently implemented by the browser mock. They require circle membership and return `400` for invalid input or `404` for unavailable records.
 
 #### `GET /api/circles/:circleId/medication-occurrences`
 

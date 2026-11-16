@@ -3,6 +3,8 @@ import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { AppointmentCalendar } from './AppointmentCalendar.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
+import { OverdueAppointmentsWarning } from './OverdueAppointmentsWarning.tsx'
+import { isAppointmentOverdue } from './appointment-overdue.ts'
 import { appointmentKey, useAppointmentCompletion } from './appointment-completion.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
@@ -28,9 +30,13 @@ const profileKey = (profile: CareProfile) => JSON.stringify([profile.circleId, p
 export function AppointmentsPage({
   careProfiles,
   appointments: providedAppointments,
+  onAdd,
+  onEdit,
 }: {
   careProfiles: CareProfile[]
   appointments: AppointmentSummary[]
+  onAdd?: () => void
+  onEdit?: (appointment: AppointmentSummary) => void
 }) {
   // Newly loaded profiles are selected automatically until explicitly unchecked.
   const [excludedProfiles, setExcludedProfiles] = useState<string[]>([])
@@ -98,6 +104,15 @@ export function AppointmentsPage({
     )
     .sort(compareAppointmentListOrder)
   const scheduledTodayCount = appointmentsToday.filter((appointment) => appointment.status === 'scheduled').length
+  const overdueAppointments = appointments
+    .filter(
+      (appointment) =>
+        isAppointmentOverdue(appointment, now) &&
+        careProfiles.some(
+          (profile) => profile.id === appointment.recipientId && profile.circleId === appointment.circleId,
+        ),
+    )
+    .sort(compareAppointmentListOrder)
   const visibleProfiles = careProfiles.filter((item) => !excludedProfiles.includes(profileKey(item)))
   // Search changes the dropdown choices only, leaving the selected profiles intact.
   const matchingProfiles = careProfiles.filter((item) =>
@@ -118,7 +133,7 @@ export function AppointmentsPage({
   const upcoming = allUpcoming.filter((appointment) =>
     visibleProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
   )
-  const visibleAppointments = appointmentsInWindow.filter((appointment) =>
+  const visibleAppointments = [...overdueAppointments, ...appointmentsInWindow].filter((appointment) =>
     visibleProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
   )
   // Reuse the same seven-day window as the clicked count; opening it does not change profile selection.
@@ -128,7 +143,14 @@ export function AppointmentsPage({
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <h1 className="font-display text-h1 font-bold">Appointments</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-h1 font-bold">Appointments</h1>
+        {onAdd && (
+          <Button disabled={!careProfiles.length} onClick={onAdd}>
+            Add appointment
+          </Button>
+        )}
+      </div>
       <p className="mt-2 text-muted">An overview of upcoming appointments for the people in your care.</p>
       <dl className="mt-8 grid gap-4 sm:grid-cols-2" aria-live="polite">
         <div className="rounded-panel bg-wash p-5">
@@ -153,6 +175,19 @@ export function AppointmentsPage({
             : `You have ${scheduledTodayCount} scheduled ${scheduledTodayCount === 1 ? 'appointment' : 'appointments'} today across all care profiles.`}
         </span>
       </button>
+
+      <div className={overdueAppointments.length ? 'mt-4' : undefined}>
+        <OverdueAppointmentsWarning
+          appointments={overdueAppointments}
+          profileName={(appointment) =>
+            careProfiles.find(
+              (profile) => profile.id === appointment.recipientId && profile.circleId === appointment.circleId,
+            )!.name
+          }
+          onComplete={completeAppointment}
+          onEdit={onEdit}
+        />
+      </div>
 
       <dialog
         ref={todayDialog}
@@ -182,6 +217,7 @@ export function AppointmentsPage({
                     profileName={profile.name}
                     onComplete={() => completeAppointment(appointment)}
                     onMarkTodo={() => markAppointmentTodo(appointment)}
+                    onEdit={onEdit && (() => onEdit(appointment))}
                   />
                 </li>
               )
@@ -366,8 +402,10 @@ export function AppointmentsPage({
                       <AppointmentListItem
                         appointment={appointment}
                         profileName={person.name}
+                        overdue={isAppointmentOverdue(appointment, now)}
                         onComplete={() => completeAppointment(appointment)}
                         onMarkTodo={() => markAppointmentTodo(appointment)}
+                        onEdit={onEdit && (() => onEdit(appointment))}
                       />
                     </li>
                   )
@@ -384,6 +422,7 @@ export function AppointmentsPage({
         now={now}
         onComplete={completeAppointment}
         onMarkTodo={markAppointmentTodo}
+        onEdit={onEdit}
       />
       <dialog
         ref={profileAppointmentsDialog}
@@ -407,6 +446,7 @@ export function AppointmentsPage({
                   profileName={openProfile!.name}
                   onComplete={() => completeAppointment(appointment)}
                   onMarkTodo={() => markAppointmentTodo(appointment)}
+                  onEdit={onEdit && (() => onEdit(appointment))}
                 />
               </li>
             ))}

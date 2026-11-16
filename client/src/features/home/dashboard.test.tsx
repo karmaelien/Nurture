@@ -15,6 +15,99 @@ async function login() {
 }
 
 describe('dashboard', () => {
+  it('warns about overdue appointments outside the upcoming window and clears the warning on completion', async () => {
+    await login()
+    const db = readDb()
+    const now = Date.now()
+    db.care.appointments.push({
+      ...db.care.appointments[0],
+      id: 'past-visit',
+      title: 'Past checkup',
+      startsAt: new Date(now - 48 * 3_600_000).toISOString(),
+      endsAt: new Date(now - 47 * 3_600_000).toISOString(),
+    })
+    writeDb(db)
+    const user = userEvent.setup()
+    renderApp('/app')
+    const warning = await screen.findByRole('button', { name: '1 overdue appointment' })
+    const list = screen.getByRole('list', { name: 'Overdue and upcoming appointments' })
+    const first = within(list).getAllByRole('listitem')[0]
+    expect(within(first).getByText('Past checkup')).toBeInTheDocument()
+    expect(within(first).getByText('Overdue')).toBeInTheDocument()
+    await user.click(warning)
+    const dialog = screen.getByRole('dialog', { name: 'Overdue appointments' })
+    expect(within(dialog).getByText('Past checkup')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Mark completed' }))
+    expect(await within(dialog).findByText('No overdue appointments.')).toBeInTheDocument()
+    expect(warning).not.toBeInTheDocument()
+  })
+  it('creates, reschedules, and deletes a visit across the calendar and Home', async () => {
+    await login()
+    const user = userEvent.setup()
+    const router = renderApp('/app/appointments')
+    await user.click(await screen.findByRole('button', { name: 'Add appointment' }))
+    const form = screen.getByRole('dialog', { name: 'Add appointment' })
+    const visitDate = new Date()
+    visitDate.setDate(visitDate.getDate() + 1)
+    const date = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(visitDate)
+    await user.type(within(form).getByLabelText('Title'), 'Dental follow-up')
+    fireEvent.change(within(form).getByLabelText('Start date'), { target: { value: date } })
+    await user.type(within(form).getByLabelText('Start time'), '10')
+    await user.type(within(form).getByLabelText('End time'), '09:00')
+    await user.click(within(form).getByRole('button', { name: 'Save appointment' }))
+    expect(within(form).getByText('End time must be after start time.')).toBeInTheDocument()
+    fireEvent.change(within(form).getByLabelText('End time'), { target: { value: '11:00' } })
+    await user.click(within(form).getByRole('button', { name: 'Save appointment' }))
+    const upcoming = screen.getByRole('region', { name: 'Upcoming appointments' })
+    const created = (await within(upcoming).findByText('Dental follow-up')).closest('li')!
+    await waitFor(() => expect(form).not.toBeInTheDocument())
+
+    await user.click(within(created).getByRole('button', { name: 'Edit appointment' }))
+    const editor = screen.getByRole('dialog', { name: 'Edit appointment' })
+    expect(within(editor).getByLabelText('Start date')).toHaveValue(date)
+    expect(within(editor).getByLabelText('Start time')).toHaveValue('10:00')
+    expect(within(editor).getByLabelText('Start AM/PM')).toHaveValue('AM')
+    fireEvent.change(within(editor).getByLabelText('Start time'), { target: { value: '12:00' } })
+    await user.selectOptions(within(editor).getByLabelText('Start AM/PM'), 'PM')
+    fireEvent.change(within(editor).getByLabelText('End time'), { target: { value: '1:00' } })
+    await user.selectOptions(within(editor).getByLabelText('End AM/PM'), 'PM')
+    await user.click(within(editor).getByRole('button', { name: 'Save appointment' }))
+    await waitFor(() => expect(editor).not.toBeInTheDocument())
+    expect(readDb().care.appointments.find((item) => item.title === 'Dental follow-up')?.startsAt).toBe(
+      new Date(`${date}T12:00`).toISOString(),
+    )
+
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    const home = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const homeEntry = (await within(home).findByText('Dental follow-up')).closest('li')!
+    await user.click(within(homeEntry).getByRole('button', { name: 'Edit appointment' }))
+    const homeEditor = screen.getByRole('dialog', { name: 'Edit appointment' })
+    expect(within(homeEditor).getByLabelText('Start AM/PM')).toHaveValue('PM')
+    await user.type(within(homeEditor).getByLabelText(/^Location/), 'Dental clinic')
+    await user.click(within(homeEditor).getByRole('button', { name: 'Save appointment' }))
+    expect(await within(homeEntry).findByRole('link', { name: /Dental clinic/ })).toBeInTheDocument()
+    await waitFor(() => expect(homeEditor).not.toBeInTheDocument())
+    await user.click(within(home).getByRole('link', { name: 'Appointments · next 7 days' }))
+    expect(router.state.location.pathname).toBe('/app/appointments')
+    const list = await screen.findByRole('region', { name: 'Upcoming appointments' })
+    const entry = (await within(list).findByText('Dental follow-up')).closest('li')!
+    expect(within(entry).getByRole('link', { name: /Dental clinic/ })).toBeInTheDocument()
+    await user.click(within(entry).getByRole('button', { name: 'Edit appointment' }))
+    const edit = screen.getByRole('dialog', { name: 'Edit appointment' })
+    await user.click(within(edit).getByRole('button', { name: 'Delete appointment' }))
+    const confirmation = screen.getByRole('dialog', { name: 'Delete appointment?' })
+    expect(readDb().care.appointments.some((item) => item.title === 'Dental follow-up')).toBe(true)
+    await user.click(within(confirmation).getByRole('button', { name: 'Delete appointment' }))
+    await waitFor(() => expect(within(list).queryByText('Dental follow-up')).not.toBeInTheDocument())
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    const refreshedHome = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    await within(refreshedHome).findByText('Annual checkup')
+    expect(within(refreshedHome).queryByText('Dental follow-up')).not.toBeInTheDocument()
+  })
   it('toggles home appointment completion inline and links locations to Maps', async () => {
     const user = userEvent.setup()
     await login()

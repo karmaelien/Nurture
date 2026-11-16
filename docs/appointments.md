@@ -14,7 +14,9 @@ The Appointments route loads the selected circle's profiles from the session and
 
 ## Display and selection rules
 
-- Appointment list entries share one layout: title, care profile, a single date with the time range, then location (map pin) and caregiver (group icon) side by side. Location text opens a Google Maps search in a new tab; missing locations remain plain text. Mark completed / Mark as to do actions appear directly on the cards. Appointments crossing midnight show both dates. Records without an end time show just the start time. Rescheduling is not implemented yet.
+- Use Add appointment at the top of the page and Edit appointment on a visit to change its details or reschedule it. Delete appointment in the editor asks for confirmation. Changes are saved through the browser mock and refresh the calendar and Home appointment data.
+
+- Appointment list entries share one layout: title, care profile, a single date with the time range, then location (map pin) and caregiver (group icon) side by side. Location text opens a Google Maps search in a new tab; missing locations remain plain text. Mark completed / Mark as to do actions appear directly on the cards. Appointments crossing midnight show both dates. Records without an end time show just the start time.
 
 - All care profiles start selected. Profiles supplied later are also selected unless explicitly excluded.
 - The two top metrics count all supplied care profiles and all their upcoming appointments. Selection does not filter these metrics.
@@ -59,7 +61,7 @@ The UI appointment shape requires `id`, `circleId`, `recipientId`, `title`, `sta
 
 ### Backend integration still needed
 
-The [API contract](api-contract.md) accepts an optional end time and defines the status update used by the browser mock. The client supplies circle context from the request and resolves caregiver names against circle members. The real backend still needs appointment status writes, editing, recurrence, and reminder delivery.
+The [API contract](api-contract.md) accepts an optional end time and defines the appointment writes used by the browser mock. The client supplies circle context from the request and resolves caregiver names against circle members. The real backend still needs appointment writes, recurrence, and reminder delivery.
 
 ## Verification
 

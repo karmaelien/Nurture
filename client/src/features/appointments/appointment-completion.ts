@@ -7,7 +7,7 @@ type CompletionState = Record<string, CompletionStatus>
 type SaveCompletion = (circleId: string, appointmentId: string, status: CompletionStatus) => Promise<unknown>
 
 export function appointmentKey(appointment: AppointmentSummary) {
-  return JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])
+  return JSON.stringify([appointment.circleId, appointment.id])
 }
 
 export function useAppointmentCompletionState(saveCompletion?: SaveCompletion) {

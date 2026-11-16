@@ -10,12 +10,14 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
   headingId,
   onComplete,
   onMarkTodo,
+  onEdit,
 }: {
   appointment: T
   profile: CareProfile
   headingId: string
   onComplete?: (appointment: T) => void
   onMarkTodo?: (appointment: T) => void
+  onEdit?: (appointment: T) => void
 }) {
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
@@ -77,6 +79,11 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
       {appointment.status === 'completed' && onMarkTodo && (
         <Button className="mt-6" onClick={() => onMarkTodo(appointment)}>
           Mark as to do
+        </Button>
+      )}
+      {onEdit && (
+        <Button variant="secondary" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
+          Edit appointment
         </Button>
       )}
     </>

@@ -41,6 +41,54 @@ const appointments: AppointmentSummary[] = [
 ]
 
 describe('appointment calendar', () => {
+  it('labels overdue calendar blocks in month, week, and day views', async () => {
+    const user = userEvent.setup()
+    render(
+      <AppointmentCalendar
+        profiles={profiles}
+        appointments={[appointments[0]]}
+        now={new Date(2026, 11, 30, 12).getTime()}
+      />,
+    )
+    expect(screen.getByRole('button', { name: /Rose checkup.*overdue/ })).toBeInTheDocument()
+    for (const view of ['Weekly', 'Daily']) {
+      await user.click(screen.getByRole('button', { name: view }))
+      expect(screen.getByRole('button', { name: /Rose checkup.*overdue/ })).toBeInTheDocument()
+    }
+  })
+  it('warns about ended scheduled visits and clears the warning when they are completed', async () => {
+    const user = userEvent.setup()
+    const time = Date.now()
+    const ended = {
+      ...appointments[0],
+      startsAt: new Date(time - 7_200_000).toISOString(),
+      endsAt: new Date(time - 3_600_000).toISOString(),
+    }
+    render(
+      <AppointmentsPage
+        careProfiles={profiles}
+        appointments={[
+          ended,
+          { ...ended, id: 'done', title: 'Completed visit', status: 'completed' },
+          { ...ended, id: 'ongoing', title: 'Ongoing visit', endsAt: new Date(time + 3_600_000).toISOString() },
+          { ...ended, id: 'missing-end', title: 'Start only', endsAt: undefined },
+        ]}
+      />,
+    )
+
+    const warning = screen.getByRole('button', { name: '1 overdue appointment' })
+    const upcoming = screen.getByRole('region', { name: 'Upcoming appointments' })
+    expect(within(upcoming).getByText('Overdue')).toBeInTheDocument()
+    await user.click(warning)
+    const dialog = screen.getByRole('dialog', { name: 'Overdue appointments' })
+    expect(within(dialog).getByText('Rose checkup')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(1)
+    await user.click(within(dialog).getByRole('button', { name: 'Mark completed' }))
+    expect(within(dialog).getByText('No overdue appointments.')).toBeInTheDocument()
+    fireEvent.click(dialog, { clientX: -1, clientY: -1 })
+    expect(screen.queryByRole('dialog', { name: 'Overdue appointments' })).not.toBeInTheDocument()
+    expect(warning).not.toBeInTheDocument()
+  })
   it.each(['today', 'upcoming', 'profile', 'calendar'] as const)(
     'completes directly from %s and restores through the calendar',
     async (source) => {

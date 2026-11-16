@@ -18,18 +18,27 @@ function formatAppointmentRange(startsAt: string, endsAt?: string) {
 export function AppointmentListItem({
   appointment,
   profileName,
+  overdue = false,
   onComplete,
   onMarkTodo,
+  onEdit,
 }: {
   appointment: AppointmentDetailData
   profileName: string
+  overdue?: boolean
   onComplete?: () => void
   onMarkTodo?: () => void
+  onEdit?: () => void
 }) {
   return (
     <>
       <span className="block font-display text-h3 font-semibold">
         {appointment.title}
+        {overdue && (
+          <span className="ml-2 inline-block rounded-control border border-danger/30 bg-danger/8 px-2 py-0.5 text-small font-semibold text-danger">
+            Overdue
+          </span>
+        )}
         {appointment.status === 'completed' && (
           <CircleCheck
             role="img"
@@ -76,6 +85,11 @@ export function AppointmentListItem({
         </Button>
       ) : (
         <AppointmentStatus status={appointment.status} />
+      )}
+      {onEdit && (
+        <Button variant="secondary" size="sm" className="mt-2 ml-2" onClick={onEdit}>
+          Edit appointment
+        </Button>
       )}
     </>
   )

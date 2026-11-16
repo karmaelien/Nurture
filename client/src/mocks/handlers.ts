@@ -6,7 +6,8 @@ import { createCircleSchema, profileUpdateSchema, recipientSchema } from '../fea
 import { readDb, toUser, writeDb, type Db } from './db.ts'
 
 import { expenseHandlers } from './expenseHandlers.ts'
-import { careHandlers, updateAppointmentStatus } from './careHandlers.ts'
+import { appointmentHandlers } from './appointmentHandlers.ts'
+import { careHandlers } from './careHandlers.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
@@ -54,7 +55,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 
 export const handlers = [
   ...careHandlers,
-  updateAppointmentStatus,
+  ...appointmentHandlers,
   ...expenseHandlers,
   http.get('/api/circles/:circleId', async ({ request, params }) => {
     await delay()

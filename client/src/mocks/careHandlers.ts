@@ -1,39 +1,10 @@
 import { delay, http, HttpResponse } from 'msw'
 import { expenseCategorySchema } from '../features/expenses/schemas.ts'
-import { readDb, writeDb } from './db.ts'
+import { readDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 const notFound = () => error(404, 'not_found', 'This care circle or recipient is unavailable.')
 const invalid = () => error(400, 'validation_error', 'Check the date range and filters, then try again.')
-
-export const updateAppointmentStatus = http.patch(
-  '/api/circles/:circleId/appointments/:appointmentId',
-  async ({ request, params }) => {
-    const body = (await request.json().catch(() => null)) as { status?: unknown } | null
-    const db = readDb()
-    const token = bearerToken(request)
-    const userId = token ? db.sessions[token] : undefined
-    if (!userId || !db.users.some((user) => user.id === userId)) return unauthorized()
-    const circle = db.circles.find(
-      (circle) => circle.id === params.circleId && circle.members.some((member) => member.user.id === userId),
-    )
-    const appointment =
-      circle &&
-      db.care.appointments.find(
-        (record) =>
-          record.id === params.appointmentId &&
-          circle.recipients.some((recipient) => recipient.id === record.recipientId),
-      )
-    if (!appointment) return notFound()
-    const status = body?.status
-    if (status !== 'scheduled' && status !== 'completed') {
-      return error(400, 'validation_error', 'Choose scheduled or completed.')
-    }
-    appointment.status = status
-    writeDb(db)
-    return HttpResponse.json({ appointment })
-  },
-)
 
 const resources = {
   appointments: { required: ['from', 'to'], dates: ['from', 'to'], statuses: false },

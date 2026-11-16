@@ -13,10 +13,7 @@ export function useHomeAppointments(
   const query = useAppointments(circle.id, filters)
   const { applyCompletion, setCompletion } = useAppointmentCompletion()
   const entries = (query.data ?? [])
-    .map((appointment) => ({
-      ...applyCompletion(toAppointmentSummary(appointment, circle.id, caregiverName)),
-      profileName: circle.recipients.find((person) => person.id === appointment.recipientId)?.name ?? 'Care recipient',
-    }))
+    .map((appointment) => applyCompletion(toAppointmentSummary(appointment, circle.id, caregiverName)))
     .sort(compareAppointmentListOrder)
 
   const upcomingCountLabel = query.isError

@@ -1,7 +1,9 @@
+import { TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { AppointmentDetails } from './AppointmentDetails.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
+import { isAppointmentOverdue } from './appointment-overdue.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
@@ -17,12 +19,14 @@ export function AppointmentCalendar({
   now,
   onComplete,
   onMarkTodo,
+  onEdit,
 }: {
   profiles: CareProfile[]
   appointments: AppointmentSummary[]
   now: number
   onComplete?: (appointment: AppointmentSummary) => void
   onMarkTodo?: (appointment: AppointmentSummary) => void
+  onEdit?: (appointment: AppointmentSummary) => void
 }) {
   const headingId = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -93,6 +97,8 @@ export function AppointmentCalendar({
     appointment.endsAt
       ? `${formatTime(appointment.startsAt)} – ${formatTime(appointment.endsAt)}`
       : formatTime(appointment.startsAt)
+  const statusLabel = (appointment: AppointmentSummary) =>
+    isAppointmentOverdue(appointment, now) ? 'overdue' : appointment.status
   const selectedAppointment = periodAppointments.find(
     (appointment) => JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]) === selectedKey,
   )
@@ -250,8 +256,8 @@ export function AppointmentCalendar({
                                     type="button"
                                     aria-haspopup="dialog"
                                     className="h-full w-full cursor-pointer overflow-hidden rounded-control border border-surface bg-wash px-1.5 py-1 text-left align-top text-small leading-4 hover:bg-sage"
-                                    aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${appointment.status}`}
-                                    title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${appointment.status}`}
+                                    aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
+                                    title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                     onClick={() =>
                                       setSelectedKey(
                                         JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]),
@@ -261,6 +267,12 @@ export function AppointmentCalendar({
                                     <span
                                       className={`block truncate font-semibold ${appointment.status === 'completed' ? 'line-through' : ''}`}
                                     >
+                                      {isAppointmentOverdue(appointment, now) && (
+                                        <TriangleAlert
+                                          className="mr-1 inline-block size-3 align-text-bottom text-danger"
+                                          aria-hidden
+                                        />
+                                      )}
                                       {appointment.status === 'cancelled' ? 'Cancelled: ' : ''}
                                       {appointment.title}
                                     </span>
@@ -330,8 +342,8 @@ export function AppointmentCalendar({
                                         type="button"
                                         aria-haspopup="dialog"
                                         className={`${view === 'monthly' ? 'h-8' : 'h-10'} w-full min-w-0 cursor-pointer overflow-hidden rounded-control bg-wash px-1.5 py-1 text-left text-small leading-4 hover:bg-sage`}
-                                        aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${appointment.status}`}
-                                        title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${appointment.status}`}
+                                        aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
+                                        title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                         onClick={() =>
                                           setSelectedKey(
                                             JSON.stringify([
@@ -345,6 +357,12 @@ export function AppointmentCalendar({
                                         <span
                                           className={`block truncate font-semibold ${appointment.status === 'completed' ? 'line-through' : ''}`}
                                         >
+                                          {isAppointmentOverdue(appointment, now) && (
+                                            <TriangleAlert
+                                              className="mr-1 inline-block size-3 align-text-bottom text-danger"
+                                              aria-hidden
+                                            />
+                                          )}
                                           {appointment.status === 'cancelled' ? 'Cancelled: ' : ''}
                                           {appointment.title}
                                         </span>
@@ -399,6 +417,7 @@ export function AppointmentCalendar({
             headingId={`${headingId}-details`}
             onComplete={onComplete}
             onMarkTodo={onMarkTodo}
+            onEdit={onEdit}
           />
         )}
         {!selectedAppointment && hasDayDetails && (
@@ -419,6 +438,7 @@ export function AppointmentCalendar({
                         profileName={profile.name}
                         onComplete={onComplete ? () => onComplete(appointment) : undefined}
                         onMarkTodo={onMarkTodo ? () => onMarkTodo(appointment) : undefined}
+                        onEdit={onEdit && (() => onEdit(appointment))}
                       />
                     </div>
                   </li>

@@ -1,20 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
+import type { Appointment } from '../../api/types.ts'
 import { FullPageError, FullPageSpinner } from '../../components/ui/FullPageStatus.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { useAppointments } from '../care/queries.ts'
 import { useCircleSelection } from '../circles/selection.ts'
+import { AppointmentEditor } from './AppointmentEditor.tsx'
 import { AppointmentsPage } from './AppointmentsPage.tsx'
-import { toAppointmentSummary } from './appointment-record.ts'
-
-// The preview endpoint is unpaginated. Load the circle's records once so calendar navigation works in both directions.
-const calendarRange = { from: '0001-01-01T00:00:00.000Z', to: '9999-12-31T23:59:59.999Z' }
+import { appointmentCalendarRange, toAppointmentSummary } from './appointment-record.ts'
 
 export function AppointmentsRoute() {
   const { user, circles } = useRequiredSession()
   const { circle } = useCircleSelection(circles)
-  const appointments = useAppointments(circle?.id ?? null, calendarRange)
+  const [editor, setEditor] = useState<{ circleId: string; appointment?: Appointment } | null>(null)
+  const appointments = useAppointments(circle?.id ?? null, appointmentCalendarRange)
   const details = useQuery({
     queryKey: ['circle', user.id, circle?.id],
     queryFn: () => circlesApi.detail(circle!.id),
@@ -43,5 +44,30 @@ export function AppointmentsRoute() {
         (details.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'),
     ),
   )
-  return <AppointmentsPage key={circle.id} careProfiles={profiles} appointments={entries} />
+  const activeEditor = editor?.circleId === circle.id ? editor : null
+
+  return (
+    <>
+      <AppointmentsPage
+        key={circle.id}
+        careProfiles={profiles}
+        appointments={entries}
+        onAdd={() => setEditor({ circleId: circle.id })}
+        onEdit={(appointment) => {
+          const record = appointments.data.find((item) => item.id === appointment.id)
+          if (record) setEditor({ circleId: circle.id, appointment: record })
+        }}
+      />
+      {activeEditor && (
+        <AppointmentEditor
+          key={JSON.stringify([circle.id, activeEditor.appointment?.id])}
+          circleId={circle.id}
+          appointment={activeEditor.appointment}
+          profiles={profiles}
+          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+          onClose={() => setEditor(null)}
+        />
+      )}
+    </>
+  )
 }

@@ -174,7 +174,12 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <HomeAppointmentsPanel appointments={appointments} circleId={circle.id} />
+        <HomeAppointmentsPanel
+          appointments={appointments}
+          circle={circle}
+          now={now.getTime()}
+          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+        />
         <Panel
           id="expenses"
           title="Care spending"

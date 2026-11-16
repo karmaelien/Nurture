@@ -45,6 +45,15 @@ export type Session = { user: User; circles: CircleSummary[] }
 
 export type AppointmentCompletionStatus = 'scheduled' | 'completed'
 
+export type AppointmentInput = {
+  recipientId: string
+  title: string
+  startsAt: string
+  endsAt: string
+  location: string | null
+  assignedCaregiverId: string | null
+}
+
 export type Appointment = {
   id: string
   recipientId: string
