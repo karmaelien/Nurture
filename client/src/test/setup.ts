@@ -1,10 +1,14 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { handlers } from '../mocks/handlers.ts'
 
 export const server = setupServer(...handlers)
+
+// Integration tests render whole pages, including lazily loaded routes. With every worker busy, a
+// step can take longer than the 1 second findBy/waitFor default, so allow more before failing.
+configure({ asyncUtilTimeout: 5000 })
 
 // jsdom does not implement these native browser dialog methods.
 const dialogMethods = ['showModal', 'close'] as const
