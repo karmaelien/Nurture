@@ -239,7 +239,7 @@ export function AppointmentsPage({
           </h2>
           <p className="mt-2 text-muted">Choose the profiles whose appointments you want to see.</p>
           <details ref={profileDropdown} className="relative mt-5">
-            <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-line-strong px-4 py-3 font-semibold">
+            <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-field px-4 py-3 font-semibold">
               Select care profiles
               <span aria-hidden="true">▾</span>
             </summary>

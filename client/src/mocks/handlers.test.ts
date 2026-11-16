@@ -129,4 +129,53 @@ describe('mock profile and circle API', () => {
     const { circle } = await circlesApi.detail('c_demo')
     expect(circle.members.find((member) => member.user.id === 'u_demo')?.user.name).toBe('Maya A.')
   })
+
+  it('edits only the recipient details sent, keeping each member’s own label', async () => {
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    await circlesApi.setRelationship('c_demo', 'r_rose', 'grandparent')
+
+    const { recipient } = await circlesApi.updateRecipient('c_demo', 'r_rose', { preferredName: ' Nana ', notes: '' })
+    expect(recipient).toMatchObject({
+      name: 'Rose Alvarez',
+      preferredName: 'Nana',
+      dateOfBirth: '1941-03-14',
+      notes: null,
+      relationship: 'grandparent',
+    })
+    const detail = (await circlesApi.detail('c_demo')).circle
+    expect(detail.recipients[0]).toEqual(recipient)
+    // Daniel's label for Rose is his own and untouched.
+    expect(detail.members.find((member) => member.user.id === 'u_daniel')?.relationships).toEqual({
+      r_rose: 'grandparent',
+    })
+  })
+
+  it('sets and clears the signed-in member’s own relationship label', async () => {
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    expect((await circlesApi.setRelationship('c_demo', 'r_frank', 'parent')).recipient.relationship).toBe('parent')
+    expect((await authApi.me()).circles[0].recipients[1].relationship).toBe('parent')
+    expect((await circlesApi.setRelationship('c_demo', 'r_frank', null)).recipient.relationship).toBeNull()
+    const members = (await circlesApi.detail('c_demo')).circle.members
+    expect(members.find((member) => member.user.id === 'u_demo')?.relationships).toEqual({})
+  })
+
+  it('validates recipient edits and hides recipients outside the user’s circles', async () => {
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_rose', { name: 'Rose' }), 401, 'unauthorized')
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_rose', { name: ' ' }), 400, 'validation_error')
+    await expectApiError(
+      circlesApi.updateRecipient('c_demo', 'r_rose', { dateOfBirth: '2999-01-01' }),
+      400,
+      'validation_error',
+    )
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_nobody', { name: 'X' }), 404, 'not_found')
+    await expectApiError(circlesApi.setRelationship('c_demo', 'r_rose', 'cousin' as never), 400, 'validation_error')
+
+    await signUp()
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_rose', { name: 'X' }), 404, 'not_found')
+    await expectApiError(circlesApi.setRelationship('c_demo', 'r_rose', null), 404, 'not_found')
+  })
 })

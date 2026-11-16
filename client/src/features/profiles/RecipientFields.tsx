@@ -5,9 +5,10 @@ import { MAX_NOTES_LENGTH, todayDate, type RecipientValues } from './schemas.ts'
 
 /**
  * The fields that describe one person being cared for. Renders inside any form whose values
- * nest them under `recipient`, so step 2, step 3, and the dashboard page share one form.
+ * nest them under `recipient`, so setup, adding a person, and editing one share one form.
+ * Editing leaves out the relationship, which the profile page saves on its own.
  */
-export function RecipientFields() {
+export function RecipientFields({ withRelationship = true }: { withRelationship?: boolean }) {
   const {
     register,
     control,
@@ -41,7 +42,7 @@ export function RecipientFields() {
         error={fieldErrors?.dateOfBirth?.message}
         {...register('recipient.dateOfBirth')}
       />
-      <RelationshipPicker />
+      {withRelationship && <RelationshipPicker />}
       <TextAreaField
         label="Notes"
         optional

@@ -26,7 +26,7 @@ The app runs against an in-browser mock backend ([MSW](https://mswjs.io)) until 
 | Path                   | Contents                                                                                                                                                                                        |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/styles/theme.css` | Design tokens: colors, fonts, type scale, radii, dark mode. Use these through Tailwind classes such as `bg-primary`, `text-muted`, `rounded-panel`, and `font-display`. Don't hard-code colors. |
-| `src/components/ui/`   | Shared building blocks: `Button`, `TextField`, `PasswordField`, `SelectField`, `TextAreaField`, `Alert`, `Logo`                                                                                 |
+| `src/components/ui/`   | Shared building blocks: `Button`, `TextField`, `PasswordField`, `SelectField`, `TextAreaField`, `ThemeSwitch`, `Alert`, `Logo`                                                                  |
 | `src/app/`             | Routes and route guards                                                                                                                                                                         |
 | `src/api/`             | API client, endpoint functions, and shared request/response types                                                                                                                               |
 | `src/mocks/`           | Mock backend for auth, profiles, circles and recipients, and read-only care endpoints in [`docs/api-contract.md`](../docs/api-contract.md).                                                     |
@@ -40,7 +40,19 @@ A signed-in user with no care circle is sent to `/setup`, which has three steps:
 2. The first person they care for, including how they're related, and a name for the care circle.
 3. Anyone else the circle cares for.
 
-The fields that describe one person are shared by setup step 2, setup step 3, and the dashboard's "Add a person" page. They live in `RecipientFields` (`src/features/profiles/`). The zod schemas next to it are used by both the forms and the mock backend.
+The fields that describe one person are shared by setup, "Add a person", and the edit page. They live in `RecipientFields` (`src/features/profiles/`). The zod schemas next to it are used by both the forms and the mock backend.
+
+After setup, the profile pages sit in the app layout:
+
+| Page        | Route                                        | Notes                                                                       |
+| ----------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| Family      | `/app/circles/:circleId/family`              | The people a circle cares for and its caregivers. The Family tab.           |
+| Person      | `/app/circles/:circleId/people/:recipientId` | Details, notes, and your relationship, which saves as soon as you pick it.  |
+| Edit person | `.../people/:recipientId/edit`               | Any member can edit; the relationship isn't on this form.                   |
+| Caregiver   | `/app/circles/:circleId/caregivers/:userId`  | Read-only contact details and local time. Your own redirects to My profile. |
+| My profile  | `/app/profile`                               | Your name, phone, and time zone; also where Log out lives on phones.        |
+
+The circle details these pages read (`useCircleDetail`) share a cache entry with the dashboard's, so saving on one page updates the others.
 
 ## Appointment feature
 
@@ -50,7 +62,8 @@ See [appointments documentation](../docs/appointments.md) for the current previe
 
 - **Colors:** everything stays in one family, from deep pine to sage to mint, with charcoal text. Mint (`accent`) is only for small hints: the logo mark, count badges, and dots of 8px or smaller. Never use it on buttons, large fills, or text. Don't introduce a contrasting hue.
 - **Type:** Schibsted Grotesk for everything. Use `font-display` on headings (it marks them for tighter tracking). Body text is never smaller than 16px.
-- **Dark mode:** colors switch automatically through the tokens, so components don't need `dark:` variants for color.
+- **Dark mode:** colors switch automatically through the tokens, so components don't need `dark:` variants for color. Themes follow the system unless the viewer picks Light or Dark with `ThemeSwitch`. That choice is saved in `localStorage` (`src/app/theme.ts`) and applied by `index.html` before first paint.
+- **Form controls:** borders of inputs, selects and choice chips use `border-field`, which keeps 3:1 contrast in both modes (WCAG 1.4.11). `line-strong` is for decorative edges and buttons.
 - **Copy:** sentence case and plain verbs. A button says what it does ("Create account"). Errors say what went wrong and how to fix it.
 
 ## Connecting the real backend

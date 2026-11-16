@@ -266,6 +266,16 @@ Body: `{ relationship }`, a `Relationship` or `null`.
 | 400 | `validation_error` |
 | 404 | `not_found` (also when the recipient isn't in this circle) |
 
+#### `PATCH /api/circles/:circleId/recipients/:recipientId`
+
+Any member can edit the details of someone the circle cares for. Send only the fields to change: `name`, `preferredName`, `dateOfBirth`, and `notes`, with the same rules as `RecipientInput`. `null` or an empty string clears an optional field. The relationship isn't part of this body; each member changes their own label with `PUT .../relationship`.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ recipient: Recipient }` |
+| 400 | `validation_error` |
+| 404 | `not_found` (also when the recipient isn't in this circle) |
+
 ### Care resources
 
 These read-only endpoints are specified for the initial dashboard; implementation is pending.

@@ -101,6 +101,11 @@ export const recipientSchema = z.object({
   relationship: z.enum(RELATIONSHIPS).nullable(),
 })
 
+/** PATCH .../recipients/:id accepts any subset of the details; labels change through PUT .../relationship. */
+export const recipientUpdateSchema = recipientSchema.omit({ relationship: true }).partial()
+
+export const relationshipSchema = z.object({ relationship: z.enum(RELATIONSHIPS).nullable() })
+
 export const createCircleSchema = z.object({
   name: z.string().trim().min(1, 'Name your care circle.').max(MAX_NAME_LENGTH, tooLong(MAX_NAME_LENGTH)),
   recipient: recipientSchema,
@@ -108,6 +113,9 @@ export const createCircleSchema = z.object({
 
 /** Forms that add one person nest the fields under `recipient`, so RecipientFields works in every form. */
 export const addRecipientFormSchema = z.object({ recipient: recipientSchema })
+
+/** Editing someone's details: the same fields, without the relationship, which saves on its own. */
+export const editRecipientFormSchema = z.object({ recipient: recipientSchema.omit({ relationship: true }) })
 
 export type ProfileValues = z.input<typeof profileSchema>
 export type RecipientValues = z.input<typeof recipientSchema>
