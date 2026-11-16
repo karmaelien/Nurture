@@ -1,4 +1,3 @@
-import { clsx } from 'clsx'
 import { Pencil } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import { errorMessage } from '../../api/client.ts'
@@ -10,7 +9,7 @@ import { useSetRelationship } from './mutations.ts'
 import { displayName, shortName } from './names.ts'
 import { profilePaths } from './paths.ts'
 import { PersonAvatar } from './PersonAvatar.tsx'
-import { BackLink, NotFoundPanel, PageMain, ProfileSection } from './ProfilePageParts.tsx'
+import { BackLink, Fact, Facts, NotFoundPanel, PageMain, ProfileSection } from './ProfilePageParts.tsx'
 import { useCircleDetail } from './queries.ts'
 import { RelationshipChips } from './RelationshipPicker.tsx'
 import { ageOn } from './schemas.ts'
@@ -62,11 +61,13 @@ export function RecipientProfilePage() {
 
       <div className="mt-8 grid gap-4">
         <ProfileSection title="Details">
-          <dl className="grid gap-3 sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-x-6 sm:gap-y-2">
+          <Facts>
             <Fact label="Full name">{recipient.name}</Fact>
             {recipient.preferredName && <Fact label="Goes by">{recipient.preferredName}</Fact>}
-            <Fact label="Born">{recipient.dateOfBirth ? longDate(recipient.dateOfBirth) : 'Not added'}</Fact>
-          </dl>
+            <Fact label="Born" muted={!recipient.dateOfBirth}>
+              {recipient.dateOfBirth ? longDate(recipient.dateOfBirth) : 'Not added'}
+            </Fact>
+          </Facts>
         </ProfileSection>
         {recipient.notes && (
           <ProfileSection title="Notes">
@@ -76,16 +77,6 @@ export function RecipientProfilePage() {
         <RelationshipSection circleId={circle.id} recipient={recipient} />
       </div>
     </PageMain>
-  )
-}
-
-function Fact({ label, children }: { label: string; children: string }) {
-  const missing = children === 'Not added'
-  return (
-    <div className="grid sm:contents">
-      <dt className="text-small text-muted sm:text-body">{label}</dt>
-      <dd className={clsx('min-w-0 break-words', missing && 'text-muted')}>{children}</dd>
-    </div>
   )
 }
 

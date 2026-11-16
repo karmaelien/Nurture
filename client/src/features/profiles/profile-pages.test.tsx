@@ -139,3 +139,34 @@ describe('person profile', () => {
     expect(screen.getByRole('link', { name: 'Back to Alvarez family' })).toBeInTheDocument()
   })
 })
+
+describe('caregiver profile', () => {
+  it('shows how to reach another caregiver and who they care for', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    renderApp('/app/circles/c_demo/family')
+    await user.click(await screen.findByRole('link', { name: /Daniel Alvarez/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Daniel Alvarez', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Call Daniel' })).toHaveAttribute('href', 'tel:5550104455')
+    expect(screen.getByRole('link', { name: 'Email Daniel' })).toHaveAttribute('href', 'mailto:daniel@example.test')
+    const contact = screen.getByRole('region', { name: 'Contact' })
+    expect(contact).toHaveTextContent('(555) 010-4455')
+    expect(contact).toHaveTextContent(/Local time\d{1,2}:\d{2}\s?[AP]M, Central Time/)
+    const caresFor = screen.getByRole('region', { name: 'Cares for' })
+    expect(caresFor).toHaveTextContent('Grandma RoseDaniel’s grandparent')
+    expect(caresFor).toHaveTextContent('Frank AlvarezNo relationship set')
+  })
+
+  it('sends you to your own profile instead of a read-only copy', async () => {
+    await logIn()
+    const router = renderApp('/app/circles/c_demo/caregivers/u_demo')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/profile'))
+  })
+
+  it('explains an unknown caregiver', async () => {
+    await logIn()
+    renderApp('/app/circles/c_demo/caregivers/u_nobody')
+    expect(await screen.findByRole('heading', { name: 'We couldn’t find that caregiver' })).toBeInTheDocument()
+  })
+})

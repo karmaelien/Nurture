@@ -51,3 +51,17 @@ export function LoadingPanel({ label }: { label: string }) {
     </div>
   )
 }
+
+/** Label and value pairs: stacked on phones, two columns on wider screens. */
+export function Facts({ children }: { children: ReactNode }) {
+  return <dl className="grid gap-3 sm:grid-cols-[max-content_minmax(0,1fr)] sm:gap-x-6 sm:gap-y-2">{children}</dl>
+}
+
+export function Fact({ label, muted = false, children }: { label: string; muted?: boolean; children: ReactNode }) {
+  return (
+    <div className="grid sm:contents">
+      <dt className="text-small text-muted sm:text-body">{label}</dt>
+      <dd className={clsx('min-w-0 break-words', muted && 'text-muted')}>{children}</dd>
+    </div>
+  )
+}
