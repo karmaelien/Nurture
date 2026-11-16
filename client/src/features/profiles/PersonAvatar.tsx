@@ -11,7 +11,7 @@ export function PersonAvatar({
   kind = 'recipient',
 }: {
   name: string
-  size?: 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg'
   kind?: 'recipient' | 'caregiver'
 }) {
   return (
@@ -19,7 +19,7 @@ export function PersonAvatar({
       aria-hidden
       className={clsx(
         'grid flex-none place-items-center rounded-full font-semibold text-primary',
-        size === 'md' ? 'size-11' : 'size-16 text-h3',
+        { sm: 'size-7 text-[12px]', md: 'size-11', lg: 'size-16 text-h3' }[size],
         kind === 'recipient' ? 'bg-sage' : 'border border-line-strong bg-wash',
       )}
     >

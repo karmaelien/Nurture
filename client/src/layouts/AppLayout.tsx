@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import { CalendarDays, Files, LayoutDashboard, Users, Wallet } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useMatch, useParams } from 'react-router'
@@ -13,6 +14,8 @@ import {
 import { useLogout, useRequiredSession } from '../features/auth/session.ts'
 import { circleLink, useCircleSelection } from '../features/circles/selection.ts'
 import { profilePaths } from '../features/profiles/paths.ts'
+import { shortName } from '../features/profiles/names.ts'
+import { PersonAvatar } from '../features/profiles/PersonAvatar.tsx'
 
 const navClass = 'inline-flex flex-none items-center gap-2 whitespace-nowrap rounded-control px-3 py-2'
 const activeNavClass = ({ isActive }: { isActive: boolean }) =>
@@ -20,7 +23,7 @@ const activeNavClass = ({ isActive }: { isActive: boolean }) =>
 
 // Keep navigation mounted across authenticated pages; each page supplies only its own content.
 export function AppLayout() {
-  const { circles } = useRequiredSession()
+  const { user, circles } = useRequiredSession()
   const selection = useCircleSelection(circles)
   // Pages under /app/circles/:circleId are about that circle, so the nav follows it.
   const { circleId } = useParams()
@@ -46,8 +49,27 @@ export function AppLayout() {
             <Logo />
           </Link>
           <div className="flex items-center gap-2">
+            <NavLink
+              to={profilePaths.me}
+              className={({ isActive }) =>
+                clsx(
+                  'inline-flex h-11 items-center gap-2 rounded-control border px-1.5 font-semibold sm:pr-3.5',
+                  isActive ? 'border-primary bg-wash text-primary' : 'border-line-strong bg-surface hover:bg-wash',
+                )
+              }
+            >
+              <PersonAvatar name={user.name} size="sm" kind="caregiver" />
+              <span className="max-sm:sr-only">{shortName(user.name)}</span>
+              <span className="sr-only">, my profile</span>
+            </NavLink>
             <ThemeSwitch />
-            <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
+            {/* On phones Log out lives on My profile, so the top row fits. */}
+            <Button
+              variant="secondary"
+              loading={logout.isPending}
+              onClick={() => logout.mutate()}
+              className="max-sm:hidden"
+            >
               Log out
             </Button>
           </div>

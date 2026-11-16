@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { authApi } from '../../api/auth.ts'
 import { circlesApi } from '../../api/circles.ts'
-import { setToken } from '../../api/token.ts'
+import { getToken, setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
 import { server } from '../../test/setup.ts'
@@ -168,5 +168,57 @@ describe('caregiver profile', () => {
     await logIn()
     renderApp('/app/circles/c_demo/caregivers/u_nobody')
     expect(await screen.findByRole('heading', { name: 'We couldn’t find that caregiver' })).toBeInTheDocument()
+  })
+})
+
+describe('My profile', () => {
+  it('opens from the header and saves your details for the circle to see', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    const router = renderApp('/app')
+    await user.click(await screen.findByRole('link', { name: 'Maya, my profile' }))
+
+    expect(await screen.findByRole('heading', { name: 'My profile' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/app/profile')
+    expect(screen.getByText('demo@nurture.app')).toBeInTheDocument()
+    await user.clear(screen.getByLabelText('Phone (optional)'))
+    await user.type(screen.getByLabelText('Phone (optional)'), '555 999 1234')
+    await user.selectOptions(screen.getByLabelText('Time zone'), 'America/Denver')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText('Saved.')).toBeInTheDocument()
+    const { circle } = await circlesApi.detail('c_demo')
+    expect(circle.members.find((member) => member.user.id === 'u_demo')?.user).toMatchObject({
+      phone: '555 999 1234',
+      timeZone: 'America/Denver',
+    })
+    // Editing again clears the confirmation.
+    await user.type(screen.getByLabelText('Your name'), ' A.')
+    expect(screen.queryByText('Saved.')).not.toBeInTheDocument()
+  })
+
+  it('shows field errors without saving', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    renderApp('/app/profile')
+    await user.type(await screen.findByLabelText('Phone (optional)'), 'abc')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByText(/Enter a phone number like/)).toBeInTheDocument()
+    expect((await authApi.me()).user.phone).toBe('(555) 010-2030')
+  })
+
+  it('links to each of your circles and logs you out', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    renderApp('/app/profile')
+    const circles = await screen.findByRole('region', { name: 'Your care circles' })
+    expect(within(circles).getByRole('link', { name: /Alvarez family/ })).toHaveAttribute(
+      'href',
+      '/app/circles/c_demo/family',
+    )
+    const account = screen.getByRole('region', { name: 'Account' })
+    await user.click(within(account).getByRole('button', { name: 'Log out' }))
+    // Logging out reloads the page at /login, so check that the session is gone.
+    await waitFor(() => expect(getToken()).toBeNull())
   })
 })
