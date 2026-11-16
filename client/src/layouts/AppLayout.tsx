@@ -51,6 +51,8 @@ export function AppLayout() {
           <div className="flex items-center gap-2">
             <NavLink
               to={profilePaths.me}
+              // Includes the visible first name, so voice control users can say what they see.
+              aria-label={`${shortName(user.name)}, my profile`}
               className={({ isActive }) =>
                 clsx(
                   'inline-flex h-11 items-center gap-2 rounded-control border px-1.5 font-semibold sm:pr-3.5',
@@ -59,8 +61,7 @@ export function AppLayout() {
               }
             >
               <PersonAvatar name={user.name} size="sm" kind="caregiver" />
-              <span className="max-sm:sr-only">{shortName(user.name)}</span>
-              <span className="sr-only">, my profile</span>
+              <span className="max-sm:hidden">{shortName(user.name)}</span>
             </NavLink>
             <ThemeSwitch />
             {/* On phones Log out lives on My profile, so the top row fits. */}
