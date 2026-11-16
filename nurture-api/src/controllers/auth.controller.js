@@ -46,7 +46,7 @@ exports.register = async (req, res, next) => {
     if (!parsed.success) {
       // logger.logError('zod issues:', parsed.error.issues);
       throw httpError(400, 'validation_error',
-        'Enter your name, a valid email, and a password of 12 to 128 characters.');
+        'Enter your name, a valid email, and a password of 8 to 128 characters.');
     }
     const { email, name, password } = parsed.data;
 
