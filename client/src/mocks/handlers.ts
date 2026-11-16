@@ -2,7 +2,13 @@ import { delay, http, HttpResponse } from 'msw'
 import type { z } from 'zod'
 import type { AuthResponse, CircleSummary, Recipient, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
-import { createCircleSchema, profileUpdateSchema, recipientSchema } from '../features/profiles/schemas.ts'
+import {
+  createCircleSchema,
+  profileUpdateSchema,
+  recipientSchema,
+  recipientUpdateSchema,
+  relationshipSchema,
+} from '../features/profiles/schemas.ts'
 import { readDb, toUser, writeDb, type Db } from './db.ts'
 
 import { expenseHandlers } from './expenseHandlers.ts'
@@ -25,6 +31,19 @@ function signedInUserId(db: Db, request: Request) {
 }
 
 const circleNotFound = () => error(404, 'not_found', 'This care circle is unavailable.')
+const recipientNotFound = () => error(404, 'not_found', 'This person is not in the care circle.')
+
+/** The circle, the signed-in member, and one of its recipients, or the error response to send instead. */
+function findRecipient(db: Db, request: Request, circleId: unknown, recipientId: unknown) {
+  const userId = signedInUserId(db, request)
+  if (!userId) return { failure: unauthorized() }
+  const circle = db.circles.find((circle) => circle.id === circleId)
+  const member = circle?.members.find((member) => member.user.id === userId)
+  if (!circle || !member) return { failure: circleNotFound() }
+  const recipient = circle.recipients.find((recipient) => recipient.id === recipientId)
+  if (!recipient) return { failure: recipientNotFound() }
+  return { member, recipient }
+}
 
 function toSession(db: Db, userId: string): Session {
   const user = db.users.find((u) => u.id === userId)!
@@ -122,6 +141,38 @@ export const handlers = [
     if (relationship) member.relationships[recipient.id] = relationship
     writeDb(db)
     return HttpResponse.json({ recipient: { ...recipient, relationship } }, { status: 201 })
+  }),
+
+  http.patch('/api/circles/:circleId/recipients/:recipientId', async ({ request, params }) => {
+    await delay()
+    const db = readDb()
+    const found = findRecipient(db, request, params.circleId, params.recipientId)
+    if (found.failure) return found.failure
+    const body = await parseBody(request, recipientUpdateSchema)
+    if (body.failure) return body.failure
+
+    const { recipient, member } = found
+    for (const [key, value] of Object.entries(body.data) as [keyof typeof body.data, string | null][]) {
+      if (value !== undefined) Object.assign(recipient, { [key]: value })
+    }
+    writeDb(db)
+    return HttpResponse.json({ recipient: { ...recipient, relationship: member.relationships[recipient.id] ?? null } })
+  }),
+
+  http.put('/api/circles/:circleId/recipients/:recipientId/relationship', async ({ request, params }) => {
+    await delay()
+    const db = readDb()
+    const found = findRecipient(db, request, params.circleId, params.recipientId)
+    if (found.failure) return found.failure
+    const body = await parseBody(request, relationshipSchema)
+    if (body.failure) return body.failure
+
+    const { recipient, member } = found
+    const { relationship } = body.data
+    if (relationship) member.relationships[recipient.id] = relationship
+    else delete member.relationships[recipient.id]
+    writeDb(db)
+    return HttpResponse.json({ recipient: { ...recipient, relationship } })
   }),
 
   http.patch('/api/users/me', async ({ request }) => {

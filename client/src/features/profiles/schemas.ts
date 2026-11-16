@@ -101,6 +101,11 @@ export const recipientSchema = z.object({
   relationship: z.enum(RELATIONSHIPS).nullable(),
 })
 
+/** PATCH .../recipients/:id accepts any subset of the details; labels change through PUT .../relationship. */
+export const recipientUpdateSchema = recipientSchema.omit({ relationship: true }).partial()
+
+export const relationshipSchema = z.object({ relationship: z.enum(RELATIONSHIPS).nullable() })
+
 export const createCircleSchema = z.object({
   name: z.string().trim().min(1, 'Name your care circle.').max(MAX_NAME_LENGTH, tooLong(MAX_NAME_LENGTH)),
   recipient: recipientSchema,

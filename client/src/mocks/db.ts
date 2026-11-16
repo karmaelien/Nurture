@@ -1,5 +1,5 @@
 import { seedCareData } from './careData.ts'
-import type { CircleDetail, User } from '../api/types.ts'
+import type { CircleDetail, Member, User } from '../api/types.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -15,7 +15,7 @@ export type Db = {
 }
 
 // Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v4'
+const DB_KEY = 'nurture.mock-db.v5'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
@@ -27,10 +27,12 @@ function seed(): Db {
       name: 'Daniel Alvarez',
       email: 'daniel@example.test',
       password: 'mock-only-password',
-      phone: null,
+      phone: '(555) 010-4455',
       timeZone: 'America/Chicago',
     },
   ]
+  // Daniel's own label, so the demo shows how other members know someone.
+  const danielLabels: Member['relationships'] = { r_rose: 'grandparent' }
   return {
     users,
     circles: [
@@ -60,7 +62,7 @@ function seed(): Db {
           user: toUser(user),
           role: index === 0 ? 'owner' : 'member',
           joinedAt: new Date().toISOString(),
-          relationships: {},
+          relationships: index === 0 ? {} : danielLabels,
         })),
       },
     ],
