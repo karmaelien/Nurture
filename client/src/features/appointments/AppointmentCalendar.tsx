@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { AppointmentDetails } from './AppointmentDetails.tsx'
+import { AppointmentListItem } from './AppointmentListItem.tsx'
+import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
 import { hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
@@ -96,7 +98,9 @@ export function AppointmentCalendar({
     (profile) => profile.id === selectedAppointment?.recipientId && profile.circleId === selectedAppointment?.circleId,
   )
   const dayAppointments = selectedDay
-    ? layoutDayAppointments(periodAppointments, new Date(selectedDay)).map((entry) => entry.appointment)
+    ? layoutDayAppointments(periodAppointments, new Date(selectedDay))
+        .map((entry) => entry.appointment)
+        .sort(compareAppointmentListOrder)
     : []
   const hasDayDetails = dayAppointments.length > 0
 
@@ -407,19 +411,14 @@ export function AppointmentCalendar({
                 )!
                 return (
                   <li key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}>
-                    <button
-                      type="button"
-                      className="w-full rounded-control py-3 text-left hover:bg-wash"
-                      onClick={() => {
-                        setSelectedKey(JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]))
-                        setSelectedDay(null)
-                      }}
-                    >
-                      <span className="block font-semibold">{appointment.title}</span>
-                      <span className="block text-muted">
-                        {formatTimeRange(appointment)} · {profile.name}
-                      </span>
-                    </button>
+                    <div className="py-3">
+                      <AppointmentListItem
+                        appointment={appointment}
+                        profileName={profile.name}
+                        onComplete={onComplete ? () => onComplete(appointment) : undefined}
+                        onMarkTodo={onMarkTodo ? () => onMarkTodo(appointment) : undefined}
+                      />
+                    </div>
                   </li>
                 )
               })}

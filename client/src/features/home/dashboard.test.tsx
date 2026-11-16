@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { authApi } from '../../api/auth.ts'
@@ -14,6 +15,55 @@ async function login() {
 }
 
 describe('dashboard', () => {
+  it('toggles home appointment completion inline and links locations to Maps', async () => {
+    const user = userEvent.setup()
+    await login()
+    renderApp('/app')
+    const panel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const entry = (await within(panel).findByText('Annual checkup')).closest('li')!
+    expect(within(panel).getByRole('list', { name: 'Appointments in the next 7 days' })).toHaveClass(
+      'overflow-y-auto',
+      'max-h-[26rem]',
+    )
+    expect(within(entry).getByRole('link', { name: 'Location: Family clinic' })).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=Family%20clinic',
+    )
+    await user.click(within(entry).getByText('Annual checkup'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await user.click(within(entry).getByRole('button', { name: 'Mark completed' }))
+    expect(within(entry).getByText('Annual checkup')).not.toHaveClass('line-through')
+    expect(within(entry).getByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
+    expect(within(entry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
+    expect(within(panel).getAllByRole('listitem').at(-1)).toBe(entry)
+    expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/2$/)
+    await user.click(within(entry).getByRole('button', { name: 'Mark as to do' }))
+    expect(within(entry).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+    expect(within(entry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
+    expect(within(panel).getAllByRole('listitem')[0]).toBe(entry)
+    expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/3$/)
+  })
+  it('keeps the shared navigation between home and appointments with the correct active link', async () => {
+    const user = userEvent.setup()
+    await login()
+    const router = renderApp('/app')
+    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
+    await user.click(within(navigation).getByRole('link', { name: 'Appointments' }))
+    await screen.findByRole('heading', { name: 'Appointments', level: 1 })
+    expect(router.state.location.pathname).toBe('/app/appointments')
+    expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBe(navigation)
+    expect(within(navigation).getByRole('link', { name: 'Appointments' })).toHaveAttribute('aria-current', 'page')
+    expect(within(navigation).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
+    expect(within(navigation).getByRole('link', { name: 'Care' })).toHaveAttribute('href', '/app#tasks')
+    expect(within(navigation).getByRole('link', { name: 'Expenses' })).toHaveAttribute('href', '/app#expenses')
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument()
+    await user.click(within(navigation).getByRole('link', { name: 'Overview' }))
+    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    expect(router.state.location.pathname).toBe('/app')
+    expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
+  })
   it('shows real mock totals and filters every section by recipient', async () => {
     await login()
     renderApp('/app')

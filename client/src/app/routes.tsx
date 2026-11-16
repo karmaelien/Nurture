@@ -1,6 +1,7 @@
 import { Navigate, Outlet, type RouteObject } from 'react-router'
 import { FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
 import { AuthLayout } from '../layouts/AuthLayout.tsx'
+import { AppLayout } from '../layouts/AppLayout.tsx'
 import { GuestOnly, RequireSession } from './guards.tsx'
 import { NotFoundPage } from './NotFoundPage.tsx'
 
@@ -35,7 +36,7 @@ export const routes: RouteObject[] = [
         children: [
           {
             path: '/app',
-            element: <Outlet />,
+            element: <AppLayout />,
             children: [
               {
                 index: true,

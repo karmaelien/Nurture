@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { AppointmentCalendar } from './AppointmentCalendar.tsx'
-import { AppointmentDetails } from './AppointmentDetails.tsx'
+import { AppointmentListItem } from './AppointmentListItem.tsx'
+import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import { hasValidAppointmentTime } from './calendar-layout.ts'
 
@@ -336,8 +337,14 @@ export function AppointmentsPage({
   const profileDropdown = useRef<HTMLDetailsElement>(null)
   const todayDialog = useRef<HTMLDialogElement>(null)
   const todayHeadingId = useId()
-  const appointmentDialog = useRef<HTMLDialogElement>(null)
-  const appointmentHeadingId = useId()
+  const profileAppointmentsDialog = useRef<HTMLDialogElement>(null)
+  const profileAppointmentsHeadingId = useId()
+  const [openProfileKey, setOpenProfileKey] = useState<string | null>(null)
+  const openProfile = careProfiles.find((profile) => profileKey(profile) === openProfileKey)
+  useEffect(() => {
+    if (openProfile && !profileAppointmentsDialog.current?.open) profileAppointmentsDialog.current?.showModal()
+    else if (!openProfile && profileAppointmentsDialog.current?.open) profileAppointmentsDialog.current.close()
+  }, [openProfile])
   const [now, setNow] = useState(Date.now)
   // Generate preview dates once per mount so minute updates do not move the appointments.
   const [dummyAppointments] = useState(() => createDummyAppointments(now))
@@ -348,8 +355,6 @@ export function AppointmentsPage({
       ? { ...appointment, status: completionStatus[appointmentKey(appointment)] }
       : appointment,
   )
-  const [selectedAppointmentKey, setSelectedAppointmentKey] = useState<string | null>(null)
-  const selectedAppointment = appointments.find((appointment) => appointmentKey(appointment) === selectedAppointmentKey)
   function completeAppointment(appointment: AppointmentSummary) {
     if (appointment.status !== 'scheduled') return
     const key = appointmentKey(appointment)
@@ -361,13 +366,6 @@ export function AppointmentsPage({
     // Restore scheduled status so the existing date and profile filters decide where it reappears.
     setCompletionStatus((current) => ({ ...current, [key]: 'scheduled' }))
   }
-  const selectedProfile = careProfiles.find(
-    (profile) => profile.id === selectedAppointment?.recipientId && profile.circleId === selectedAppointment?.circleId,
-  )
-  useEffect(() => {
-    if (selectedAppointment && selectedProfile && !appointmentDialog.current?.open)
-      appointmentDialog.current?.showModal()
-  }, [selectedAppointment, selectedProfile])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
@@ -396,37 +394,44 @@ export function AppointmentsPage({
   // Upcoming includes both endpoints and measures seven elapsed 24-hour periods from now.
   const upcomingThrough = now + 7 * 24 * 60 * 60 * 1000
   const today = new Date(now).toDateString()
-  // Today's notice ignores selection and includes earlier scheduled starts on the same local date.
+  // Keep completed entries in today's list; only scheduled entries count toward its notice.
   const appointmentsToday = appointments
     .filter(
       (appointment) =>
-        appointment.status === 'scheduled' &&
+        appointment.status !== 'cancelled' &&
         hasValidAppointmentTime(appointment) &&
         new Date(appointment.startsAt).toDateString() === today &&
         careProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
     )
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+    .sort(compareAppointmentListOrder)
+  const scheduledTodayCount = appointmentsToday.filter((appointment) => appointment.status === 'scheduled').length
   const visibleProfiles = careProfiles.filter((item) => !excludedProfiles.includes(profileKey(item)))
   // Search changes the dropdown choices only, leaving the selected profiles intact.
   const matchingProfiles = careProfiles.filter((item) =>
     `${item.name} ${item.circleName}`.toLocaleLowerCase().includes(profileSearch.trim().toLocaleLowerCase()),
   )
   // Keep the overall totals separate from the selection-filtered list below.
-  const allUpcoming = appointments
+  const appointmentsInWindow = appointments
     .filter(
       (appointment) =>
-        appointment.status === 'scheduled' &&
+        appointment.status !== 'cancelled' &&
         hasValidAppointmentTime(appointment) &&
         Date.parse(appointment.startsAt) >= now &&
         Date.parse(appointment.startsAt) <= upcomingThrough &&
         careProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
     )
-    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+    .sort(compareAppointmentListOrder)
+  const allUpcoming = appointmentsInWindow.filter((appointment) => appointment.status === 'scheduled')
   const upcoming = allUpcoming.filter((appointment) =>
     visibleProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
   )
-  const formatTime = (value: string) =>
-    new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  const visibleAppointments = appointmentsInWindow.filter((appointment) =>
+    visibleProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
+  )
+  // Reuse the same seven-day window as the clicked count; opening it does not change profile selection.
+  const profileAppointments = appointmentsInWindow.filter(
+    (appointment) => appointment.recipientId === openProfile?.id && appointment.circleId === openProfile?.circleId,
+  )
 
   return (
     <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
@@ -450,9 +455,9 @@ export function AppointmentsPage({
         className="mt-4 w-full cursor-pointer rounded-control border border-amber-300 bg-amber-50 p-4 text-left text-amber-950 hover:bg-amber-100"
       >
         <span>
-          {appointmentsToday.length === 0
+          {scheduledTodayCount === 0
             ? 'No scheduled appointments today.'
-            : `You have ${appointmentsToday.length} scheduled ${appointmentsToday.length === 1 ? 'appointment' : 'appointments'} today across all care profiles.`}
+            : `You have ${scheduledTodayCount} scheduled ${scheduledTodayCount === 1 ? 'appointment' : 'appointments'} today across all care profiles.`}
         </span>
       </button>
 
@@ -479,23 +484,12 @@ export function AppointmentsPage({
                   key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
                   className="py-4 break-words first:pt-0"
                 >
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    className="w-full cursor-pointer rounded-control text-left hover:bg-wash"
-                    onClick={() => {
-                      // Keep today's list open beneath the details so closing returns to the same list position.
-                      setSelectedAppointmentKey(appointmentKey(appointment))
-                    }}
-                  >
-                    <span className="block font-display text-h3 font-semibold">{appointment.title}</span>
-                    <span className="mt-1 block">{profile.name}</span>
-                    <span className="mt-2 block text-muted">
-                      <time dateTime={appointment.startsAt}>{formatTime(appointment.startsAt)}</time> –{' '}
-                      <time dateTime={appointment.endsAt}>{formatTime(appointment.endsAt)}</time>
-                    </span>
-                    <span className="mt-1 block text-muted">{appointment.location || 'Location not provided'}</span>
-                  </button>
+                  <AppointmentListItem
+                    appointment={appointment}
+                    profileName={profile.name}
+                    onComplete={() => completeAppointment(appointment)}
+                    onMarkTodo={() => markAppointmentTodo(appointment)}
+                  />
                 </li>
               )
             })}
@@ -615,11 +609,17 @@ export function AppointmentsPage({
                         Remove
                       </Button>
                     </div>
-                    <p className="mt-4 text-muted">
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-label={`View upcoming appointments for ${item.name}`}
+                      className="mt-4 cursor-pointer rounded-control text-left text-muted hover:text-primary hover:underline"
+                      onClick={() => setOpenProfileKey(key)}
+                    >
                       {count === 0
                         ? 'No upcoming appointments.'
                         : `${count} upcoming appointment${count === 1 ? '' : 's'}.`}
-                    </p>
+                    </button>
                   </li>
                 )
               })}
@@ -653,7 +653,7 @@ export function AppointmentsPage({
             · Times shown in your local timezone.
           </p>
           <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-            {upcoming.length === 0 ? (
+            {visibleAppointments.length === 0 ? (
               <p className="text-muted">
                 {visibleProfiles.length === 0 && careProfiles.length > 0
                   ? 'Select a care profile to view upcoming appointments.'
@@ -661,7 +661,7 @@ export function AppointmentsPage({
               </p>
             ) : (
               <ul className="divide-y divide-line">
-                {upcoming.map((appointment) => {
+                {visibleAppointments.map((appointment) => {
                   const person = visibleProfiles.find(
                     (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
                   )!
@@ -670,22 +670,12 @@ export function AppointmentsPage({
                       key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
                       className="py-5 break-words first:pt-0 last:pb-0"
                     >
-                      <button
-                        type="button"
-                        aria-haspopup="dialog"
-                        className="w-full cursor-pointer rounded-control text-left hover:bg-wash"
-                        onClick={() => setSelectedAppointmentKey(appointmentKey(appointment))}
-                      >
-                        <span className="block font-display text-h3 font-semibold">{appointment.title}</span>
-                        <span className="mt-1 block">
-                          {person.name} · {person.circleName}
-                        </span>
-                        <span className="mt-2 block text-muted">
-                          <time dateTime={appointment.startsAt}>{formatTime(appointment.startsAt)}</time> –{' '}
-                          <time dateTime={appointment.endsAt}>{formatTime(appointment.endsAt)}</time>
-                        </span>
-                        {appointment.location && <span className="mt-1 block text-muted">{appointment.location}</span>}
-                      </button>
+                      <AppointmentListItem
+                        appointment={appointment}
+                        profileName={person.name}
+                        onComplete={() => completeAppointment(appointment)}
+                        onMarkTodo={() => markAppointmentTodo(appointment)}
+                      />
                     </li>
                   )
                 })}
@@ -703,22 +693,33 @@ export function AppointmentsPage({
         onMarkTodo={markAppointmentTodo}
       />
       <dialog
-        ref={appointmentDialog}
-        aria-labelledby={appointmentHeadingId}
-        onClose={() => setSelectedAppointmentKey(null)}
+        ref={profileAppointmentsDialog}
+        aria-labelledby={profileAppointmentsHeadingId}
+        onClose={() => setOpenProfileKey(null)}
         onClick={closeOnBackdropClick}
         className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
       >
-        {selectedAppointment && selectedProfile && (
-          <AppointmentDetails
-            appointment={selectedAppointment}
-            profile={selectedProfile}
-            headingId={appointmentHeadingId}
-            onComplete={completeAppointment}
-            onMarkTodo={markAppointmentTodo}
-          />
+        <h2 id={profileAppointmentsHeadingId} className="font-display text-h2 font-bold">
+          Upcoming appointments for {openProfile?.name}
+        </h2>
+        <p className="mt-2 text-muted">Within the next 7 days · Times shown in your local timezone.</p>
+        {profileAppointments.length === 0 ? (
+          <p className="mt-5 text-muted">No upcoming appointments.</p>
+        ) : (
+          <ul className="mt-5 divide-y divide-line">
+            {profileAppointments.map((appointment) => (
+              <li key={appointmentKey(appointment)} className="py-4 break-words first:pt-0">
+                <AppointmentListItem
+                  appointment={appointment}
+                  profileName={openProfile!.name}
+                  onComplete={() => completeAppointment(appointment)}
+                  onMarkTodo={() => markAppointmentTodo(appointment)}
+                />
+              </li>
+            ))}
+          </ul>
         )}
-        <Button variant="secondary" className="mt-6" onClick={() => appointmentDialog.current?.close()}>
+        <Button variant="secondary" className="mt-6" onClick={() => profileAppointmentsDialog.current?.close()}>
           Close
         </Button>
       </dialog>

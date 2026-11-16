@@ -1,14 +1,14 @@
-import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Wallet } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ListChecks, Pill, Wallet } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
-import { Logo } from '../../components/ui/Logo.tsx'
-import { useLogout, useRequiredSession } from '../auth/session.ts'
-import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
+import { useRequiredSession } from '../auth/session.ts'
+import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
+import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
+import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
+import { useHomeAppointments } from './useHomeAppointments.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
 const selectClass = 'max-w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body'
@@ -18,57 +18,6 @@ const categoryNames: Record<ExpenseCategory, string> = {
   insurance: 'Insurance',
   utilities: 'Utilities',
   other: 'Other',
-}
-
-type QueryState = { isPending: boolean; isError: boolean; error: unknown; refetch: () => unknown }
-
-function Panel({
-  id,
-  title,
-  icon,
-  query,
-  empty,
-  children,
-}: {
-  id: string
-  title: string
-  icon: ReactNode
-  query: QueryState
-  empty: boolean
-  children: ReactNode
-}) {
-  return (
-    <section
-      id={id}
-      aria-labelledby={`${id}-title`}
-      className="min-w-0 scroll-mt-6 rounded-panel border border-line bg-surface p-5 sm:p-6"
-    >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={`${id}-title`} className="font-display text-h3 font-semibold">
-          {title}
-        </h2>
-        <span className="text-primary" aria-hidden>
-          {icon}
-        </span>
-      </div>
-      {query.isError ? (
-        <div role="alert">
-          <p>{errorMessage(query.error)}</p>
-          <Button variant="secondary" className="mt-3" onClick={() => query.refetch()}>
-            Try again
-          </Button>
-        </div>
-      ) : query.isPending ? (
-        <p role="status" className="text-muted">
-          Loading…
-        </p>
-      ) : empty ? (
-        <p className="text-muted">Nothing to show for this period.</p>
-      ) : (
-        children
-      )}
-    </section>
-  )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -90,11 +39,6 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
   }, [])
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
-  const appointments = useAppointments(circle.id, {
-    from: windowDates.from,
-    to: windowDates.to,
-    recipientId: recipient,
-  })
   const medications = useMedicationOccurrences(circle.id, {
     from: windowDates.todayStart,
     to: windowDates.tomorrowStart,
@@ -117,6 +61,15 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
       ? 'Unassigned'
       : (details.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
         (details.isError ? 'Caregiver unavailable' : 'Loading caregiver…'))
+  const appointments = useHomeAppointments(
+    circle,
+    {
+      from: windowDates.from,
+      to: windowDates.to,
+      recipientId: recipient,
+    },
+    assigned,
+  )
   const total = expenses.data?.reduce((sum, expense) => sum + expense.amountCents, 0) ?? 0
   const categories = Object.entries(categoryNames)
     .map(([category, label]) => ({
@@ -166,7 +119,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                 : `${medications.data?.filter((dose) => dose.status === 'completed').length ?? 0} / ${medications.data?.length ?? 0}`
           }
         />
-        <Stat label="Upcoming appointments · next 7 days" value={count(appointments)} />
+        <Stat label="Upcoming appointments · next 7 days" value={appointments.upcomingCountLabel} />
       </div>
       {details.isError && (
         <div role="alert" className="mb-6 flex flex-wrap items-center gap-3">
@@ -217,34 +170,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel
-          id="appointments"
-          title="Appointments · next 7 days"
-          icon={<CalendarDays />}
-          query={appointments}
-          empty={!appointments.data?.length}
-        >
-          <ul className="divide-y divide-line">
-            {appointments.data?.map((appointment) => (
-              <li key={appointment.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-                <div className="h-fit min-w-14 rounded-control bg-wash p-2 text-center" aria-hidden>
-                  <p>{new Date(appointment.startsAt).toLocaleDateString(undefined, { weekday: 'short' })}</p>
-                  <p className="font-semibold">{new Date(appointment.startsAt).getDate()}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold">{appointment.title}</p>
-                  <p>
-                    {name(appointment.recipientId)} · {formatDate(appointment.startsAt)} ·{' '}
-                    {formatTime(appointment.startsAt)}
-                  </p>
-                  <p className="text-muted">
-                    {appointment.location ?? 'Location not set'} · {assigned(appointment.assignedCaregiverId)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <HomeAppointmentsPanel appointments={appointments} />
         <Panel id="expenses" title="Care spending" icon={<Wallet />} query={expenses} empty={!expenses.data?.length}>
           <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
           <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
@@ -268,88 +194,48 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 
 export function HomePage() {
   const { user, circles } = useRequiredSession()
-  const logout = useLogout()
   const [selectedCircle, setSelectedCircle] = useState('')
   const circle = circles.find((item) => item.id === selectedCircle) ?? circles[0]
   return (
-    <div className="min-h-dvh">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <Logo />
-          <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2">
-            <a
-              href="#overview"
-              aria-current="page"
-              className="inline-flex items-center gap-2 rounded-control bg-wash px-3 py-2 font-semibold text-primary"
+    <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
+        <div>
+          <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
+          <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
+        </div>
+        {circles.length > 1 ? (
+          <label className="grid gap-2">
+            Care circle
+            <select
+              aria-label="Care circle"
+              className={selectClass}
+              value={circle.id}
+              onChange={(event) => setSelectedCircle(event.target.value)}
             >
-              <LayoutDashboard className="size-5" aria-hidden />
-              Overview
-            </a>
-            {circle && (
-              <>
-                <a href="#tasks" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-                  <CalendarDays className="size-5" aria-hidden />
-                  Care
-                </a>
-                <a href="#expenses" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-                  <Wallet className="size-5" aria-hidden />
-                  Expenses
-                </a>
-              </>
-            )}
-            <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
-              <Files className="size-5" aria-hidden />
-              Documents · soon
-            </span>
-          </nav>
-          <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-            Log out
-          </Button>
-        </div>
-      </header>
-      <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
-          <div>
-            <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
-            <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
-          </div>
-          {circles.length > 1 ? (
-            <label className="grid gap-2">
-              Care circle
-              <select
-                aria-label="Care circle"
-                className={selectClass}
-                value={circle.id}
-                onChange={(event) => setSelectedCircle(event.target.value)}
-              >
-                {circles.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            circle && <p className="font-semibold">{circle.name}</p>
-          )}
-        </div>
-        {circle ? (
-          <CircleDashboard key={circle.id} circle={circle} />
+              {circles.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : (
-          <section className="rounded-panel border border-line bg-surface p-6">
-            <h2 className="font-display text-h2 font-semibold">No care circle yet</h2>
-            <p className="mt-2 text-muted">
-              Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.
-            </p>
-          </section>
+          circle && <p className="font-semibold">{circle.name}</p>
         )}
-        <p className="mt-8 text-muted">
-          Signed in as {user.name} ({user.email}).
-        </p>
-        <p className="mt-6">
-          <Link to="/app/appointments" className="link">Appointments</Link>
-        </p>
-      </main>
-    </div>
+      </div>
+      {circle ? (
+        <CircleDashboard key={circle.id} circle={circle} />
+      ) : (
+        <section className="rounded-panel border border-line bg-surface p-6">
+          <h2 className="font-display text-h2 font-semibold">No care circle yet</h2>
+          <p className="mt-2 text-muted">
+            Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.
+          </p>
+        </section>
+      )}
+      <p className="mt-8 text-muted">
+        Signed in as {user.name} ({user.email}).
+      </p>
+    </main>
   )
 }

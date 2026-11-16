@@ -2,18 +2,20 @@ import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 
 // Shared by calendar, upcoming-list, and today's dialogs so fields and completion stay consistent.
-export function AppointmentDetails({
+export type AppointmentDetailData = Omit<AppointmentSummary, 'endsAt'> & { endsAt?: string }
+
+export function AppointmentDetails<T extends AppointmentDetailData>({
   appointment,
   profile,
   headingId,
   onComplete,
   onMarkTodo,
 }: {
-  appointment: AppointmentSummary
+  appointment: T
   profile: CareProfile
   headingId: string
-  onComplete?: (appointment: AppointmentSummary) => void
-  onMarkTodo?: (appointment: AppointmentSummary) => void
+  onComplete?: (appointment: T) => void
+  onMarkTodo?: (appointment: T) => void
 }) {
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
@@ -33,12 +35,20 @@ export function AppointmentDetails({
         <div>
           <dt className="font-semibold">Ends</dt>
           <dd>
-            <time dateTime={appointment.endsAt}>{formatDate(appointment.endsAt)}</time>
+            {appointment.endsAt ? (
+              <time dateTime={appointment.endsAt}>{formatDate(appointment.endsAt)}</time>
+            ) : (
+              'Not provided'
+            )}
           </dd>
         </div>
         <div>
           <dt className="font-semibold">Duration</dt>
-          <dd>{(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes</dd>
+          <dd>
+            {appointment.endsAt
+              ? `${(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes`
+              : 'Not provided'}
+          </dd>
         </div>
         <div>
           <dt className="font-semibold">Care circle</dt>

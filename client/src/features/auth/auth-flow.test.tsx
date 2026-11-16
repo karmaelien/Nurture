@@ -5,19 +5,23 @@ import { DEMO_ACCOUNT } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
 
 describe('auth flow', () => {
-  it('sends logged-out visitors to login and back after logging in', async () => {
-    const user = userEvent.setup()
-    const router = renderApp('/')
+  it.each(['/', '/app/appointments', '/login?next=%2Fapp%2Fappointments'])(
+    'always sends login from %s to Home',
+    async (path) => {
+      const user = userEvent.setup()
+      const router = renderApp(path)
 
-    await user.type(await screen.findByLabelText('Email'), DEMO_ACCOUNT.email)
-    expect(router.state.location.pathname).toBe('/login')
-    await user.type(screen.getByLabelText('Password'), DEMO_ACCOUNT.password)
-    await user.click(screen.getByRole('button', { name: 'Log in' }))
+      await user.type(await screen.findByLabelText('Email'), DEMO_ACCOUNT.email)
+      expect(router.state.location.pathname).toBe('/login')
+      if (path !== '/login?next=%2Fapp%2Fappointments') expect(router.state.location.search).toBe('')
+      await user.type(screen.getByLabelText('Password'), DEMO_ACCOUNT.password)
+      await user.click(screen.getByRole('button', { name: 'Log in' }))
 
-    expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
-    expect(screen.getByText('Signed in as Maya Alvarez (demo@nurture.app).')).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/app')
-  })
+      expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
+      expect(screen.getByText('Signed in as Maya Alvarez (demo@nurture.app).')).toBeInTheDocument()
+      expect(router.state.location.pathname).toBe('/app')
+    },
+  )
 
   it('shows a clear error for a wrong password', async () => {
     const user = userEvent.setup()
