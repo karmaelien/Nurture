@@ -5,7 +5,7 @@ import { AppointmentListItem } from './AppointmentListItem.tsx'
 import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
-import { hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
+import { appointmentLayoutEnd, hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 type CalendarView = 'daily' | 'weekly' | 'monthly'
@@ -82,7 +82,7 @@ export function AppointmentCalendar({
       return (
         hasValidAppointmentTime(appointment) &&
         date < periodEnd &&
-        new Date(appointment.endsAt) > periodStart &&
+        appointmentLayoutEnd(appointment) > periodStart.getTime() &&
         profiles.some((profile) => profile.id === appointment.recipientId && profile.circleId === appointment.circleId)
       )
     })
@@ -90,7 +90,9 @@ export function AppointmentCalendar({
   const formatTime = (value: string) =>
     new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(value))
   const formatTimeRange = (appointment: AppointmentSummary) =>
-    `${formatTime(appointment.startsAt)} – ${formatTime(appointment.endsAt)}`
+    appointment.endsAt
+      ? `${formatTime(appointment.startsAt)} – ${formatTime(appointment.endsAt)}`
+      : formatTime(appointment.startsAt)
   const selectedAppointment = periodAppointments.find(
     (appointment) => JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]) === selectedKey,
   )

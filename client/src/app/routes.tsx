@@ -2,7 +2,8 @@ import { Navigate, Outlet, type RouteObject } from 'react-router'
 import { FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
 import { AuthLayout } from '../layouts/AuthLayout.tsx'
 import { AppLayout } from '../layouts/AppLayout.tsx'
-import { GuestOnly, RequireSession } from './guards.tsx'
+import type { SetupHandle } from '../features/setup/SetupLayout.tsx'
+import { GuestOnly, RequireCircle, RequireSession } from './guards.tsx'
 import { NotFoundPage } from './NotFoundPage.tsx'
 
 // Pages load on demand so each one ships only the code it needs.
@@ -35,18 +36,55 @@ export const routes: RouteObject[] = [
         element: <RequireSession />,
         children: [
           {
-            path: '/app',
-            element: <AppLayout />,
+            // Setup is for a user's first circle; step 2 moves on to step 3 once a circle exists.
+            path: '/setup',
+            lazy: async () => ({ Component: (await import('../features/setup/SetupLayout.tsx')).SetupLayout }),
             children: [
               {
                 index: true,
-                lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                handle: { setupStep: 1 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/ProfileStep.tsx')).ProfileStep }),
               },
               {
-                path: 'appointments',
+                path: 'circle',
+                handle: { setupStep: 2 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/CircleStep.tsx')).CircleStep }),
+              },
+              {
+                path: 'circles/:circleId/people',
+                handle: { setupStep: 3 } satisfies SetupHandle,
+                lazy: async () => ({ Component: (await import('../features/setup/PeopleStep.tsx')).PeopleStep }),
+              },
+            ],
+          },
+          {
+            path: '/app',
+            element: <RequireCircle />,
+            children: [
+              {
+                element: <AppLayout />,
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                  },
+                  {
+                    path: 'appointments',
+                    lazy: async () => ({
+                      Component: (await import('../features/appointments/AppointmentsRoute.tsx')).AppointmentsRoute,
+                    }),
+                  },
+                ],
+              },
+              {
+                path: 'circles/:circleId/people/new',
                 lazy: async () => ({
-                  Component: (await import('../features/appointments/AppointmentsPage.tsx')).AppointmentsPage,
+                  Component: (await import('../features/profiles/AddRecipientPage.tsx')).AddRecipientPage,
                 }),
+              },
+              {
+                path: 'expenses',
+                lazy: async () => ({ Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage }),
               },
             ],
           },

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
@@ -33,15 +33,48 @@ describe('dashboard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await user.click(within(entry).getByRole('button', { name: 'Mark completed' }))
     expect(within(entry).getByText('Annual checkup')).not.toHaveClass('line-through')
-    expect(within(entry).getByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
+    expect(await within(entry).findByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
     expect(within(entry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
     expect(within(panel).getAllByRole('listitem').at(-1)).toBe(entry)
     expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/2$/)
-    await user.click(within(entry).getByRole('button', { name: 'Mark as to do' }))
-    expect(within(entry).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
-    expect(within(entry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
-    expect(within(panel).getAllByRole('listitem')[0]).toBe(entry)
+    await user.click(within(panel).getByRole('link', { name: 'Appointments · next 7 days' }))
+    const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
+    const calendarEntry = within(upcoming).getByText('Annual checkup').closest('li')!
+    expect(within(calendarEntry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
+    await user.click(within(calendarEntry).getByRole('button', { name: 'Mark as to do' }))
+    expect(await within(calendarEntry).findByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    const homePanel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const restoredEntry = (await within(homePanel).findByText('Annual checkup')).closest('li')!
+    expect(within(restoredEntry).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+    expect(within(restoredEntry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
+    expect(within(homePanel).getAllByRole('listitem')[0]).toBe(restoredEntry)
     expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/3$/)
+  })
+
+  it('reloads saved completion from the mock database on a fresh app mount', async () => {
+    const user = userEvent.setup()
+    await login()
+    renderApp('/app')
+    const panel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const entry = (await within(panel).findByText('Annual checkup')).closest('li')!
+    await user.click(within(entry).getByRole('button', { name: 'Mark completed' }))
+    await within(entry).findByRole('img', { name: 'Completed' })
+
+    cleanup()
+    renderApp('/app/appointments')
+    const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
+    const completed = within(upcoming).getByText('Annual checkup').closest('li')!
+    expect(within(completed).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
+    await user.click(within(completed).getByRole('button', { name: 'Mark as to do' }))
+    await within(completed).findByRole('button', { name: 'Mark completed' })
+
+    cleanup()
+    renderApp('/app')
+    const restoredPanel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const restored = (await within(restoredPanel).findByText('Annual checkup')).closest('li')!
+    expect(within(restored).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
   })
   it('keeps the shared navigation between home and appointments with the correct active link', async () => {
     const user = userEvent.setup()
@@ -50,14 +83,26 @@ describe('dashboard', () => {
     await screen.findByRole('heading', { name: 'A little clarity for your day.' })
     const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
+    const homeAppointments = screen.getByRole('region', { name: 'Appointments · next 7 days' })
+    expect(await within(homeAppointments).findByText('Annual checkup')).toBeInTheDocument()
     await user.click(within(navigation).getByRole('link', { name: 'Appointments' }))
     await screen.findByRole('heading', { name: 'Appointments', level: 1 })
+    const upcoming = screen.getByRole('region', { name: 'Upcoming appointments' })
+    expect(within(upcoming).getByText('Annual checkup')).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app/appointments')
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBe(navigation)
     expect(within(navigation).getByRole('link', { name: 'Appointments' })).toHaveAttribute('aria-current', 'page')
     expect(within(navigation).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
-    expect(within(navigation).getByRole('link', { name: 'Care' })).toHaveAttribute('href', '/app#tasks')
-    expect(within(navigation).getByRole('link', { name: 'Expenses' })).toHaveAttribute('href', '/app#expenses')
+    const circleId = new URLSearchParams(router.state.location.search).get('circleId')
+    expect(circleId).toBeTruthy()
+    expect(within(navigation).getByRole('link', { name: 'Care' })).toHaveAttribute(
+      'href',
+      `/app?circleId=${circleId}#tasks`,
+    )
+    expect(within(navigation).getByRole('link', { name: 'Expenses' })).toHaveAttribute(
+      'href',
+      `/app/expenses?circleId=${circleId}`,
+    )
     expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument()
     await user.click(within(navigation).getByRole('link', { name: 'Overview' }))
     await screen.findByRole('heading', { name: 'A little clarity for your day.' })

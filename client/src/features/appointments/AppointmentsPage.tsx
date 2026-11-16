@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { AppointmentCalendar } from './AppointmentCalendar.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
+import { appointmentKey, useAppointmentCompletion } from './appointment-completion.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import { hasValidAppointmentTime } from './calendar-layout.ts'
@@ -14,7 +15,7 @@ export type AppointmentSummary = {
   recipientId: string
   title: string
   startsAt: string
-  endsAt: string
+  endsAt?: string
   location?: string
   // Display data for the assigned user; resolve the API's caregiver ID against circle members when connected.
   assignedCaregiver?: { id: string; name: string } | null
@@ -23,312 +24,13 @@ export type AppointmentSummary = {
 
 // Profile IDs are scoped to a circle; use both values for selection identity.
 const profileKey = (profile: CareProfile) => JSON.stringify([profile.circleId, profile.id])
-const appointmentKey = (appointment: AppointmentSummary) =>
-  JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])
-
-// Temporary preview data until care profiles are connected.
-const dummyCareProfiles: CareProfile[] = [
-  { id: 'demo-rose', circleId: 'demo-alvarez', name: 'Rose Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-frank', circleId: 'demo-alvarez', name: 'Frank Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-elena', circleId: 'demo-alvarez', name: 'Elena Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-robert', circleId: 'demo-alvarez', name: 'Robert Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-grace', circleId: 'demo-alvarez', name: 'Grace Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-henry', circleId: 'demo-alvarez', name: 'Henry Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-linda', circleId: 'demo-alvarez', name: 'Linda Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-james', circleId: 'demo-alvarez', name: 'James Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-anita', circleId: 'demo-alvarez', name: 'Anita Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-meera', circleId: 'demo-alvarez', name: 'Meera Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-margaret', circleId: 'demo-alvarez', name: 'Margaret Alvarez', circleName: 'Alvarez family' },
-  { id: 'demo-george', circleId: 'demo-alvarez', name: 'George Alvarez', circleName: 'Alvarez family' },
-]
-
-function createDummyAppointments(baseTime: number): AppointmentSummary[] {
-  return [
-    {
-      id: 'demo-rose-today',
-      assignedCaregiver: { id: 'demo-maya', name: 'Maya Alvarez' },
-      recipientId: 'demo-rose',
-      title: 'Follow-up appointment',
-      daysAhead: 0,
-      hour: 16,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-frank-today',
-      assignedCaregiver: { id: 'demo-maya', name: 'Maya Alvarez' },
-      recipientId: 'demo-frank',
-      title: 'Blood pressure review',
-      daysAhead: 0,
-      hour: 11,
-      durationMinutes: 30,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-elena-today',
-      recipientId: 'demo-elena',
-      title: 'Physical therapy',
-      daysAhead: 0,
-      hour: 15,
-      durationMinutes: 90,
-      location: 'Rehabilitation center',
-    },
-    {
-      id: 'demo-rose-checkup',
-      assignedCaregiver: { id: 'demo-maya', name: 'Maya Alvarez' },
-      durationMinutes: 90,
-      recipientId: 'demo-rose',
-      title: 'Annual checkup',
-      daysAhead: 1,
-      hour: 10,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-rose-therapy',
-      durationMinutes: 45,
-      recipientId: 'demo-rose',
-      title: 'Physical therapy',
-      daysAhead: 4,
-      hour: 14,
-      location: 'Rehabilitation center',
-    },
-    {
-      id: 'demo-frank-dentist',
-      recipientId: 'demo-frank',
-      title: 'Dental cleaning',
-      daysAhead: 12,
-      hour: 11,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-frank-eye-exam',
-      recipientId: 'demo-frank',
-      title: 'Eye exam',
-      daysAhead: 18,
-      hour: 9,
-      location: 'Eye care center',
-    },
-    {
-      id: 'demo-elena-checkup',
-      recipientId: 'demo-elena',
-      title: 'Routine checkup',
-      daysAhead: 2,
-      hour: 9,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-robert-hearing',
-      recipientId: 'demo-robert',
-      title: 'Hearing assessment',
-      daysAhead: 9,
-      hour: 11,
-      location: 'Audiology clinic',
-    },
-    {
-      id: 'demo-grace-dentist',
-      recipientId: 'demo-grace',
-      title: 'Dental checkup',
-      daysAhead: 3,
-      hour: 10,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-henry-therapy',
-      recipientId: 'demo-henry',
-      title: 'Physical therapy',
-      daysAhead: 5,
-      hour: 14,
-      location: 'Rehabilitation center',
-    },
-    {
-      id: 'demo-linda-eye-exam',
-      recipientId: 'demo-linda',
-      title: 'Eye exam',
-      daysAhead: 10,
-      hour: 9,
-      location: 'Eye care center',
-    },
-    {
-      id: 'demo-james-checkup',
-      recipientId: 'demo-james',
-      title: 'Annual checkup',
-      daysAhead: 1,
-      hour: 13,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-anita-specialist',
-      recipientId: 'demo-anita',
-      title: 'Specialist follow-up',
-      daysAhead: 6,
-      hour: 15,
-      location: 'Medical center',
-    },
-    {
-      id: 'demo-meera-dentist',
-      recipientId: 'demo-meera',
-      title: 'Dental cleaning',
-      daysAhead: 15,
-      hour: 10,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-margaret-checkup',
-      recipientId: 'demo-margaret',
-      title: 'Routine checkup',
-      daysAhead: 4,
-      hour: 11,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-george-hearing',
-      recipientId: 'demo-george',
-      title: 'Hearing assessment',
-      daysAhead: 21,
-      hour: 14,
-      location: 'Audiology clinic',
-    },
-    {
-      id: 'demo-rose-followup',
-      recipientId: 'demo-rose',
-      title: 'Follow-up visit',
-      daysAhead: 2,
-      hour: 15,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-frank-checkup',
-      recipientId: 'demo-frank',
-      title: 'Routine checkup',
-      daysAhead: 3,
-      hour: 9,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-elena-therapy',
-      durationMinutes: 90,
-      recipientId: 'demo-elena',
-      title: 'Physical therapy',
-      daysAhead: 2,
-      hour: 14,
-      location: 'Rehabilitation center',
-    },
-    {
-      id: 'demo-robert-dentist',
-      recipientId: 'demo-robert',
-      title: 'Dental checkup',
-      daysAhead: 5,
-      hour: 10,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-grace-eye-exam',
-      recipientId: 'demo-grace',
-      title: 'Eye exam',
-      daysAhead: 6,
-      hour: 11,
-      location: 'Eye care center',
-    },
-    {
-      id: 'demo-henry-followup',
-      recipientId: 'demo-henry',
-      title: 'Therapy follow-up',
-      daysAhead: 6,
-      hour: 15,
-      location: 'Rehabilitation center',
-    },
-    {
-      id: 'demo-linda-checkup',
-      recipientId: 'demo-linda',
-      title: 'Routine checkup',
-      daysAhead: 1,
-      hour: 16,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-james-dentist',
-      recipientId: 'demo-james',
-      title: 'Dental cleaning',
-      daysAhead: 8,
-      hour: 9,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-anita-eye-exam',
-      recipientId: 'demo-anita',
-      title: 'Eye exam',
-      daysAhead: 11,
-      hour: 14,
-      location: 'Eye care center',
-    },
-    {
-      id: 'demo-meera-checkup',
-      recipientId: 'demo-meera',
-      title: 'Annual checkup',
-      daysAhead: 4,
-      hour: 9,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-margaret-dentist',
-      recipientId: 'demo-margaret',
-      title: 'Dental checkup',
-      daysAhead: 13,
-      hour: 10,
-      location: 'Dental clinic',
-    },
-    {
-      id: 'demo-george-checkup',
-      recipientId: 'demo-george',
-      title: 'Routine checkup',
-      daysAhead: 16,
-      hour: 11,
-      location: 'Family clinic',
-    },
-    {
-      id: 'demo-rose-eye-exam',
-      recipientId: 'demo-rose',
-      title: 'Eye exam',
-      daysAhead: 20,
-      hour: 13,
-      location: 'Eye care center',
-    },
-    {
-      id: 'demo-elena-followup',
-      recipientId: 'demo-elena',
-      title: 'Follow-up visit',
-      daysAhead: 23,
-      hour: 10,
-      location: 'Medical center',
-    },
-    {
-      id: 'demo-henry-dentist',
-      recipientId: 'demo-henry',
-      title: 'Dental cleaning',
-      daysAhead: 27,
-      hour: 14,
-      location: 'Dental clinic',
-    },
-  ].map(({ daysAhead, hour, durationMinutes = 60, ...appointment }) => {
-    const date = new Date(baseTime)
-    date.setDate(date.getDate() + daysAhead)
-    date.setHours(hour, 0, 0, 0)
-    const profile = dummyCareProfiles.find((item) => item.id === appointment.recipientId)!
-    return {
-      ...appointment,
-      circleId: profile.circleId,
-      startsAt: date.toISOString(),
-      endsAt: new Date(date.getTime() + durationMinutes * 60_000).toISOString(),
-      status: 'scheduled',
-    }
-  })
-}
 
 export function AppointmentsPage({
-  careProfiles = dummyCareProfiles,
+  careProfiles,
   appointments: providedAppointments,
 }: {
-  careProfiles?: CareProfile[]
-  appointments?: AppointmentSummary[]
+  careProfiles: CareProfile[]
+  appointments: AppointmentSummary[]
 }) {
   // Newly loaded profiles are selected automatically until explicitly unchecked.
   const [excludedProfiles, setExcludedProfiles] = useState<string[]>([])
@@ -346,25 +48,16 @@ export function AppointmentsPage({
     else if (!openProfile && profileAppointmentsDialog.current?.open) profileAppointmentsDialog.current.close()
   }, [openProfile])
   const [now, setNow] = useState(Date.now)
-  // Generate preview dates once per mount so minute updates do not move the appointments.
-  const [dummyAppointments] = useState(() => createDummyAppointments(now))
-  // Local completion overrides keep all views consistent until a write endpoint is connected.
-  const [completionStatus, setCompletionStatus] = useState<Record<string, 'scheduled' | 'completed'>>({})
-  const appointments = (providedAppointments ?? dummyAppointments).map((appointment) =>
-    appointment.status !== 'cancelled' && completionStatus[appointmentKey(appointment)]
-      ? { ...appointment, status: completionStatus[appointmentKey(appointment)] }
-      : appointment,
-  )
+  const { applyCompletion, setCompletion } = useAppointmentCompletion()
+  const appointments = providedAppointments.map(applyCompletion)
   function completeAppointment(appointment: AppointmentSummary) {
     if (appointment.status !== 'scheduled') return
-    const key = appointmentKey(appointment)
-    setCompletionStatus((current) => ({ ...current, [key]: 'completed' }))
+    setCompletion(appointment, 'completed')
   }
   function markAppointmentTodo(appointment: AppointmentSummary) {
     if (appointment.status !== 'completed') return
-    const key = appointmentKey(appointment)
     // Restore scheduled status so the existing date and profile filters decide where it reappears.
-    setCompletionStatus((current) => ({ ...current, [key]: 'scheduled' }))
+    setCompletion(appointment, 'scheduled')
   }
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)

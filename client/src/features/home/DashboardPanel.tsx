@@ -12,6 +12,7 @@ export function DashboardPanel({
   to,
   query,
   empty,
+  action,
   children,
 }: {
   id: string
@@ -20,6 +21,7 @@ export function DashboardPanel({
   to?: string
   query: QueryState
   empty: boolean
+  action?: ReactNode
   children: ReactNode
 }) {
   const heading = (
@@ -61,6 +63,7 @@ export function DashboardPanel({
       ) : (
         children
       )}
+      {action && <div className="mt-6">{action}</div>}
     </section>
   )
 }

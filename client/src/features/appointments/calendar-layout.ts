@@ -1,9 +1,16 @@
 import type { AppointmentSummary } from './AppointmentsPage.tsx'
 
+// Older records only have a start. Give them a short calendar block without displaying a guessed end time.
+export function appointmentLayoutEnd(appointment: AppointmentSummary) {
+  return appointment.endsAt === undefined
+    ? Date.parse(appointment.startsAt) + 15 * 60_000
+    : Date.parse(appointment.endsAt)
+}
+
 /** Reject invalid timestamps and intervals with no positive duration before layout or counting. */
 export function hasValidAppointmentTime(appointment: AppointmentSummary) {
   const start = Date.parse(appointment.startsAt)
-  const end = Date.parse(appointment.endsAt)
+  const end = appointmentLayoutEnd(appointment)
   return Number.isFinite(start) && Number.isFinite(end) && end > start
 }
 
@@ -28,7 +35,7 @@ export function layoutDayAppointments(appointments: AppointmentSummary[], day: D
     .map((appointment) => ({
       appointment,
       start: Math.max(Date.parse(appointment.startsAt), dayStart),
-      end: Math.min(Date.parse(appointment.endsAt), dayEnd),
+      end: Math.min(appointmentLayoutEnd(appointment), dayEnd),
     }))
     .filter((entry) => entry.start < entry.end)
     .sort((a, b) => a.start - b.start || b.end - a.end)

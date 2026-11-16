@@ -8,7 +8,7 @@ async function logIn(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'Log in' }).click()
 }
 
-test('registers, keeps the session after reload, logs out, and logs back in', async ({ page }) => {
+test('registers, keeps the session after reload, logs out, and logs back in to setup', async ({ page }) => {
   const email = `e2e-${Date.now()}@example.com`
 
   await page.goto('/register')
@@ -17,17 +17,17 @@ test('registers, keeps the session after reload, logs out, and logs back in', as
   await page.getByLabel('Password', { exact: true }).fill('password123')
   await page.getByRole('button', { name: 'Create account' }).click()
 
-  await expect(page).toHaveURL('/app')
-  await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
-  await expect(page.getByText(`Signed in as Daniel Alvarez (${email}).`)).toBeVisible()
+  // A new account has no care circle yet, so it starts setup.
+  await expect(page).toHaveURL('/setup')
+  await expect(page.getByRole('heading', { name: 'Tell us about you' })).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'A little clarity for your day.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Tell us about you' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL('/login')
   await logIn(page, email, 'password123')
-  await expect(page).toHaveURL('/app')
+  await expect(page).toHaveURL('/setup')
 })
 
 test('shows errors for a wrong password and a taken email', async ({ page }) => {

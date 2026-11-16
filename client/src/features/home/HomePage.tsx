@@ -1,14 +1,18 @@
+import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ListChecks, Pill, Wallet } from 'lucide-react'
+import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
+import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { useRequiredSession } from '../auth/session.ts'
 import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
 import { useHomeAppointments } from './useHomeAppointments.ts'
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
 const selectClass = 'max-w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body'
@@ -170,8 +174,19 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <HomeAppointmentsPanel appointments={appointments} />
-        <Panel id="expenses" title="Care spending" icon={<Wallet />} query={expenses} empty={!expenses.data?.length}>
+        <HomeAppointmentsPanel appointments={appointments} circleId={circle.id} />
+        <Panel
+          id="expenses"
+          title="Care spending"
+          icon={<Wallet />}
+          query={expenses}
+          empty={!expenses.data?.length}
+          action={
+            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
+              View all expenses
+            </Link>
+          }
+        >
           <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
           <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
           {categories.map(({ label, amount }) => (
@@ -194,8 +209,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 
 export function HomePage() {
   const { user, circles } = useRequiredSession()
-  const [selectedCircle, setSelectedCircle] = useState('')
-  const circle = circles.find((item) => item.id === selectedCircle) ?? circles[0]
+  const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
@@ -203,34 +217,26 @@ export function HomePage() {
           <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
           <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
         </div>
-        {circles.length > 1 ? (
-          <label className="grid gap-2">
-            Care circle
-            <select
-              aria-label="Care circle"
-              className={selectClass}
-              value={circle.id}
-              onChange={(event) => setSelectedCircle(event.target.value)}
+        <div className="flex flex-wrap items-end gap-3">
+          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+          {circle && (
+            <Link
+              to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
             >
-              {circles.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          circle && <p className="font-semibold">{circle.name}</p>
-        )}
+              <UserPlus className="size-4" aria-hidden />
+              Add a person
+            </Link>
+          )}
+        </div>
       </div>
+      {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
       {circle ? (
         <CircleDashboard key={circle.id} circle={circle} />
       ) : (
         <section className="rounded-panel border border-line bg-surface p-6">
-          <h2 className="font-display text-h2 font-semibold">No care circle yet</h2>
-          <p className="mt-2 text-muted">
-            Your care overview will appear here once you belong to a care circle. Circle setup is not available yet.
-          </p>
+          <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+          <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
         </section>
       )}
       <p className="mt-8 text-muted">

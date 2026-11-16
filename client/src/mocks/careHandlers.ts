@@ -1,9 +1,39 @@
 import { delay, http, HttpResponse } from 'msw'
-import { readDb } from './db.ts'
+import { expenseCategorySchema } from '../features/expenses/schemas.ts'
+import { readDb, writeDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 const notFound = () => error(404, 'not_found', 'This care circle or recipient is unavailable.')
 const invalid = () => error(400, 'validation_error', 'Check the date range and filters, then try again.')
+
+export const updateAppointmentStatus = http.patch(
+  '/api/circles/:circleId/appointments/:appointmentId',
+  async ({ request, params }) => {
+    const body = (await request.json().catch(() => null)) as { status?: unknown } | null
+    const db = readDb()
+    const token = bearerToken(request)
+    const userId = token ? db.sessions[token] : undefined
+    if (!userId || !db.users.some((user) => user.id === userId)) return unauthorized()
+    const circle = db.circles.find(
+      (circle) => circle.id === params.circleId && circle.members.some((member) => member.user.id === userId),
+    )
+    const appointment =
+      circle &&
+      db.care.appointments.find(
+        (record) =>
+          record.id === params.appointmentId &&
+          circle.recipients.some((recipient) => recipient.id === record.recipientId),
+      )
+    if (!appointment) return notFound()
+    const status = body?.status
+    if (status !== 'scheduled' && status !== 'completed') {
+      return error(400, 'validation_error', 'Choose scheduled or completed.')
+    }
+    appointment.status = status
+    writeDb(db)
+    return HttpResponse.json({ appointment })
+  },
+)
 
 const resources = {
   appointments: { required: ['from', 'to'], dates: ['from', 'to'], statuses: false },
@@ -54,9 +84,16 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
     const query = new URL(request.url).searchParams
     const recipientId = query.get('recipientId')
     if (recipientId !== null && !circle.recipients.some((recipient) => recipient.id === recipientId)) return notFound()
-    const allowed: string[] = [...config.dates, 'recipientId', ...(config.statuses ? ['status'] : [])]
+    const allowed: string[] = [
+      ...config.dates,
+      'recipientId',
+      ...(config.statuses ? ['status'] : []),
+      ...(resource === 'expenses' ? ['category'] : []),
+    ]
     if ([...query.keys()].some((key) => !allowed.includes(key) || query.getAll(key).length !== 1)) return invalid()
     if (config.required.some((key) => !query.has(key))) return invalid()
+    const category = query.get('category')
+    if (category !== null && !expenseCategorySchema.safeParse(category).success) return invalid()
     const dateOnly = resource === 'expenses'
     if (config.dates.some((key) => query.has(key) && !validDate(query.get(key)!, dateOnly))) return invalid()
     for (let i = 0; i < config.dates.length; i += 2) {
@@ -99,7 +136,10 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       return HttpResponse.json({ tasks: tasks.sort(byDate((record) => record.dueAt)) })
     }
     const expenses = db.care.expenses.filter(
-      (record) => included(record) && inRange(record.incurredOn, query.get('fromDate'), query.get('toDate'), true),
+      (record) =>
+        included(record) &&
+        (!category || record.category === category) &&
+        inRange(record.incurredOn, query.get('fromDate'), query.get('toDate'), true),
     )
     return HttpResponse.json({ expenses: expenses.sort(byDate((record) => record.incurredOn, true)) })
   }),

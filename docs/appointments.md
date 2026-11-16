@@ -2,15 +2,15 @@
 
 ## Current scope
 
-The appointments page is a frontend preview with local appointment completion at `/app/appointments`, behind the existing session guard. Log in using the instructions in the [client README](../client/README.md). Opening a protected route while logged out redirects to `/login`. Successful login always goes to Home (`/app`), including when the login URL contains an old `next` parameter; the originally requested page is not preserved.
+The appointments page is a frontend preview with mock API appointment completion at `/app/appointments`, behind the existing session guard. Log in using the instructions in the [client README](../client/README.md). Opening a protected route while logged out redirects to `/login`. Successful login always goes to Home (`/app`), including when the login URL contains an old `next` parameter; the originally requested page is not preserved.
 
 From the home dashboard, open Appointments in the top navigation between Care and Expenses, or click the appointments panel's heading/icon area. Both links navigate to `/app/appointments`. The appointments page scrolls to the top on entry, regardless of the dashboard's previous scroll position.
 
 `client/src/layouts/AppLayout.tsx` owns the shared top bar for `/app` and `/app/appointments`, including the logo, navigation, and logout. The active page is highlighted. Care and Expenses navigate to their dashboard sections. React Router's scroll restoration handles new-page scrolling, history positions, and section anchors.
 
-The home appointments card scrolls internally after a maximum list height of 26rem. List cards show their information and completion action directly, without opening an additional per-appointment popup. Completed entries remain visible at the bottom, with a completed checkmark and a Mark as to do action, while the upcoming metric excludes them. All appointment lists use this ordering, chronological within scheduled/completed groups. Compact calendar blocks retain strikethrough for completion and open details when clicked. The dashboard still uses its existing API/mock dataset, separate from the appointment page's preview; completion state is local to the dashboard and is not shared between pages or saved across reloads. Dashboard records currently lack end times, so their cards show only the start time.
+The home appointments card scrolls internally after a maximum list height of 26rem. List cards show their information and completion action directly, without opening an additional per-appointment popup. Completed entries remain visible at the bottom, with a completed checkmark and a Mark as to do action, while the upcoming metric excludes them. All appointment lists use this ordering, chronological within scheduled/completed groups. Compact calendar blocks retain strikethrough for completion and open details when clicked. Home and Appointments read from the same care API for the selected circle and use status saved by the browser mock across reloads.
 
-The page currently uses local dummy data, not the appointment API or MSW appointment responses. It has 12 Alvarez family care profiles and 32 appointments, including three today. Dates are generated relative to the page's initial load, in the browser's local timezone. Refreshing regenerates the preview and resets profile selection and completion changes. These appointments are not saved to localStorage.
+The Appointments route loads the selected circle's profiles from the session and appointments through the care query. The preview API uses a broad date range to support calendar navigation. Older records without an end time show a short calendar block and display only the recorded start time.
 
 ## Display and selection rules
 
@@ -25,9 +25,9 @@ The page currently uses local dummy data, not the appointment API or MSW appoint
 - The care-profile and upcoming panels have fixed heights and scroll internally. They do not expand into popups.
 - The notice below the top metrics always appears. It counts scheduled appointments starting on today's local date across all profiles, including appointments earlier today. It is independent of profile selection and excludes completed and cancelled appointments.
 - Clicking the notice opens today's appointments sorted by start time. The popup includes the profile, start/end times, and location, or an empty message. Close, Escape, and clicking outside dismiss it.
-- All appointment details show the assigned caregiver's name, or “Unassigned” when no caregiver is supplied. The preview assigns Maya Alvarez to today's Rose and Frank appointments and Rose's annual checkup; assignment editing is not implemented.
+- All appointment details show the assigned caregiver's name, or “Unassigned” when no caregiver is supplied. Names come from the circle membership response.
 - Scheduled appointments have a Mark completed action on list cards and in compact calendar appointment details. Completion removes the appointment from scheduled counts and today's scheduled notice, while keeping it visible below scheduled entries in the upcoming, profile, today, and calendar-day lists. Existing date/profile filters still apply. The calendar retains the event with its title crossed out in Monthly, Weekly, and Daily views.
-- Completed appointments have a Mark as to do action. It restores scheduled status and removes the calendar strikethrough; the existing date and profile filters determine which lists/counts include it again. This also works for appointments initially supplied as completed. Completion changes are local to this mounted page, with no API write yet.
+- Completed appointments have a Mark as to do action. It restores scheduled status and removes the calendar strikethrough; the existing date and profile filters determine which lists/counts include it again. This also works for appointments initially supplied as completed. The browser mock saves both completion actions on the appointment record.
 
 ## Calendar
 
@@ -40,7 +40,7 @@ The page currently uses local dummy data, not the appointment API or MSW appoint
 
 ## Code and data
 
-Home dashboard appointment responsibilities are separated in `client/src/features/home/`: `useHomeAppointments.ts` owns fetching, display-data conversion, local completion state, ordering, and the upcoming count; `HomeAppointmentsPanel.tsx` renders the scrollable panel using the shared `AppointmentListItem`. `DashboardPanel.tsx` supplies the existing shared panel frame and loading/error/empty states. `HomePage.tsx` calls the hook once so its summary count and panel use the same state.
+Home dashboard appointment responsibilities are separated in `client/src/features/home/`: `useHomeAppointments.ts` owns fetching, display-data conversion, ordering, and the upcoming count; `HomeAppointmentsPanel.tsx` renders the scrollable panel using the shared `AppointmentListItem`. `DashboardPanel.tsx` supplies the existing shared panel frame and loading/error/empty states. `HomePage.tsx` calls the hook once so its summary count and panel use the same state.
 
 | File in `client/src/features/appointments/` | Responsibility |
 | --- | --- |
@@ -55,17 +55,11 @@ Home dashboard appointment responsibilities are separated in `client/src/feature
 
 `CareProfile` and `AppointmentSummary` are currently defined in `AppointmentsPage.tsx`. Profile identity uses both `circleId` and profile `id`; appointment identity also includes the appointment `id`.
 
-The UI appointment shape requires `id`, `circleId`, `recipientId`, `title`, `startsAt`, `endsAt`, and `status` (`scheduled`, `completed`, or `cancelled`), plus optional `location` and `assignedCaregiver` (`{ id, name }` or `null`). Missing/null caregiver data displays as “Unassigned”. Timestamps are ISO strings, displayed in local time. `endsAt` must be strictly later than `startsAt`.
+The UI appointment shape requires `id`, `circleId`, `recipientId`, `title`, `startsAt`, and `status` (`scheduled`, `completed`, or `cancelled`), plus optional `endsAt`, `location` and `assignedCaregiver` (`{ id, name }` or `null`). Missing/null caregiver data displays as “Unassigned”. Timestamps are ISO strings, displayed in local time. When supplied, `endsAt` must be strictly later than `startsAt`.
 
 ### Backend integration still needed
 
-The current [API contract](api-contract.md) appointment shape does not include `endsAt`, `status`, or `circleId`; it has nullable `location` and `assignedCaregiverId`. The frontend preview is not yet an implementation of that response shape. Agree on the end-time/status contract and map the circle context and nullable location before connecting it.
-
-Resolve `assignedCaregiverId` against the circle's member users to supply the display object's ID and name. Dummy caregiver names currently do not come from an account lookup.
-
-The calendar needs records overlapping its displayed period. The current contract describes filtering by `startsAt`; that alone can omit an overnight appointment starting before the requested period. Resolve the query behavior during integration.
-
-The single-family preview is dummy data, not access enforcement. Load only the caregiver's authorized family data when connecting profiles and appointments. Appointment creation, editing, deletion, caregiver assignment, recurrence, persisted selection, and reminder delivery are not implemented here.
+The [API contract](api-contract.md) accepts an optional end time and defines the status update used by the browser mock. The client supplies circle context from the request and resolves caregiver names against circle members. The real backend still needs appointment status writes, editing, recurrence, and reminder delivery.
 
 ## Verification
 

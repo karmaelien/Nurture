@@ -15,14 +15,21 @@ export type Db = {
 }
 
 // Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v3'
+const DB_KEY = 'nurture.mock-db.v4'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
 function seed(): Db {
   const users: DbUser[] = [
-    { id: 'u_demo', name: 'Maya Alvarez', ...DEMO_ACCOUNT },
-    { id: 'u_daniel', name: 'Daniel Alvarez', email: 'daniel@example.test', password: 'mock-only-password' },
+    { id: 'u_demo', name: 'Maya Alvarez', ...DEMO_ACCOUNT, phone: '(555) 010-2030', timeZone: 'America/New_York' },
+    {
+      id: 'u_daniel',
+      name: 'Daniel Alvarez',
+      email: 'daniel@example.test',
+      password: 'mock-only-password',
+      phone: null,
+      timeZone: 'America/Chicago',
+    },
   ]
   return {
     users,
@@ -32,8 +39,22 @@ function seed(): Db {
         name: 'Alvarez family',
         role: 'owner',
         recipients: [
-          { id: 'r_rose', name: 'Rose Alvarez', relationship: null },
-          { id: 'r_frank', name: 'Frank Alvarez', relationship: null },
+          {
+            id: 'r_rose',
+            name: 'Rose Alvarez',
+            preferredName: 'Grandma Rose',
+            dateOfBirth: '1941-03-14',
+            notes: 'Hard of hearing in her left ear. Best reached in the mornings.',
+            relationship: null,
+          },
+          {
+            id: 'r_frank',
+            name: 'Frank Alvarez',
+            preferredName: null,
+            dateOfBirth: '1939-08-02',
+            notes: null,
+            relationship: null,
+          },
         ],
         members: users.map((user, index) => ({
           user: toUser(user),
@@ -68,6 +89,6 @@ export function writeDb(db: Db) {
   }
 }
 
-export function toUser({ id, name, email }: DbUser): User {
-  return { id, name, email }
+export function toUser({ id, name, email, phone, timeZone }: DbUser): User {
+  return { id, name, email, phone, timeZone }
 }

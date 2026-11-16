@@ -1,13 +1,20 @@
 import { CalendarDays } from 'lucide-react'
 import { AppointmentListItem } from '../appointments/AppointmentListItem.tsx'
+import { circleLink } from '../circles/selection.ts'
 import { DashboardPanel } from './DashboardPanel.tsx'
 import type { useHomeAppointments } from './useHomeAppointments.ts'
 
-export function HomeAppointmentsPanel({ appointments }: { appointments: ReturnType<typeof useHomeAppointments> }) {
+export function HomeAppointmentsPanel({
+  appointments,
+  circleId,
+}: {
+  appointments: ReturnType<typeof useHomeAppointments>
+  circleId: string
+}) {
   return (
     <DashboardPanel
       id="appointments"
-      to="/app/appointments"
+      to={circleLink('/app/appointments', circleId)}
       title="Appointments · next 7 days"
       icon={<CalendarDays />}
       query={appointments.query}
@@ -23,8 +30,8 @@ export function HomeAppointmentsPanel({ appointments }: { appointments: ReturnTy
             <AppointmentListItem
               appointment={appointment}
               profileName={appointment.profileName}
-              onComplete={() => appointments.markCompleted(appointment.id)}
-              onMarkTodo={() => appointments.markTodo(appointment.id)}
+              onComplete={() => appointments.markCompleted(appointment)}
+              onMarkTodo={() => appointments.markTodo(appointment)}
             />
           </li>
         ))}
