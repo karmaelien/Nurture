@@ -112,6 +112,9 @@ export type RecipientInput = {
   relationship: Relationship | null
 }
 
+// PATCH /api/circles/:circleId/recipients/:recipientId: any subset of the details, never the relationship.
+export type UpdateRecipientRequest = Partial<Omit<RecipientInput, 'relationship'>>
+
 export type CreateCircleRequest = { name: string; recipient: RecipientInput }
 
 export type ApiErrorBody = {
