@@ -76,11 +76,11 @@ export function AppLayout() {
           </div>
         </div>
         {/* A second row, so new sections never push the account controls onto another line.
-            Centered on wider screens; on phones it scrolls sideways from the first tab. */}
+            Centered once it fits (lg and up); narrower screens scroll it sideways from the first tab. */}
         <nav
           ref={nav}
           aria-label="Main navigation"
-          className="relative mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none] sm:flex-wrap sm:justify-center sm:overflow-visible sm:px-8"
+          className="relative mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none] sm:px-8 lg:flex-wrap lg:justify-center lg:overflow-visible"
         >
           <NavLink to={overview} end className={activeNavClass}>
             <LayoutDashboard className="size-5" aria-hidden />
