@@ -41,7 +41,7 @@ function Select({
       {label}
       <select
         aria-label={label}
-        className="min-w-0 rounded-control border border-line-strong bg-surface px-3 py-3 text-body"
+        className="min-w-0 rounded-control border border-field bg-surface px-3 py-3 text-body"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
