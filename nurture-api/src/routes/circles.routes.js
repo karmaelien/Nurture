@@ -11,7 +11,6 @@ router.get('/:circleId', requirePermission('circle:view'), circles.get);
 
 router.get('/:circleId/members', requirePermission('members:view'), members.list);
 router.post('/:circleId/members', requirePermission('members:manage'), members.add);
-router.patch('/:circleId/members/:userId', requirePermission('members:manage'), members.updateRole);
 router.delete('/:circleId/members/:userId', requirePermission('members:manage'), members.remove);
 
 router.patch('/:circleId', requirePermission('circle:edit'), circles.update);

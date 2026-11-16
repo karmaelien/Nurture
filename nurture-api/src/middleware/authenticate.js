@@ -1,33 +1,21 @@
-const { verifyAccessToken } = require('../utils/tokens');
+const { hashToken } = require('../utils/tokens');
 const User = require('../models/user.model');
 
-const unauthorized = (res, reason) => {
-  return res.status(401).json({
-    error: { code: 'unauthorized', message: 'Authentication required.' },
-  });
-};
+const unauthorized = (res) => res.status(401).json({
+  error: { code: 'unauthorized', message: 'Your session has ended. Log in again.' },
+});
+
 module.exports = async (req, res, next) => {
   try {
     const [scheme, token] = req.headers.authorization?.split(' ') || [];
-    if (scheme !== 'Bearer' || !token) {
-        return unauthorized(res, 'Missing or invalid Bearer token');
-    }
+    if (scheme !== 'Bearer' || !token) return unauthorized(res);
 
-    let userId;
-    try {
-        ({userId} = verifyAccessToken(token));
-    } catch (err) {
-        return unauthorized(res, 'Invalid token');
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-        return unauthorized(res, 'User not found');
-    }
-
+    const user = await User.findBySession(hashToken(token));
+    if (!user) return unauthorized(res);
+    
     req.user = user;
     next();
   } catch (err) {
-    next(err); // database errors go to errorHandler instead of hanging the request
+    next(err);
   }
 };
