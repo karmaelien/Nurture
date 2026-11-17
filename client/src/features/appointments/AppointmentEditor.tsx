@@ -68,6 +68,8 @@ export function AppointmentEditor({
   const refreshAppointments = () =>
     queryClient.invalidateQueries({ queryKey: ['care', user.id, circleId, 'appointments'] })
   const dialog = useRef<HTMLDialogElement>(null)
+  // Claim the write immediately, including submits batched before React disables the button.
+  const saving = useRef(false)
   const heading = useId()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -77,7 +79,8 @@ export function AppointmentEditor({
   }, [])
 
   async function submit(action: () => Promise<void>) {
-    if (busy) return
+    if (saving.current) return
+    saving.current = true
     setBusy(true)
     setError(undefined)
     try {
@@ -86,6 +89,7 @@ export function AppointmentEditor({
     } catch (error) {
       setError(errorMessage(error))
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }

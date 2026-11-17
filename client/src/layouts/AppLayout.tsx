@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { CalendarDays, Files, LayoutDashboard, Wallet } from 'lucide-react'
 import { Link, NavLink, Outlet, ScrollRestoration } from 'react-router'
 import { careApi } from '../api/care.ts'
@@ -17,11 +18,15 @@ const activeNavClass = ({ isActive }: { isActive: boolean }) =>
 
 // Keep navigation mounted across authenticated pages; each page supplies only its own content.
 export function AppLayout() {
-  const { circles } = useRequiredSession()
+  const { circles, user } = useRequiredSession()
+  const queryClient = useQueryClient()
   const { circle } = useCircleSelection(circles)
   const overview = circleLink('/app', circle?.id)
   const logout = useLogout()
-  const completion = useAppointmentCompletionState(careApi.updateAppointmentStatus)
+  const completion = useAppointmentCompletionState(async (circleId, appointmentId, status) => {
+    await careApi.updateAppointmentStatus(circleId, appointmentId, status)
+    await queryClient.invalidateQueries({ queryKey: ['care', user.id, circleId, 'appointments'] })
+  })
   return (
     <div className="min-h-dvh">
       <header className="border-b border-line bg-surface">

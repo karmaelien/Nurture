@@ -7,6 +7,7 @@ import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { useRequiredSession } from '../auth/session.ts'
+import { appointmentUpcomingEnd } from '../appointments/appointment-window.ts'
 import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
@@ -69,7 +70,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     circle,
     {
       from: windowDates.from,
-      to: windowDates.to,
+      to: new Date(appointmentUpcomingEnd(now.getTime())).toISOString(),
       recipientId: recipient,
     },
     assigned,
@@ -177,6 +178,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         <HomeAppointmentsPanel
           appointments={appointments}
           circle={circle}
+          recipientId={recipient}
           now={now.getTime()}
           caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
         />

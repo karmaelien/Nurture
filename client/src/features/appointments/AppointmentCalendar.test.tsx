@@ -41,6 +41,14 @@ const appointments: AppointmentSummary[] = [
 ]
 
 describe('appointment calendar', () => {
+  it('restores the original day after navigating through a shorter month', async () => {
+    const user = userEvent.setup()
+    render(<AppointmentCalendar profiles={profiles} appointments={[]} now={new Date(2027, 0, 31, 12).getTime()} />)
+    await user.click(screen.getByRole('button', { name: 'Next month' }))
+    await user.click(screen.getByRole('button', { name: 'Next month' }))
+    await user.click(screen.getByRole('button', { name: 'Daily' }))
+    expect(screen.getByRole('heading', { name: /March 31, 2027/ })).toBeInTheDocument()
+  })
   it('labels overdue calendar blocks in month, week, and day views', async () => {
     const user = userEvent.setup()
     render(

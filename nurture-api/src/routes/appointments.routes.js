@@ -51,7 +51,7 @@ module.exports = function createAppointmentRouter({ db = require('../config/db')
 
   router.patch('/:appointmentId', async (req, res) => {
     const { circleId, appointmentId } = req.params;
-    if (!validId(appointmentId)) throw notFound();
+    if (!validId(appointmentId) || !await model.exists(circleId, appointmentId)) throw notFound();
     const appointment = await save(() => {
       if (req.body && Object.hasOwn(req.body, 'status')) {
         return model.updateStatus(circleId, appointmentId, parse(statusSchema, req.body).status);

@@ -67,6 +67,7 @@ test('appointment CRUD uses PostgreSQL and stays within its care circle', {
     assert.deepEqual(appointment, { id: appointment.id, ...details, status: 'scheduled' });
     const item = `${route}/${appointment.id}`;
     await request(app).patch(`${otherRoute}/${appointment.id}`).set('x-test-user', outsider).send({ status: 'completed' }).expect(404);
+    await request(app).patch(`${otherRoute}/${appointment.id}`).set('x-test-user', outsider).send({ invalid: true }).expect(404);
     await request(app).delete(`${otherRoute}/${appointment.id}`).set('x-test-user', outsider).expect(404);
     await auth(request(app).patch(item)).send({ status: 'completed' }).expect(200);
     const revised = { ...details, startsAt: details.endsAt, endsAt: '2026-11-16T17:00:00.000Z' };
@@ -76,6 +77,7 @@ test('appointment CRUD uses PostgreSQL and stays within its care circle', {
     const restored = await auth(request(app).patch(item)).send({ status: 'scheduled' }).expect(200);
     assert.equal(restored.body.appointment.status, 'scheduled');
     await auth(request(app).delete(item)).expect(204);
+    await auth(request(app).patch(item)).send({ invalid: true }).expect(404);
     assert.deepEqual((await auth(request(app).get(route)).query(filters).expect(200)).body.appointments, []);
   } finally {
     await db.end();
