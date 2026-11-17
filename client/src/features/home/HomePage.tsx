@@ -308,6 +308,13 @@ export function HomePage() {
                   Care
                 </a>
                 <Link
+                  to={circleLink('/app/appointments', circle.id)}
+                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
+                >
+                  <CalendarDays className="size-5" aria-hidden />
+                  Appointments
+                </Link>
+                <Link
                   to={circleLink('/app/expenses', circle.id)}
                   className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
                 >
