@@ -1,3 +1,4 @@
+import { resetMockDocuments } from '../mocks/documentHandlers.ts'
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { setupServer } from 'msw/node'
@@ -9,6 +10,7 @@ export const server = setupServer(...handlers)
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   cleanup()
+  resetMockDocuments()
   server.resetHandlers()
   localStorage.clear()
 })

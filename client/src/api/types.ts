@@ -119,3 +119,21 @@ export type ExpenseFilters = { fromDate: string; toDate: string; recipientId?: s
 
 export type CreateExpenseRequest = Omit<Expense, 'id'>
 export type UpdateExpenseRequest = Partial<CreateExpenseRequest>
+
+export type DocumentCategory = 'medical' | 'insurance' | 'financial' | 'personal' | 'other'
+export type DocumentSharing = { mode: 'circle'; memberIds: [] } | { mode: 'selected'; memberIds: string[] }
+export type CareDocument = {
+  id: string
+  recipientId: string
+  title: string
+  category: DocumentCategory
+  fileName: string
+  mimeType: 'application/pdf' | 'image/jpeg' | 'image/png'
+  sizeBytes: number
+  uploadedBy: string | null
+  uploadedAt: string
+  sharing: DocumentSharing
+  canManage: boolean
+}
+export type CreateDocumentRequest = Pick<CareDocument, 'recipientId' | 'title' | 'category' | 'sharing'>
+export type UpdateDocumentRequest = Partial<Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>>

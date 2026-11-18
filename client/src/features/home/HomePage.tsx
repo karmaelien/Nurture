@@ -1,17 +1,16 @@
+import { AppHeader } from '../../layouts/AppHeader.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
+import { CalendarDays, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
-import { Logo } from '../../components/ui/Logo.tsx'
-import { ThemeSwitch } from '../../components/ui/ThemeSwitch.tsx'
-import { useLogout, useRequiredSession } from '../auth/session.ts'
+import { useRequiredSession } from '../auth/session.ts'
 import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
@@ -286,50 +285,14 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 
 export function HomePage() {
   const { user, circles } = useRequiredSession()
-  const logout = useLogout()
   const { circle, selectCircle } = useCircleSelection(circles)
+  const { hash, key: locationKey } = useLocation()
+  useEffect(() => {
+    if (hash === '#tasks') document.getElementById('tasks')?.scrollIntoView({ block: 'start' })
+  }, [hash, locationKey, circle?.id])
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <Logo />
-          <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2">
-            <a
-              href="#overview"
-              aria-current="page"
-              className="inline-flex items-center gap-2 rounded-control bg-wash px-3 py-2 font-semibold text-primary"
-            >
-              <LayoutDashboard className="size-5" aria-hidden />
-              Overview
-            </a>
-            {circle && (
-              <>
-                <a href="#tasks" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-                  <CalendarDays className="size-5" aria-hidden />
-                  Care
-                </a>
-                <Link
-                  to={circleLink('/app/expenses', circle.id)}
-                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
-                >
-                  <Wallet className="size-5" aria-hidden />
-                  Expenses
-                </Link>
-              </>
-            )}
-            <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
-              <Files className="size-5" aria-hidden />
-              Documents · soon
-            </span>
-          </nav>
-          <div className="flex items-center gap-2">
-            <ThemeSwitch />
-            <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-              Log out
-            </Button>
-          </div>
-        </div>
-      </header>
+      <AppHeader />
       <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
           <div>
