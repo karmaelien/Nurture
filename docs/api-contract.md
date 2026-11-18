@@ -156,6 +156,9 @@ type DocumentSharing =
   | { mode: 'circle'; memberIds: [] }
   | { mode: 'selected'; memberIds: string[] }
 
+// JSON metadata returned by the API. The actual file is stored separately from
+// these response fields in care_documents.file_bytes (PostgreSQL BYTEA).
+// File bytes are returned only by GET /documents/:documentId/file under the circle path.
 type CareDocument = {
   id: string
   recipientId: string
@@ -170,6 +173,8 @@ type CareDocument = {
   canManage: boolean // computed for the signed-in user; never accepted as input
 }
 
+// Metadata part of the multipart upload, JSON-encoded in the `metadata` field.
+// The separate `file` part contains raw bytes saved to file_bytes in the same transaction.
 type CreateDocumentRequest = {
   recipientId: string
   title: string // trimmed, 1-200 characters
@@ -458,7 +463,8 @@ No body. Deletes the expense. A missing or already-deleted expense returns `404`
 
 ### Documents
 
-Contract for the initial document feature; browser mock and server implementation are pending.
+The browser mock and standalone backend router implement this contract. Mounting the
+router in the shared server and configuring the PostgreSQL connection remain integration steps.
 Documents belong to one recipient and its circle. The initial file types are PDF, JPEG,
 and PNG, with one non-empty file per upload and a maximum of 10 MiB (10,485,760 bytes).
 Parsing, content search, and AI summaries are deferred.
@@ -492,9 +498,14 @@ explicit sharing grants, so rejoining does not restore a previous selected-membe
 Removal does not delete documents they uploaded; circle owners can still manage them.
 Downloaded copies cannot be revoked. Future extraction/search must use the same access rules.
 
-Metadata is stored in PostgreSQL; file bytes stay in private storage. Do not return
-storage paths or permanent public URLs. Validate actual file contents as well as the
-claimed file type, sanitize filenames, and generate storage keys on the server.
+Metadata and file bytes are stored together in PostgreSQL. The backend stores the raw
+binary file in `care_documents.file_bytes` (`BYTEA`, not base64), with its byte length
+constrained to match `size_bytes`. This uses the same PostgreSQL connection locally
+and on Azure Database for PostgreSQL; no filesystem directory or Blob Storage is required.
+Metadata/list queries exclude `file_bytes`; only an authorized file request loads it.
+Do not include file bytes in JSON metadata/list responses or expose public file URLs.
+Deleting a recipient or circle also cascades its document rows, bytes, and sharing grants.
+Validate actual file contents as well as the claimed file type and sanitize filenames.
 Unknown metadata fields and invalid/null required fields return `400 validation_error`.
 
 #### `GET /api/circles/:circleId/documents`
@@ -514,7 +525,8 @@ descending, then ID ascending. No pagination in the initial version.
 
 Multipart body: `file` (one binary file) and `metadata` (JSON-encoded `CreateDocumentRequest`).
 The server generates the ID, uploader, upload time, and file metadata. Return success
-only after both metadata and file storage succeed; clean up partial uploads on failure.
+only after metadata, bytes, and sharing grants commit in one transaction. Failed uploads
+roll back all three.
 
 | Status | Body |
 | --- | --- |
@@ -523,7 +535,7 @@ only after both metadata and file storage succeed; clean up partial uploads on f
 | 404 | `not_found` |
 | 413 | `file_too_large` |
 | 415 | `unsupported_file_type` |
-| 503 | `storage_unavailable` |
+| 500 | `internal_error` (database operation failed) |
 
 #### `GET /api/circles/:circleId/documents/:documentId`
 
@@ -535,7 +547,9 @@ only after both metadata and file storage succeed; clean up partial uploads on f
 #### `GET /api/circles/:circleId/documents/:documentId/file`
 
 Query: `{ disposition? }`, `inline` or `attachment` (default). Recheck access on every
-request and stream the file through the authenticated API. Return the validated
+request, read `file_bytes` from PostgreSQL after authorization, and return the bytes
+through the authenticated API. The initial implementation buffers the file (up to 10 MiB).
+Return the validated
 `Content-Type`, safe `Content-Disposition`, `Cache-Control: private, no-store`, and
 `X-Content-Type-Options: nosniff`. The frontend fetches with its bearer token, then uses
 a temporary browser object URL for viewing/downloading and revokes it afterward.
@@ -544,8 +558,8 @@ a temporary browser object URL for viewing/downloading and revokes it afterward.
 | --- | --- |
 | 200 | Binary file |
 | 400 | `validation_error` |
-| 404 | `not_found` (also when stored bytes are missing) |
-| 503 | `storage_unavailable` |
+| 404 | `not_found` |
+| 500 | `internal_error` (database operation failed) |
 
 #### `PATCH /api/circles/:circleId/documents/:documentId`
 
@@ -563,15 +577,15 @@ and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
 #### `DELETE /api/circles/:circleId/documents/:documentId`
 
 Uploader or circle owner only. Deletes the document and its stored file. Return success
-only after deletion completes; failed storage deletion must remain retryable. A missing
-or already-deleted document returns `404`.
+only after metadata, bytes, and sharing grants are deleted in one transaction. Failed
+deletion rolls back and can be retried. A missing or already-deleted document returns `404`.
 
 | Status | Body |
 | --- | --- |
 | 204 | No body |
 | 403 | `document_manager_only` |
 | 404 | `not_found` |
-| 503 | `storage_unavailable` |
+| 500 | `internal_error` (database operation failed) |
 
 ## Planned next
 
