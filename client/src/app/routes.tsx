@@ -71,13 +71,19 @@ export const routes: RouteObject[] = [
                 }),
               },
               {
+                path: 'documents',
+                lazy: async () => ({
+                  Component: (await import('../features/documents/DocumentsPage.tsx')).DocumentsPage,
+                }),
+              },
+              {
                 path: 'expenses',
                 lazy: async () => ({ Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage }),
               },
               {
                 path: 'appointments',
                 lazy: async () => ({
-                  Component: (await import('../features/appointments/AppointmentsPage.tsx')).AppointmentsPage,
+                  Component: (await import('../features/appointments/AppointmentsRoute.tsx')).AppointmentsRoute,
                 }),
               },
             ],

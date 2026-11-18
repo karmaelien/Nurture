@@ -1,14 +1,13 @@
+import { AppHeader } from '../../layouts/AppHeader.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
-import { circleLink, useCircleSelection } from '../circles/selection.ts'
+import { useCircleSelection } from '../circles/selection.ts'
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link } from 'react-router'
 import type { CircleSummary, Expense, ExpenseCategory } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
-import { Logo } from '../../components/ui/Logo.tsx'
-import { useLogout, useRequiredSession } from '../auth/session.ts'
+import { useRequiredSession } from '../auth/session.ts'
 import { useExpenses } from '../care/queries.ts'
 import { formatMoney } from '../home/dashboard.ts'
 import { useCreateExpense, useDeleteExpense, useUpdateExpense } from './mutations.ts'
@@ -349,34 +348,10 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
 }
 export function ExpensesPage() {
   const { circles } = useRequiredSession()
-  const logout = useLogout()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <Logo />
-          <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2">
-            <Link className="rounded-control px-3 py-2 hover:bg-wash" to={circleLink('/app', circle?.id)}>
-              Overview
-            </Link>
-            <Link className="rounded-control px-3 py-2 hover:bg-wash" to="/app/appointments">
-              Care
-            </Link>
-            <Link
-              className="rounded-control bg-wash px-3 py-2 font-semibold text-primary"
-              aria-current="page"
-              to={circleLink('/app/expenses', circle?.id)}
-            >
-              Expenses
-            </Link>
-            <span className="px-3 py-2 text-muted">Documents · soon</span>
-          </nav>
-          <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-            Log out
-          </Button>
-        </div>
-      </header>
+      <AppHeader />
       <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
         <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
         {circle ? (
