@@ -1,7 +1,10 @@
-import { Link } from 'react-router'
+import { AppHeader } from '../../layouts/AppHeader.tsx'
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
+import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { CalendarDays, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
@@ -217,38 +220,50 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 export function HomePage() {
   const { user, circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
+  const { hash, key: locationKey } = useLocation()
+  useEffect(() => {
+    if (hash === '#tasks') document.getElementById('tasks')?.scrollIntoView({ block: 'start' })
+  }, [hash, locationKey, circle?.id])
   return (
-    <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
-        <div>
-          <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
-          <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
+    <div className="min-h-dvh">
+      <AppHeader />
+      <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
+          <div>
+            <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
+            <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+            {circle && (
+              <Link
+                to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+                className={buttonClasses({ variant: 'secondary', size: 'sm' })}
+              >
+                <UserPlus className="size-4" aria-hidden />
+                Add a person
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-          {circle && (
-            <Link
-              to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
-              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-            >
-              <UserPlus className="size-4" aria-hidden />
-              Add a person
-            </Link>
-          )}
-        </div>
-      </div>
-      {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
-      {circle ? (
-        <CircleDashboard key={circle.id} circle={circle} />
-      ) : (
-        <section className="rounded-panel border border-line bg-surface p-6">
-          <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
-          <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
-        </section>
-      )}
-      <p className="mt-8 text-muted">
-        Signed in as {user.name} ({user.email}).
-      </p>
-    </main>
+        {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
+        {circle ? (
+          <CircleDashboard key={circle.id} circle={circle} />
+        ) : (
+          <section className="rounded-panel border border-line bg-surface p-6">
+            <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+            <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
+          </section>
+        )}
+        <p className="mt-8 text-muted">
+          Signed in as {user.name} ({user.email}).
+        </p>
+        <p className="mt-6">
+          <Link to="/app/appointments" className="link">
+            Appointments
+          </Link>
+        </p>
+      </main>
+    </div>
   )
 }

@@ -1,3 +1,4 @@
+import { documentHandlers } from './documentHandlers.ts'
 import { delay, http, HttpResponse } from 'msw'
 import type { z } from 'zod'
 import type { AuthResponse, CircleSummary, Recipient, RecipientConflictBody, Session } from '../api/types.ts'
@@ -73,6 +74,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 }
 
 export const handlers = [
+  ...documentHandlers,
   ...careHandlers,
   ...appointmentHandlers,
   ...expenseHandlers,

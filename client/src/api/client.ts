@@ -23,11 +23,15 @@ export class ApiError extends Error {
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
+  responseType?: 'json' | 'blob'
 }
 
-export async function request<T>(path: string, { method = 'GET', body }: RequestOptions = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  { method = 'GET', body, responseType = 'json' }: RequestOptions = {},
+): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  if (body !== undefined && !(body instanceof FormData)) headers['Content-Type'] = 'application/json'
   const token = getToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -36,13 +40,15 @@ export async function request<T>(path: string, { method = 'GET', body }: Request
     response = await fetch(new URL(path, BASE_URL || window.location.origin), {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body instanceof FormData ? body : body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
     throw new ApiError(0, 'network_error', "Can't reach Nurture. Check your connection and try again.")
   }
 
   if (response.status === 204) return undefined as T
+
+  if (response.ok && responseType === 'blob') return (await response.blob()) as T
 
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
