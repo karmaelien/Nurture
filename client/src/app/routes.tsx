@@ -1,6 +1,7 @@
 import { Navigate, Outlet, type RouteObject } from 'react-router'
 import { FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
 import { AuthLayout } from '../layouts/AuthLayout.tsx'
+import { AppLayout } from '../layouts/AppLayout.tsx'
 import type { SetupHandle } from '../features/setup/SetupLayout.tsx'
 import { GuestOnly, RequireCircle, RequireSession } from './guards.tsx'
 import { NotFoundPage } from './NotFoundPage.tsx'
@@ -61,8 +62,19 @@ export const routes: RouteObject[] = [
             element: <RequireCircle />,
             children: [
               {
-                index: true,
-                lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                element: <AppLayout />,
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                  },
+                  {
+                    path: 'appointments',
+                    lazy: async () => ({
+                      Component: (await import('../features/appointments/AppointmentsRoute.tsx')).AppointmentsRoute,
+                    }),
+                  },
+                ],
               },
               {
                 path: 'circles/:circleId/people/new',
@@ -73,12 +85,6 @@ export const routes: RouteObject[] = [
               {
                 path: 'expenses',
                 lazy: async () => ({ Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage }),
-              },
-              {
-                path: 'appointments',
-                lazy: async () => ({
-                  Component: (await import('../features/appointments/AppointmentsPage.tsx')).AppointmentsPage,
-                }),
               },
             ],
           },

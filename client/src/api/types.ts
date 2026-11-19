@@ -43,11 +43,24 @@ export type CircleDetail = CircleSummary & { members: Member[] }
 
 export type Session = { user: User; circles: CircleSummary[] }
 
+export type AppointmentCompletionStatus = 'scheduled' | 'completed'
+
+export type AppointmentInput = {
+  recipientId: string
+  title: string
+  startsAt: string
+  endsAt: string
+  location: string | null
+  assignedCaregiverId: string | null
+}
+
 export type Appointment = {
   id: string
   recipientId: string
   title: string
   startsAt: string // UTC timestamp
+  endsAt?: string // UTC timestamp, when supplied
+  status?: AppointmentCompletionStatus // older records default to scheduled
   location: string | null
   assignedCaregiverId: string | null // null means unassigned
 }

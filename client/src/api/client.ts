@@ -1,8 +1,9 @@
 import { getToken } from './token.ts'
 import type { ApiErrorBody } from './types.ts'
+import { mocksEnabled } from '../mocks/enabled.ts'
 
 // Empty means same origin: the mock worker, the Vite dev proxy to the local server, or a production proxy.
-const BASE_URL = import.meta.env.VITE_API_URL ?? ''
+const BASE_URL = mocksEnabled ? '' : (import.meta.env.VITE_API_URL ?? '')
 
 export class ApiError extends Error {
   readonly status: number
@@ -43,10 +44,16 @@ export async function request<T>(path: string, { method = 'GET', body }: Request
   const data: unknown = await response.json().catch(() => null)
   if (!response.ok) {
     const error = (data as ApiErrorBody | null)?.error
+    const missingRoute =
+      response.status === 404
+        ? `The ${mocksEnabled ? 'demo' : 'server'} API did not handle ${method} ${path.split('?')[0]} (404).`
+        : undefined
     throw new ApiError(
       response.status,
       error?.code ?? 'unknown_error',
-      error?.message ?? `Nurture returned an unexpected error (${response.status}). Try again in a moment.`,
+      error?.message ??
+        missingRoute ??
+        `Nurture returned an unexpected error (${response.status}). Try again in a moment.`,
     )
   }
   return data as T

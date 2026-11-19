@@ -1,18 +1,19 @@
-import { CircleSelection } from '../circles/CircleSelection.tsx'
-import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
-import { Logo } from '../../components/ui/Logo.tsx'
-import { ThemeSwitch } from '../../components/ui/ThemeSwitch.tsx'
-import { useLogout, useRequiredSession } from '../auth/session.ts'
-import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
+import { useRequiredSession } from '../auth/session.ts'
+import { appointmentUpcomingEnd } from '../appointments/appointment-window.ts'
+import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
+import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
+import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
+import { useHomeAppointments } from './useHomeAppointments.ts'
+import { CircleSelection } from '../circles/CircleSelection.tsx'
+import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
@@ -22,60 +23,6 @@ const categoryNames: Record<ExpenseCategory, string> = {
   insurance: 'Insurance',
   utilities: 'Utilities',
   other: 'Other',
-}
-
-type QueryState = { isPending: boolean; isError: boolean; error: unknown; refetch: () => unknown }
-
-function Panel({
-  id,
-  title,
-  icon,
-  query,
-  empty,
-  action,
-  children,
-}: {
-  id: string
-  title: string
-  icon: ReactNode
-  query: QueryState
-  empty: boolean
-  action?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <section
-      id={id}
-      aria-labelledby={`${id}-title`}
-      className="min-w-0 scroll-mt-6 rounded-panel border border-line bg-surface p-5 sm:p-6"
-    >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={`${id}-title`} className="font-display text-h3 font-semibold">
-          {title}
-        </h2>
-        <span className="text-primary" aria-hidden>
-          {icon}
-        </span>
-      </div>
-      {query.isError ? (
-        <div role="alert">
-          <p>{errorMessage(query.error)}</p>
-          <Button variant="secondary" className="mt-3" onClick={() => query.refetch()}>
-            Try again
-          </Button>
-        </div>
-      ) : query.isPending ? (
-        <p role="status" className="text-muted">
-          Loading…
-        </p>
-      ) : empty ? (
-        <p className="text-muted">Nothing to show for this period.</p>
-      ) : (
-        children
-      )}
-      {action && <div className="mt-6">{action}</div>}
-    </section>
-  )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -97,11 +44,6 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
   }, [])
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
-  const appointments = useAppointments(circle.id, {
-    from: windowDates.from,
-    to: windowDates.to,
-    recipientId: recipient,
-  })
   const medications = useMedicationOccurrences(circle.id, {
     from: windowDates.todayStart,
     to: windowDates.tomorrowStart,
@@ -124,6 +66,15 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
       ? 'Unassigned'
       : (details.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
         (details.isError ? 'Caregiver unavailable' : 'Loading caregiver…'))
+  const appointments = useHomeAppointments(
+    circle,
+    {
+      from: windowDates.from,
+      to: new Date(appointmentUpcomingEnd(now.getTime())).toISOString(),
+      recipientId: recipient,
+    },
+    assigned,
+  )
   const total = expenses.data?.reduce((sum, expense) => sum + expense.amountCents, 0) ?? 0
   const categories = Object.entries(categoryNames)
     .map(([category, label]) => ({
@@ -173,7 +124,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                 : `${medications.data?.filter((dose) => dose.status === 'completed').length ?? 0} / ${medications.data?.length ?? 0}`
           }
         />
-        <Stat label="Upcoming appointments · next 7 days" value={count(appointments)} />
+        <Stat label="Upcoming appointments · next 7 days" value={appointments.upcomingCountLabel} />
       </div>
       {details.isError && (
         <div role="alert" className="mb-6 flex flex-wrap items-center gap-3">
@@ -224,34 +175,13 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel
-          id="appointments"
-          title="Appointments · next 7 days"
-          icon={<CalendarDays />}
-          query={appointments}
-          empty={!appointments.data?.length}
-        >
-          <ul className="divide-y divide-line">
-            {appointments.data?.map((appointment) => (
-              <li key={appointment.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-                <div className="h-fit min-w-14 rounded-control bg-wash p-2 text-center" aria-hidden>
-                  <p>{new Date(appointment.startsAt).toLocaleDateString(undefined, { weekday: 'short' })}</p>
-                  <p className="font-semibold">{new Date(appointment.startsAt).getDate()}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold">{appointment.title}</p>
-                  <p>
-                    {name(appointment.recipientId)} · {formatDate(appointment.startsAt)} ·{' '}
-                    {formatTime(appointment.startsAt)}
-                  </p>
-                  <p className="text-muted">
-                    {appointment.location ?? 'Location not set'} · {assigned(appointment.assignedCaregiverId)}
-                  </p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <HomeAppointmentsPanel
+          appointments={appointments}
+          circle={circle}
+          recipientId={recipient}
+          now={now.getTime()}
+          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+        />
         <Panel
           id="expenses"
           title="Care spending"
@@ -286,87 +216,39 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
 
 export function HomePage() {
   const { user, circles } = useRequiredSession()
-  const logout = useLogout()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
-    <div className="min-h-dvh">
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">
-          <Logo />
-          <nav aria-label="Main navigation" className="flex flex-wrap items-center gap-2">
-            <a
-              href="#overview"
-              aria-current="page"
-              className="inline-flex items-center gap-2 rounded-control bg-wash px-3 py-2 font-semibold text-primary"
+    <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
+        <div>
+          <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
+          <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+          {circle && (
+            <Link
+              to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
+              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
             >
-              <LayoutDashboard className="size-5" aria-hidden />
-              Overview
-            </a>
-            {circle && (
-              <>
-                <a href="#tasks" className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash">
-                  <CalendarDays className="size-5" aria-hidden />
-                  Care
-                </a>
-                <Link
-                  to={circleLink('/app/expenses', circle.id)}
-                  className="inline-flex items-center gap-2 rounded-control px-3 py-2 hover:bg-wash"
-                >
-                  <Wallet className="size-5" aria-hidden />
-                  Expenses
-                </Link>
-              </>
-            )}
-            <span className="inline-flex items-center gap-2 px-3 py-2 text-muted">
-              <Files className="size-5" aria-hidden />
-              Documents · soon
-            </span>
-          </nav>
-          <div className="flex items-center gap-2">
-            <ThemeSwitch />
-            <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-              Log out
-            </Button>
-          </div>
+              <UserPlus className="size-4" aria-hidden />
+              Add a person
+            </Link>
+          )}
         </div>
-      </header>
-      <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
-          <div>
-            <h1 className="font-display text-h1 font-bold">A little clarity for your day.</h1>
-            <p className="mt-2 text-muted">Here’s what’s coming up for your family.</p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-            {circle && (
-              <Link
-                to={`/app/circles/${encodeURIComponent(circle.id)}/people/new`}
-                className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-              >
-                <UserPlus className="size-4" aria-hidden />
-                Add a person
-              </Link>
-            )}
-          </div>
-        </div>
-        {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
-        {circle ? (
-          <CircleDashboard key={circle.id} circle={circle} />
-        ) : (
-          <section className="rounded-panel border border-line bg-surface p-6">
-            <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
-            <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
-          </section>
-        )}
-        <p className="mt-8 text-muted">
-          Signed in as {user.name} ({user.email}).
-        </p>
-        <p className="mt-6">
-          <Link to="/app/appointments" className="link">
-            Appointments
-          </Link>
-        </p>
-      </main>
-    </div>
+      </div>
+      {/* RequireCircle guarantees a circle, so only an unknown ?circleId lands here. */}
+      {circle ? (
+        <CircleDashboard key={circle.id} circle={circle} />
+      ) : (
+        <section className="rounded-panel border border-line bg-surface p-6">
+          <h2 className="font-display text-h2 font-semibold">Select a care circle</h2>
+          <p className="mt-2 text-muted">Choose an available circle above to view its dashboard.</p>
+        </section>
+      )}
+      <p className="mt-8 text-muted">
+        Signed in as {user.name} ({user.email}).
+      </p>
+    </main>
   )
 }

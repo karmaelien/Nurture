@@ -60,8 +60,3 @@ export function useLogout() {
     },
   })
 }
-
-/** Only allow same-site paths as post-login destinations. */
-export function safeNext(next: string | null): string | null {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : null
-}

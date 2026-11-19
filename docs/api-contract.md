@@ -92,6 +92,8 @@ type Appointment = {
   recipientId: string
   title: string
   startsAt: string // UTC timestamp
+  endsAt?: string // UTC timestamp, when supplied; must be later than startsAt
+  status?: 'scheduled' | 'completed' // missing means scheduled
   location: string | null
   assignedCaregiverId: string | null // null means unassigned
 }
@@ -285,14 +287,28 @@ caregiver IDs refer to the selected circle's recipients and member user IDs.
 
 #### `GET /api/circles/:circleId/appointments`
 
+The frontend uses the browser mock for these appointment endpoints. The PostgreSQL router implements the same operations as a standalone router and is not mounted yet.
+
 Query: `{ from, to, recipientId? }`. `from` and `to` are required timestamps filtering
-`startsAt`. Returns non-cancelled appointments, sorted by `startsAt` ascending.
+`startsAt` with an inclusive lower bound and an exclusive upper bound. Returns non-cancelled appointments, sorted by `startsAt` ascending.
 
 | Status | Body |
 | --- | --- |
 | 200 | `{ appointments: Appointment[] }` |
 | 400 | `validation_error` |
 | 404 | `not_found` |
+
+#### `POST /api/circles/:circleId/appointments`
+
+Body: `{ recipientId, title, startsAt, endsAt, location, assignedCaregiverId }`. The end must be later than the start. Location and caregiver may be null. The recipient and any assigned caregiver must belong to the circle. Returns `201` with `{ appointment: Appointment }` and initial status `scheduled`.
+
+#### `PATCH /api/circles/:circleId/appointments/:appointmentId`
+
+Accepts either the same fields as creation (preserving completion status) or `{ status: 'scheduled' | 'completed' }`. Returns `200` with `{ appointment: Appointment }`. An appointment unavailable in the requested care circle returns `404`.
+
+#### `DELETE /api/circles/:circleId/appointments/:appointmentId`
+
+Removes the appointment and returns `204`. Appointment writes require circle membership and return `400` for invalid input or `404` for unavailable records.
 
 #### `GET /api/circles/:circleId/medication-occurrences`
 
@@ -388,7 +404,7 @@ No body. Deletes the expense. A missing or already-deleted expense returns `404`
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
+- **Other care-data mutations and schedules:** create/update/delete operations for medication occurrences and tasks, plus medication definitions and recurring schedules.
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend
