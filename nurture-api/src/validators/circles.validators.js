@@ -1,10 +1,13 @@
 const { z } = require('zod');
+const { addSchema } = require('./recipients.validators');
 
 exports.createSchema = z.object({
-  name: z.string().trim().min(1).max(128),
-  recipient: z.object({
-    name: z.string().trim().min(1).max(128),
-    relationship: z.enum(['parent','grandparent','sibling','friend','spouse','child','other'])
-  }),
-  budget: z.int().min(0).optional(), // whole cents, e.g. 50000 = $500.00
+  name: z.string().trim().min(1).max(80),
+  budget: z.number().int().min(0).optional(),
+  recipient: addSchema
 });
+
+exports.updateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  budget: z.number().int().min(0).optional()
+})

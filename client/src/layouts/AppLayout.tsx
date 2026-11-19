@@ -5,6 +5,7 @@ import { careApi } from '../api/care.ts'
 import { Alert } from '../components/ui/Alert.tsx'
 import { Button } from '../components/ui/Button.tsx'
 import { Logo } from '../components/ui/Logo.tsx'
+import { ThemeSwitch } from '../components/ui/ThemeSwitch.tsx'
 import {
   AppointmentCompletionContext,
   useAppointmentCompletionState,
@@ -60,9 +61,12 @@ export function AppLayout() {
               Documents · soon
             </span>
           </nav>
-          <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
-            Log out
-          </Button>
+          <div className="flex items-center gap-2">
+            <ThemeSwitch />
+            <Button variant="secondary" loading={logout.isPending} onClick={() => logout.mutate()}>
+              Log out
+            </Button>
+          </div>
         </div>
       </header>
       <AppointmentCompletionContext.Provider value={completion}>

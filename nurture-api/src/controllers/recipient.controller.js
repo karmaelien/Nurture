@@ -1,39 +1,37 @@
 const { addSchema, relationshipSchema } = require('../validators/recipients.validators');
+const db = require('../config/db');
+const Recipient = require('../models/recipient.model');
+const { httpError } = require('../utils/httpErrors');
+const { parseId } = require('../utils/ids');
+const { toRecipient } = require('../utils/serializers');
 
-const toRecipient = (r, relationship) => ({ id: String(r.id), name: r.name, relationship });
-
+// POST /api/circles/:circleId/recipients
 exports.add = async (req, res, next) => {
   try {
     const parsed = addSchema.safeParse(req.body);
     if (!parsed.success) {
       throw httpError(400, 'validation_error', 'Provide a name (1 to 80 characters) and a relationship, or null.');
     }
-    const { name, relationship } = parsed.data;
+    const { relationship, ...profile } = parsed.data;
 
-    const recipient = await Recipient.create({ circleId: req.circleId, name });
-    const label = await Recipient.setRelationship(req.user.id, recipient.id, relationship);
+    const { recipient, label } = await db.transaction(async (tx) => {
+      const recipient = await Recipient.create({ circleId: req.circleId, ...profile }, tx);
+      const label = await Recipient.setRelationship(req.user.id, recipient.id, relationship, tx);
+      return { recipient, label };
+    });
     res.status(201).json({ recipient: toRecipient(recipient, label) });
   } catch (err) {
     next(err);
   }
 };
 
-exports.list = async (req, res, next) => {
-  try {
-    const recipients = await Recipient.listByCircle(req.circleId);
-    const relationships = await Recipient.getRelationships(req.user.id, req.circleId);
-    res.json({ recipients: recipients.map((r) => toRecipient(r, relationships[r.id] ?? null)) });
-  } catch (err) {
-    next(err);
-  }
-};
-
+// PUT /api/circles/:circleId/recipients/:recipientId/relationship
 exports.updateRelationship = async (req, res, next) => {
   try {
-    const recipientId = Number(req.params.recipientId);
-    const recipient = Number.isInteger(recipientId) && recipientId > 0
-      ? await Recipient.findInCircle(req.circleId, recipientId)
-      : null;
+    const recipientId = parseId(req.params.recipientId);
+    const recipient = recipientId === null
+      ? null
+      : await Recipient.findInCircle(req.circleId, recipientId);
     if (!recipient) throw httpError(404, 'not_found', 'Recipient not found.');
 
     const parsed = relationshipSchema.safeParse(req.body);

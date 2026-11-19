@@ -16,7 +16,7 @@ import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
-const selectClass = 'max-w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body'
+const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
   medication: 'Medication',
   appointment: 'Appointments',

@@ -53,3 +53,18 @@ test('sends logged-out visitors to login, then on to the app', async ({ page }) 
   await expect(page).toHaveURL('/app')
   await expect(page.getByText('Signed in as Maya Alvarez (demo@nurture.app).')).toBeVisible()
 })
+
+test('remembers a light or dark choice across reloads without a flash', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/login')
+  await page.getByRole('radio', { name: 'Light' }).check({ force: true })
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  // The saved theme is applied by index.html before the app's code runs.
+  await page.reload({ waitUntil: 'commit' })
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByRole('radio', { name: 'Light' })).toBeChecked()
+
+  await page.getByRole('radio', { name: 'System' }).check({ force: true })
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme')
+})

@@ -16,7 +16,7 @@ export function CircleSelection({
         aria-label="Care circle"
         value={circle?.id ?? ''}
         disabled={circles.length === 0 || (circles.length === 1 && !!circle)}
-        className="max-w-full rounded-control border border-line-strong bg-surface px-3 py-2 text-body disabled:cursor-not-allowed disabled:bg-wash disabled:text-muted disabled:opacity-60"
+        className="max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body disabled:cursor-not-allowed disabled:bg-wash disabled:text-muted disabled:opacity-60"
         onChange={(event) => onChange(event.target.value)}
       >
         {!circle && (
