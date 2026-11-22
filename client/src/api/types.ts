@@ -21,6 +21,8 @@ export type Recipient = {
   notes: string | null // short free text for the family, not a medical record
   // The signed-in user's own label for this recipient, if they set one.
   relationship: Relationship | null
+  // Goes up by one each time the details change; edits send it back (see UpdateRecipientRequest).
+  version: number
 }
 
 // What the signed-in user sees for each of their circles.
@@ -111,6 +113,13 @@ export type RecipientInput = {
   notes: string | null
   relationship: Relationship | null
 }
+
+// PATCH /api/circles/:circleId/recipients/:recipientId: any subset of the details, never the relationship.
+// `version` is the Recipient.version the edit is based on; a stale one gets 409 edit_conflict.
+export type UpdateRecipientRequest = Partial<Omit<RecipientInput, 'relationship'>> & { version: number }
+
+// The 409 edit_conflict body: the error plus the details as they're saved now.
+export type RecipientConflictBody = ApiErrorBody & { recipient: Recipient }
 
 export type CreateCircleRequest = { name: string; recipient: RecipientInput }
 

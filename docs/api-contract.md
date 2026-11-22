@@ -12,13 +12,13 @@ User ──< Membership >── Circle ──< Recipient
                                      └──< CareRelationship >── User
 ```
 
-| Entity | What it is | Key fields |
-| --- | --- | --- |
-| **User** | Someone with a login: a caregiver. | `id`, `name`, `email` (unique), `phone`, `timeZone`, password hash |
-| **Circle** | A group that shares care, such as "Alvarez family". | `id`, `name`, `createdAt` |
-| **Membership** | Joins a user to a circle. A user can be in many circles, and a circle has many users. | `circleId`, `userId`, `role` (`owner` or `member`), `joinedAt`. Unique on (`circleId`, `userId`). |
-| **Recipient** | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `preferredName`, `dateOfBirth`, `notes`, `createdAt` |
-| **CareRelationship** | Optional label for how one caregiver relates to one recipient: Daniel is Rose's child and Frank's child-in-law. For display only; it never grants access. | `userId`, `recipientId`, `relationship`. Unique on (`userId`, `recipientId`). |
+| Entity               | What it is                                                                                                                                                            | Key fields                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **User**             | Someone with a login: a caregiver.                                                                                                                                    | `id`, `name`, `email` (unique), `phone`, `timeZone`, password hash                                |
+| **Circle**           | A group that shares care, such as "Alvarez family".                                                                                                                   | `id`, `name`, `createdAt`                                                                         |
+| **Membership**       | Joins a user to a circle. A user can be in many circles, and a circle has many users.                                                                                 | `circleId`, `userId`, `role` (`owner` or `member`), `joinedAt`. Unique on (`circleId`, `userId`). |
+| **Recipient**        | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `preferredName`, `dateOfBirth`, `notes`, `createdAt`                    |
+| **CareRelationship** | Optional label for how one caregiver relates to one recipient: Daniel is Rose's child and Frank's child-in-law. For display only; it never grants access.             | `userId`, `recipientId`, `relationship`. Unique on (`userId`, `recipientId`).                     |
 
 Rules:
 
@@ -36,105 +36,119 @@ Rules:
 - Every error uses this shape. The client shows `message` to the user directly, so write it as plain, specific text that says how to fix the problem:
 
 ```json
-{ "error": { "code": "email_taken", "message": "That email already has an account. Log in instead, or use a different email." } }
+{
+  "error": {
+    "code": "email_taken",
+    "message": "That email already has an account. Log in instead, or use a different email."
+  }
+}
 ```
 
 ## Types
 
 ```ts
 type User = {
-  id: string
-  name: string
-  email: string
+  id: string;
+  name: string;
+  email: string;
   // Visible to everyone who shares a circle with this user, so the family can reach them.
-  phone: string | null // as entered, trimmed: 7-20 characters of digits, spaces, and + - ( )
-  timeZone: string | null // IANA name, such as "America/New_York". Null until the user sets it.
-}
+  phone: string | null; // as entered, trimmed: 7-20 characters of digits, spaces, and + - ( )
+  timeZone: string | null; // IANA name, such as "America/New_York". Null until the user sets it.
+};
 
-type Role = 'owner' | 'member'
+type Role = "owner" | "member";
 
 // How the signed-in user relates to a recipient ("Rose is my grandparent").
-type Relationship = 'parent' | 'grandparent' | 'spouse' | 'sibling' | 'child' | 'friend' | 'other'
+type Relationship =
+  | "parent"
+  | "grandparent"
+  | "spouse"
+  | "sibling"
+  | "child"
+  | "friend"
+  | "other";
 
 type Recipient = {
-  id: string
-  name: string
-  preferredName: string | null // what the family calls them, such as "Grandma Rose"; 1-80 characters
-  dateOfBirth: string | null // YYYY-MM-DD calendar date, from 1900-01-01 up to today
-  notes: string | null // up to 500 characters of free text for the family; not a medical record
+  id: string;
+  name: string;
+  preferredName: string | null; // what the family calls them, such as "Grandma Rose"; 1-80 characters
+  dateOfBirth: string | null; // YYYY-MM-DD calendar date, from 1900-01-01 up to today
+  notes: string | null; // up to 500 characters of free text for the family; not a medical record
   // The signed-in user's own label for this recipient, if they set one.
-  relationship: Relationship | null
-}
+  relationship: Relationship | null;
+  // Starts at 1 and goes up by one each time the details above change (not the relationship).
+  // Edits send it back so the server can refuse a save based on an out-of-date copy.
+  version: number;
+};
 
 // What the signed-in user sees for each of their circles.
 type CircleSummary = {
-  id: string
-  name: string
-  role: Role // the signed-in user's role in this circle
-  recipients: Recipient[]
-}
+  id: string;
+  name: string;
+  role: Role; // the signed-in user's role in this circle
+  recipients: Recipient[];
+};
 
 type Member = {
-  user: User
-  role: Role
-  joinedAt: string
+  user: User;
+  role: Role;
+  joinedAt: string;
   // This member's labels for the circle's recipients, keyed by recipient id. Missing means no label.
-  relationships: Record<string, Relationship>
-}
+  relationships: Record<string, Relationship>;
+};
 
-type CircleDetail = CircleSummary & { members: Member[] }
+type CircleDetail = CircleSummary & { members: Member[] };
 
-type Session = { user: User; circles: CircleSummary[] }
-
+type Session = { user: User; circles: CircleSummary[] };
 
 type Appointment = {
-  id: string
-  recipientId: string
-  title: string
-  startsAt: string // UTC timestamp
-  endsAt?: string // UTC timestamp, when supplied; must be later than startsAt
-  status?: 'scheduled' | 'completed' // missing means scheduled
-  location: string | null
-  assignedCaregiverId: string | null // null means unassigned
-}
+  id: string;
+  recipientId: string;
+  title: string;
+  startsAt: string; // UTC timestamp
+  endsAt?: string; // UTC timestamp, when supplied; must be later than startsAt
+  status?: "scheduled" | "completed"; // missing means scheduled
+  location: string | null;
+  assignedCaregiverId: string | null; // null means unassigned
+};
 
 type MedicationOccurrence = {
-  id: string // unique to this occurrence
-  medicationId: string
-  recipientId: string
-  name: string
-  dosage: string // display text supplied by the care-management feature
-  scheduledAt: string // UTC timestamp
-  status: 'pending' | 'completed'
-}
+  id: string; // unique to this occurrence
+  medicationId: string;
+  recipientId: string;
+  name: string;
+  dosage: string; // display text supplied by the care-management feature
+  scheduledAt: string; // UTC timestamp
+  status: "pending" | "completed";
+};
 
 type CareTask = {
-  id: string
-  recipientId: string
-  title: string
-  dueAt: string | null // UTC timestamp, or no due date
-  assignedCaregiverId: string | null
-  status: 'pending' | 'completed'
-  completedAt: string | null // non-null exactly when status is completed
-}
+  id: string;
+  recipientId: string;
+  title: string;
+  dueAt: string | null; // UTC timestamp, or no due date
+  assignedCaregiverId: string | null;
+  status: "pending" | "completed";
+  completedAt: string | null; // non-null exactly when status is completed
+};
 
 type ExpenseCategory =
-  | 'medication' | 'appointment' | 'insurance' | 'utilities' | 'other'
+  "medication" | "appointment" | "insurance" | "utilities" | "other";
 
 type Expense = {
-  id: string
-  recipientId: string
-  description: string
-  category: ExpenseCategory
-  amountCents: number // positive integer; sum integer cents, not floating-point dollars
-  currency: 'USD' // initial mock supports USD only
-  incurredOn: string // YYYY-MM-DD calendar date, not a UTC timestamp
-}
+  id: string;
+  recipientId: string;
+  description: string;
+  category: ExpenseCategory;
+  amountCents: number; // positive integer; sum integer cents, not floating-point dollars
+  currency: "USD"; // initial mock supports USD only
+  incurredOn: string; // YYYY-MM-DD calendar date, not a UTC timestamp
+};
 
-type CreateExpenseRequest = Omit<Expense, 'id'>
+type CreateExpenseRequest = Omit<Expense, "id">;
 
 // At least one field is required. Omitted fields keep their existing values.
-type UpdateExpenseRequest = Partial<CreateExpenseRequest>
+type UpdateExpenseRequest = Partial<CreateExpenseRequest>;
 ```
 
 A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
@@ -143,12 +157,12 @@ A new user has `circles: []`. The client sends them through setup: their own pro
 
 ```ts
 type RecipientInput = {
-  name: string // 1-80 characters
-  preferredName: string | null
-  dateOfBirth: string | null
-  notes: string | null
-  relationship: Relationship | null // saved as the signed-in user's own label
-}
+  name: string; // 1-80 characters
+  preferredName: string | null;
+  dateOfBirth: string | null;
+  notes: string | null;
+  relationship: Relationship | null; // saved as the signed-in user's own label
+};
 ```
 
 ## Endpoints
@@ -159,30 +173,30 @@ type RecipientInput = {
 
 Body: `{ name, email, password }`. `name` is 1-80 characters and `password` is 8-128 characters.
 
-| Status | Body |
-| --- | --- |
-| 201 | `Session & { token }`. `circles` is always `[]`, and `phone` and `timeZone` are `null`. |
-| 400 | `validation_error` |
-| 409 | `email_taken` |
+| Status | Body                                                                                    |
+| ------ | --------------------------------------------------------------------------------------- |
+| 201    | `Session & { token }`. `circles` is always `[]`, and `phone` and `timeZone` are `null`. |
+| 400    | `validation_error`                                                                      |
+| 409    | `email_taken`                                                                           |
 
 #### `POST /api/auth/login`
 
 Body: `{ email, password }`
 
-| Status | Body |
-| --- | --- |
-| 200 | `Session & { token }` |
-| 400 | `validation_error` |
-| 401 | `invalid_credentials` (use the same error for an unknown email and a wrong password) |
+| Status | Body                                                                                 |
+| ------ | ------------------------------------------------------------------------------------ |
+| 200    | `Session & { token }`                                                                |
+| 400    | `validation_error`                                                                   |
+| 401    | `invalid_credentials` (use the same error for an unknown email and a wrong password) |
 
 #### `GET /api/auth/me`
 
 Requires auth.
 
-| Status | Body |
-| --- | --- |
-| 200 | `Session` |
-| 401 | `unauthorized`. The client clears its token and sends the user to log in. |
+| Status | Body                                                                      |
+| ------ | ------------------------------------------------------------------------- |
+| 200    | `Session`                                                                 |
+| 401    | `unauthorized`. The client clears its token and sends the user to log in. |
 
 #### `POST /api/auth/logout`
 
@@ -194,11 +208,11 @@ Requires auth. Ends the current token only. Returns **204** with no body. It's f
 
 Requires auth. Updates the signed-in user's own profile. Send only the fields to change: `name` (1-80 characters), `phone` (or `null` to clear it), and `timeZone` (an IANA time zone name, or `null`).
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ user: User }` |
-| 400 | `validation_error` |
-| 401 | `unauthorized` |
+| Status | Body               |
+| ------ | ------------------ |
+| 200    | `{ user: User }`   |
+| 400    | `validation_error` |
+| 401    | `unauthorized`     |
 
 ### Circles
 
@@ -212,33 +226,33 @@ Body:
 
 ```ts
 {
-  name: string // 1-80 characters, for example "Alvarez family"
-  recipient: RecipientInput
+  name: string; // 1-80 characters, for example "Alvarez family"
+  recipient: RecipientInput;
 }
 ```
 
-| Status | Body |
-| --- | --- |
-| 201 | `{ circle: CircleSummary }` |
-| 400 | `validation_error` |
+| Status | Body                        |
+| ------ | --------------------------- |
+| 201    | `{ circle: CircleSummary }` |
+| 400    | `validation_error`          |
 
 #### `GET /api/circles/:circleId`
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ circle: CircleDetail }` |
-| 404 | `not_found` |
+| Status | Body                       |
+| ------ | -------------------------- |
+| 200    | `{ circle: CircleDetail }` |
+| 404    | `not_found`                |
 
 #### `PATCH /api/circles/:circleId`
 
 Owner only. Body: `{ name }`, 1-80 characters.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ circle: CircleSummary }` |
-| 400 | `validation_error` |
-| 403 | `owner_only` |
-| 404 | `not_found` |
+| Status | Body                        |
+| ------ | --------------------------- |
+| 200    | `{ circle: CircleSummary }` |
+| 400    | `validation_error`          |
+| 403    | `owner_only`                |
+| 404    | `not_found`                 |
 
 ### Recipients
 
@@ -248,11 +262,11 @@ Any member can add someone the circle cares for.
 
 Body: `RecipientInput`. The relationship is saved as the signed-in user's own label.
 
-| Status | Body |
-| --- | --- |
-| 201 | `{ recipient: Recipient }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                       |
+| ------ | -------------------------- |
+| 201    | `{ recipient: Recipient }` |
+| 400    | `validation_error`         |
+| 404    | `not_found`                |
 
 #### `PUT /api/circles/:circleId/recipients/:recipientId/relationship`
 
@@ -260,11 +274,24 @@ Sets or clears the signed-in user's own label for a recipient. Each member manag
 
 Body: `{ relationship }`, a `Relationship` or `null`.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ recipient: Recipient }` |
-| 400 | `validation_error` |
-| 404 | `not_found` (also when the recipient isn't in this circle) |
+| Status | Body                                                       |
+| ------ | ---------------------------------------------------------- |
+| 200    | `{ recipient: Recipient }`                                 |
+| 400    | `validation_error`                                         |
+| 404    | `not_found` (also when the recipient isn't in this circle) |
+
+#### `PATCH /api/circles/:circleId/recipients/:recipientId`
+
+Any member can edit the details of someone the circle cares for. Send only the fields to change: `name`, `preferredName`, `dateOfBirth`, and `notes`, with the same rules as `RecipientInput`. `null` or an empty string clears an optional field. The relationship isn't part of this body; each member changes their own label with `PUT .../relationship`.
+
+The body must also include `version`: the `Recipient.version` the edit is based on. The server saves only if it still matches, and then increments it. Otherwise another member saved first, and the server changes nothing and returns `409` with the current details, so the client can show what changed instead of silently overwriting it. Check and write in one statement, such as `UPDATE ... WHERE id = $1 AND version = $2`, so two saves at the same moment can't both succeed.
+
+| Status | Body                                                                                          |
+| ------ | --------------------------------------------------------------------------------------------- |
+| 200    | `{ recipient: Recipient }`                                                                    |
+| 400    | `validation_error` (also when `version` is missing)                                           |
+| 404    | `not_found` (also when the recipient isn't in this circle)                                    |
+| 409    | `edit_conflict`, plus `recipient: Recipient` with the current details: `{ error, recipient }` |
 
 ### Care resources
 
@@ -292,11 +319,11 @@ The frontend uses the browser mock for these appointment endpoints. The PostgreS
 Query: `{ from, to, recipientId? }`. `from` and `to` are required timestamps filtering
 `startsAt` with an inclusive lower bound and an exclusive upper bound. Returns non-cancelled appointments, sorted by `startsAt` ascending.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ appointments: Appointment[] }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                              |
+| ------ | --------------------------------- |
+| 200    | `{ appointments: Appointment[] }` |
+| 400    | `validation_error`                |
+| 404    | `not_found`                       |
 
 #### `POST /api/circles/:circleId/appointments`
 
@@ -317,11 +344,11 @@ filtering `scheduledAt`. `status` is `pending` or `completed`; omit for both.
 Returns individual scheduled doses, sorted by `scheduledAt` ascending. Medication
 and recurring schedule definitions are separate, future resources.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ medicationOccurrences: MedicationOccurrence[] }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                                                |
+| ------ | --------------------------------------------------- |
+| 200    | `{ medicationOccurrences: MedicationOccurrence[] }` |
+| 400    | `validation_error`                                  |
+| 404    | `not_found`                                         |
 
 #### `GET /api/circles/:circleId/tasks`
 
@@ -333,11 +360,11 @@ Due-date filters exclude undated tasks. Completion-date filters exclude incomple
 tasks and cannot be combined with `status=pending`. Results sort by `dueAt` ascending,
 undated tasks last. Overdue means pending with a non-null `dueAt` before the current time.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ tasks: CareTask[] }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                    |
+| ------ | ----------------------- |
+| 200    | `{ tasks: CareTask[] }` |
+| 400    | `validation_error`      |
+| 404    | `not_found`             |
 
 #### `GET /api/circles/:circleId/expenses`
 
@@ -347,11 +374,11 @@ categories. Filters combine with AND. Results sort by `incurredOn` descending.
 The client calculates totals and category summaries from integer `amountCents` values.
 The existing date bounds support one-, six-, and twelve-month views without separate endpoints.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ expenses: Expense[] }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                      |
+| ------ | ------------------------- |
+| 200    | `{ expenses: Expense[] }` |
+| 400    | `validation_error`        |
+| 404    | `not_found`               |
 
 ### Expense mutations
 
@@ -372,11 +399,11 @@ leave saved data unchanged.
 
 Body: `CreateExpenseRequest`. All fields are required. The server generates the ID.
 
-| Status | Body |
-| --- | --- |
-| 201 | `{ expense: Expense }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                   |
+| ------ | ---------------------- |
+| 201    | `{ expense: Expense }` |
+| 400    | `validation_error`     |
+| 404    | `not_found`            |
 
 #### `PATCH /api/circles/:circleId/expenses/:expenseId`
 
@@ -384,20 +411,20 @@ Body: `UpdateExpenseRequest`. Requires at least one field. Updates only supplied
 fields and returns the full saved expense. A changed recipient must remain in the
 same circle; the expense ID cannot change.
 
-| Status | Body |
-| --- | --- |
-| 200 | `{ expense: Expense }` |
-| 400 | `validation_error` |
-| 404 | `not_found` |
+| Status | Body                   |
+| ------ | ---------------------- |
+| 200    | `{ expense: Expense }` |
+| 400    | `validation_error`     |
+| 404    | `not_found`            |
 
 #### `DELETE /api/circles/:circleId/expenses/:expenseId`
 
 No body. Deletes the expense. A missing or already-deleted expense returns `404`.
 
-| Status | Body |
-| --- | --- |
-| 204 | No body |
-| 404 | `not_found` |
+| Status | Body        |
+| ------ | ----------- |
+| 204    | No body     |
+| 404    | `not_found` |
 
 ## Planned next
 

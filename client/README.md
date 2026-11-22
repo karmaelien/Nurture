@@ -40,7 +40,19 @@ A signed-in user with no care circle is sent to `/setup`, which has three steps:
 2. The first person they care for, including how they're related, and a name for the care circle.
 3. Anyone else the circle cares for.
 
-The fields that describe one person are shared by setup step 2, setup step 3, and the dashboard's "Add a person" page. They live in `RecipientFields` (`src/features/profiles/`). The zod schemas next to it are used by both the forms and the mock backend.
+The fields that describe one person are shared by setup, "Add a person", and the edit page. They live in `RecipientFields` (`src/features/profiles/`). The zod schemas next to it are used by both the forms and the mock backend.
+
+After setup, the profile pages sit in the app layout:
+
+| Page        | Route                                        | Notes                                                                       |
+| ----------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| Family      | `/app/circles/:circleId/family`              | The people a circle cares for and its caregivers. The Family tab.           |
+| Person      | `/app/circles/:circleId/people/:recipientId` | Details, notes, and your relationship, which saves as soon as you pick it.  |
+| Edit person | `.../people/:recipientId/edit`               | Any member can edit; the relationship isn't on this form.                   |
+| Caregiver   | `/app/circles/:circleId/caregivers/:userId`  | Read-only contact details and local time. Your own redirects to My profile. |
+| My profile  | `/app/profile`                               | Your name, phone, and time zone; also where Log out lives on phones.        |
+
+The circle details these pages read (`useCircleDetail`) share a cache entry with the dashboard's, so saving on one page updates the others.
 
 ## Appointment feature
 
