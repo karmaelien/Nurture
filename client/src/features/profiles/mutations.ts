@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { circlesApi } from '../../api/circles.ts'
-import type { Recipient, RecipientInput, Relationship, Session, UpdateRecipientRequest } from '../../api/types.ts'
+import { ApiError } from '../../api/client.ts'
+import type {
+  Recipient,
+  RecipientConflictBody,
+  RecipientInput,
+  Relationship,
+  Session,
+  UpdateRecipientRequest,
+} from '../../api/types.ts'
 import { usersApi } from '../../api/users.ts'
 import { sessionKey, useRequiredSession } from '../auth/session.ts'
 import { circleDetailKey } from './queries.ts'
@@ -65,11 +73,22 @@ function useRecipientSaved(circleId: string) {
   }
 }
 
+/** The details as saved now, when an edit was refused because someone else saved first. */
+export function conflictingRecipient(error: unknown): Recipient | null {
+  if (!(error instanceof ApiError) || error.code !== 'edit_conflict') return null
+  return (error.body as RecipientConflictBody | null)?.recipient ?? null
+}
+
 export function useUpdateRecipient(circleId: string, recipientId: string) {
-  const onSuccess = useRecipientSaved(circleId)
+  const saved = useRecipientSaved(circleId)
   return useMutation({
     mutationFn: (body: UpdateRecipientRequest) => circlesApi.updateRecipient(circleId, recipientId, body),
-    onSuccess,
+    onSuccess: saved,
+    // Someone else's save won: show it everywhere, not just in the conflict notice.
+    onError: (error) => {
+      const recipient = conflictingRecipient(error)
+      if (recipient) return saved({ recipient })
+    },
   })
 }
 

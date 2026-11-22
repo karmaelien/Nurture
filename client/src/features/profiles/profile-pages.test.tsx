@@ -132,6 +132,75 @@ describe('person profile', () => {
     expect((await circlesApi.detail('c_demo')).circle.recipients[1].name).toBe('Frank Alvarez')
   })
 
+  it('sends only the changed details, with the version they are based on', async () => {
+    await logIn()
+    const bodies: unknown[] = []
+    server.events.on('request:start', async ({ request }) => {
+      if (request.method === 'PATCH') bodies.push(await request.clone().json())
+    })
+    const user = userEvent.setup()
+    const router = renderApp('/app/circles/c_demo/people/r_frank/edit')
+
+    // Saving without changes sends nothing.
+    await user.click(await screen.findByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
+    expect(bodies).toEqual([])
+
+    await router.navigate('/app/circles/c_demo/people/r_frank/edit')
+    await user.type(await screen.findByLabelText('Notes (optional)'), 'Walks every morning.')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
+    expect(bodies).toEqual([{ version: 1, notes: 'Walks every morning.' }])
+    server.events.removeAllListeners()
+  })
+
+  it('shows what’s saved now when someone else saved first, and saves over it only when asked', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    const router = renderApp('/app/circles/c_demo/people/r_frank/edit')
+    await user.type(await screen.findByLabelText('Preferred name (optional)'), 'Grandpa Frank')
+    // Another member saves while this page is open.
+    await circlesApi.updateRecipient('c_demo', 'r_frank', { version: 1, notes: 'Walks every morning.' })
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    const notice = await screen.findByText('Someone in the circle changed these details while you were editing.')
+    expect(notice.closest('[tabindex="-1"]')).toHaveFocus()
+    expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank/edit')
+    expect(screen.getByLabelText('Notes (optional)')).toHaveAccessibleDescription(/Saved now: Walks every morning\./)
+    expect(screen.getByLabelText('Preferred name (optional)')).toHaveAccessibleDescription(/Saved now: blank/)
+    expect(screen.getByLabelText('Full name')).not.toHaveAccessibleDescription(/Saved now/)
+    // Typed text stays, and nothing was saved over the other member's notes.
+    expect(screen.getByLabelText('Preferred name (optional)')).toHaveValue('Grandpa Frank')
+    expect((await circlesApi.detail('c_demo')).circle.recipients[1]).toMatchObject({
+      preferredName: null,
+      notes: 'Walks every morning.',
+      version: 2,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Save mine anyway' }))
+    expect(await screen.findByRole('heading', { name: 'Grandpa Frank', level: 1 })).toBeInTheDocument()
+    expect((await circlesApi.detail('c_demo')).circle.recipients[1]).toMatchObject({
+      preferredName: 'Grandpa Frank',
+      notes: null,
+      version: 3,
+    })
+  })
+
+  it('swaps in what’s saved now when you choose the saved version', async () => {
+    await logIn()
+    const user = userEvent.setup()
+    renderApp('/app/circles/c_demo/people/r_frank/edit')
+    await user.type(await screen.findByLabelText('Preferred name (optional)'), 'Grandpa Frank')
+    await circlesApi.updateRecipient('c_demo', 'r_frank', { version: 1, notes: 'Walks every morning.' })
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await user.click(await screen.findByRole('button', { name: 'Use the saved version' }))
+    expect(screen.queryByText(/changed these details while you were editing/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Preferred name (optional)')).toHaveValue('')
+    expect(screen.getByLabelText('Notes (optional)')).toHaveValue('Walks every morning.')
+    expect(screen.getByLabelText('Notes (optional)')).not.toHaveAccessibleDescription(/Saved now/)
+  })
+
   it('explains an unknown person', async () => {
     await logIn()
     renderApp('/app/circles/c_demo/people/r_nobody')
