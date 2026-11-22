@@ -8,12 +8,15 @@ const BASE_URL = mocksEnabled ? '' : (import.meta.env.VITE_API_URL ?? '')
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
+  /** The whole response body, for errors that carry more than `error`, such as 409 edit_conflict. */
+  readonly body: unknown
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, body: unknown = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.body = body
   }
 }
 
@@ -54,6 +57,7 @@ export async function request<T>(path: string, { method = 'GET', body }: Request
       error?.message ??
         missingRoute ??
         `Nurture returned an unexpected error (${response.status}). Try again in a moment.`,
+      data,
     )
   }
   return data as T

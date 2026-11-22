@@ -101,8 +101,14 @@ export const recipientSchema = z.object({
   relationship: z.enum(RELATIONSHIPS).nullable(),
 })
 
-/** PATCH .../recipients/:id accepts any subset of the details; labels change through PUT .../relationship. */
-export const recipientUpdateSchema = recipientSchema.omit({ relationship: true }).partial()
+/**
+ * PATCH .../recipients/:id accepts any subset of the details, plus the version the edit is based on.
+ * Labels change through PUT .../relationship.
+ */
+export const recipientUpdateSchema = recipientSchema
+  .omit({ relationship: true })
+  .partial()
+  .extend({ version: z.number().int().positive() })
 
 export const relationshipSchema = z.object({ relationship: z.enum(RELATIONSHIPS).nullable() })
 

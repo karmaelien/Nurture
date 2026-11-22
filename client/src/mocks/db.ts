@@ -15,7 +15,7 @@ export type Db = {
 }
 
 // Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v5'
+const DB_KEY = 'nurture.mock-db.v6'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
@@ -48,6 +48,7 @@ function seed(): Db {
             dateOfBirth: '1941-03-14',
             notes: 'Hard of hearing in her left ear. Best reached in the mornings.',
             relationship: null,
+            version: 1,
           },
           {
             id: 'r_frank',
@@ -56,6 +57,7 @@ function seed(): Db {
             dateOfBirth: '1939-08-02',
             notes: null,
             relationship: null,
+            version: 1,
           },
         ],
         members: users.map((user, index) => ({

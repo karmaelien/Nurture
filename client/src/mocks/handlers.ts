@@ -1,6 +1,6 @@
 import { delay, http, HttpResponse } from 'msw'
 import type { z } from 'zod'
-import type { AuthResponse, CircleSummary, Recipient, Session } from '../api/types.ts'
+import type { AuthResponse, CircleSummary, Recipient, RecipientConflictBody, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
 import {
   createCircleSchema,
@@ -109,7 +109,7 @@ export const handlers = [
       id: circleId,
       name: body.data.name,
       role: 'owner',
-      recipients: [{ id: recipientId, ...recipient, relationship: null }],
+      recipients: [{ id: recipientId, ...recipient, relationship: null, version: 1 }],
       members: [
         {
           user: toUser(user),
@@ -136,7 +136,7 @@ export const handlers = [
     if (body.failure) return body.failure
 
     const { relationship, ...fields } = body.data
-    const recipient: Recipient = { id: `r_${crypto.randomUUID()}`, ...fields, relationship: null }
+    const recipient: Recipient = { id: `r_${crypto.randomUUID()}`, ...fields, relationship: null, version: 1 }
     circle.recipients.push(recipient)
     if (relationship) member.relationships[recipient.id] = relationship
     writeDb(db)
@@ -152,11 +152,27 @@ export const handlers = [
     if (body.failure) return body.failure
 
     const { recipient, member } = found
-    for (const [key, value] of Object.entries(body.data) as [keyof typeof body.data, string | null][]) {
+    const current = () => ({ ...recipient, relationship: member.relationships[recipient.id] ?? null })
+    const { version, ...changes } = body.data
+    // Someone saved since this edit began: change nothing and send back what's saved now.
+    if (version !== recipient.version) {
+      return HttpResponse.json(
+        {
+          error: {
+            code: 'edit_conflict',
+            message: 'Someone in the circle changed these details while you were editing.',
+          },
+          recipient: current(),
+        } satisfies RecipientConflictBody,
+        { status: 409 },
+      )
+    }
+    for (const [key, value] of Object.entries(changes) as [keyof typeof changes, string | null][]) {
       if (value !== undefined) Object.assign(recipient, { [key]: value })
     }
+    recipient.version += 1
     writeDb(db)
-    return HttpResponse.json({ recipient: { ...recipient, relationship: member.relationships[recipient.id] ?? null } })
+    return HttpResponse.json({ recipient: current() })
   }),
 
   http.put('/api/circles/:circleId/recipients/:recipientId/relationship', async ({ request, params }) => {
