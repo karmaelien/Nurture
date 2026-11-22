@@ -14,6 +14,9 @@ module.exports = function appointmentModel(db) {
     async hasRecipient(circleId, recipientId) {
       return Boolean(await one('SELECT 1 FROM recipients WHERE circle_id = $1 AND id = $2', [circleId, recipientId]));
     },
+    async exists(circleId, id) {
+      return Boolean(await one('SELECT 1 FROM appointments WHERE circle_id = $1 AND id = $2', [circleId, id]));
+    },
     async list(circleId, { from, to, recipientId }) {
       const result = await db.query(
         `SELECT ${columns} FROM appointments

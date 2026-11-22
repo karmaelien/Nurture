@@ -17,6 +17,8 @@ export function useAppointmentCompletionState(saveCompletion?: SaveCompletion) {
   return {
     saveError,
     applyCompletion(appointment: AppointmentSummary): AppointmentSummary {
+      // Connected pages render the latest query result. Local state is only for standalone previews.
+      if (saveCompletion) return appointment
       const status = statuses[appointmentKey(appointment)]
       return status && appointment.status !== 'cancelled' ? { ...appointment, status } : appointment
     },
@@ -27,7 +29,7 @@ export function useAppointmentCompletionState(saveCompletion?: SaveCompletion) {
       setSaveError(null)
       try {
         if (saveCompletion) await saveCompletion(appointment.circleId, appointment.id, status)
-        setStatuses((current) => ({ ...current, [key]: status }))
+        else setStatuses((current) => ({ ...current, [key]: status }))
       } catch (error) {
         setSaveError(`Could not save appointment status. ${errorMessage(error)}`)
       } finally {

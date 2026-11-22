@@ -1,98 +1,78 @@
 # Appointments
 
-## Current scope
+## Open the feature
 
-The appointments page is a frontend preview with mock API appointment completion at `/app/appointments`, behind the existing session guard. Log in using the instructions in the [client README](../client/README.md). Opening a protected route while logged out redirects to `/login`. Successful login always goes to Home (`/app`), including when the login URL contains an old `next` parameter; the originally requested page is not preserved.
+From Home, choose **Appointments** in the top navigation or click the appointments card heading. Both open `/app/appointments` for the selected family. The top navigation is shared between Home and Appointments. Opening a protected page while signed out takes you to login, and successful login starts at Home.
 
-From the home dashboard, open Appointments in the top navigation between Care and Expenses, or click the appointments panel's heading/icon area. Both links navigate to `/app/appointments`. The appointments page scrolls to the top on entry, regardless of the dashboard's previous scroll position.
-
-`client/src/layouts/AppLayout.tsx` owns the shared top bar for `/app` and `/app/appointments`, including the logo, navigation, and logout. The active page is highlighted. Care and Expenses navigate to their dashboard sections. React Router's scroll restoration handles new-page scrolling, history positions, and section anchors.
-
-The home appointments card scrolls internally after a maximum list height of 26rem. List cards show their information and completion action directly, without opening an additional per-appointment popup. Completed entries remain visible at the bottom, with a completed checkmark and a Mark as to do action, while the upcoming metric excludes them. All appointment lists use this ordering, chronological within scheduled/completed groups. Compact calendar blocks retain strikethrough for completion and open details when clicked. Home and Appointments read from the same care API for the selected circle and use status saved by the browser mock across reloads.
-
-The Appointments route loads the selected circle's profiles from the session and appointments through the care query. The preview API uses a broad date range to support calendar navigation. Older records without an end time show a short calendar block and display only the recorded start time.
+Home and Appointments read the same records for the selected family. In demo mode, the browser mock saves changes in localStorage, so they survive a refresh in that browser.
 
 ## Display and selection rules
 
-- Use Add appointment at the top of the page and Edit appointment on a visit to change its details or reschedule it. Delete appointment in the editor asks for confirmation. Changes are saved through the browser mock and refresh the calendar and Home appointment data.
+| Where | Who appears |
+| --- | --- |
+| **Appointments → Today banner** | Everyone in the selected family. It always appears and counts scheduled visits starting today in local time, including earlier today. Open it to see today's visits, including any completed ones. |
+| **Appointments → Overdue banner** | Everyone in the selected family. The red banner appears only when at least one scheduled visit has reached its recorded end time. It stays visible if you deselect the person's profile below. Open it to see overdue visits for the whole family. |
+| **Appointments → Upcoming appointments list** | Only selected care profiles. The filter applies to both overdue and upcoming rows. For example, if Rose has an overdue visit and only Frank is selected, Rose's visit disappears from this list and still counts in the red banner. |
+| **Appointments → Calendar** | Only selected care profiles, within the visible calendar period. |
+| **Home → Appointments list and Overdue banner** | Both follow Home's **Showing** selection. Home starts on **Everyone** in the selected family. |
 
-- Appointment list entries share one layout: title, care profile, a single date with the time range, then location (map pin) and caregiver (group icon) side by side. Location text opens a Google Maps search in a new tab; missing locations remain plain text. Mark completed / Mark as to do actions appear directly on the cards. Appointments crossing midnight show both dates. Records without an end time show just the start time.
+On Appointments, all profiles start selected. Search narrows the dropdown choices. **Select all**, **Select with upcoming appointments**, and **Clear selection** apply to all profiles regardless of the search text. **Remove** deselects that profile. The two top metrics cover everyone in the selected family. The selection summary and each profile's count cover the applicable profiles.
 
-- All care profiles start selected. Profiles supplied later are also selected unless explicitly excluded.
-- The two top metrics count all supplied care profiles and all their upcoming appointments. Selection does not filter these metrics.
-- **Upcoming** means a scheduled appointment whose start is between now and exactly seven 24-hour periods from now, inclusive. Invalid time ranges are excluded. The page refreshes its current time every minute.
-- Search only filters the dropdown's choices. Select all, Select with upcoming appointments, and Clear selection apply across all supplied profiles, regardless of the search text.
-- The selected-profile list shows each person's upcoming count. Remove unselects that profile. The selection summary, upcoming list, and calendar follow the selected profiles.
-- Clicking a profile's upcoming count opens that person's appointments in the same seven-day window without changing the selection. Completion acts directly on each card, updates the count, and moves the card below scheduled entries. A zero upcoming count can still open completed entries; an empty message appears only if no entries remain in the window. The list popup supports Close, Escape, and clicking outside.
-- The care-profile and upcoming panels have fixed heights and scroll internally. They do not expand into popups.
-- The notice below the top metrics always appears. It counts scheduled appointments starting on today's local date across all profiles, including appointments earlier today. It is independent of profile selection and excludes completed and cancelled appointments.
-- Clicking the notice opens today's appointments sorted by start time. The popup includes the profile, start/end times, and location, or an empty message. Close, Escape, and clicking outside dismiss it.
-- All appointment details show the assigned caregiver's name, or “Unassigned” when no caregiver is supplied. Names come from the circle membership response.
-- Scheduled appointments have a Mark completed action on list cards and in compact calendar appointment details. Completion removes the appointment from scheduled counts and today's scheduled notice, while keeping it visible below scheduled entries in the upcoming, profile, today, and calendar-day lists. Existing date/profile filters still apply. The calendar retains the event with its title crossed out in Monthly, Weekly, and Daily views.
-- Completed appointments have a Mark as to do action. It restores scheduled status and removes the calendar strikethrough; the existing date and profile filters determine which lists/counts include it again. This also works for appointments initially supplied as completed. The browser mock saves both completion actions on the appointment record.
+Home and Appointments use the same upcoming window, from now through exactly seven 24-hour periods from now, including both endpoints. Upcoming counts include scheduled visits in that window. Overdue visits appear first in the main appointment lists with a red **Overdue** badge. Completed visits in the window remain visible at the bottom with a checkmark. Each group is sorted by start time. Clicking a profile's upcoming count opens that person's seven-day list, which can still contain completed visits when the count is zero.
+
+The two panels on Appointments scroll internally. The Home appointment list also scrolls. Appointment cards show the title, care profile, date and time, location, and caregiver. A location opens a Google Maps search in a new tab. An unassigned caregiver is labelled **Unassigned**. For visits crossing midnight, both dates are shown.
+
+## Create, edit, and complete a visit
+
+- Use **Add appointment** on Appointments. Choose a care profile, enter a title, and set the start and end times. Location and caregiver are optional.
+- Choose the date separately, type a time such as `9:30`, and use the AM/PM dropdown. Leave the end date blank for a same-day visit. The end must be after the start. An older record without an end time needs one when you save an edit.
+- Use **Edit appointment** on Home or Appointments to change a visit or reschedule it. The same editor handles both pages. **Delete appointment** asks for confirmation.
+- Use **Mark completed** on a card or in calendar details. The visit drops out of scheduled counts and overdue warnings. **Mark as to do** restores its scheduled status, so the existing date and profile filters apply again.
+- Save, delete, and completion actions refresh appointment data for both pages. The editor blocks a second submission while a write is in progress. Completion uses the saved record returned by subsequent queries.
 
 ## Calendar
 
-- Monthly is the initial view; Daily and Weekly use a 24-hour timeline. Navigation moves one day, week, or month according to the view. Weeks start on Sunday.
-- Calendar dates follow the selected period, not the upcoming list's seven-day limit. All supplied appointment statuses are displayed; cancelled entries are labelled.
-- Monthly cells show up to three appointment chips. The remaining count opens the full day's list with direct completion/to-do actions. Clicking a compact chip opens its details, with completion/to-do actions, Close, Escape, and outside-click dismissal.
-- Daily and Weekly blocks are positioned by start time and sized by duration. Overlapping intervals share columns; an appointment ending exactly when another starts does not overlap. Connected overlap groups use equal column widths, reusing columns as appointments finish.
-- Overnight appointments appear on each affected day, clipped at local midnight. An appointment ending at midnight does not occupy the following day.
-- Calendar detail/day popups close with Close, Escape, or clicking outside. All appointment popups use the same backdrop-click handler; clicking inside the popup's padding leaves it open.
+- Monthly is the initial view. Daily and Weekly use a 24-hour timeline and weeks start on Sunday. Month navigation preserves the preferred day through shorter months. For example, January 31 through February to March lands on March 31.
+- Monthly cells show up to three appointment chips. The remaining count opens the full day's list. Clicking a compact chip opens details. Close, Escape, and clicking outside dismiss appointment dialogs.
+- Daily and Weekly position appointments by time and show overlapping blocks side by side. Overnight visits are clipped at midnight. A visit that ends exactly at midnight does not appear the following day.
+- A record without an end time displays only its start time and gets a short calendar block limited to its start date. These records do not trigger overdue warnings.
+- The timeline draws each wall-clock hour once. During the fall daylight-saving change, visits in the repeated hour share columns if they occupy the same space on the grid. Overdue calendar entries show a red triangle, and completed entries have crossed-out titles.
 
 ## Code and data
 
-Home dashboard appointment responsibilities are separated in `client/src/features/home/`: `useHomeAppointments.ts` owns fetching, display-data conversion, ordering, and the upcoming count; `HomeAppointmentsPanel.tsx` renders the scrollable panel using the shared `AppointmentListItem`. `DashboardPanel.tsx` supplies the existing shared panel frame and loading/error/empty states. `HomePage.tsx` calls the hook once so its summary count and panel use the same state.
-
-| File in `client/src/features/appointments/` | Responsibility |
+| File | Responsibility |
 | --- | --- |
-| `AppointmentsPage.tsx` | Preview data, profile selection/search, overall metrics, today notice, upcoming lists and completion |
-| `AppointmentCalendar.tsx` | Calendar views, navigation, day overflow and calendar dialogs |
-| `AppointmentDetails.tsx` | Compact calendar appointment details and completion action |
-| `AppointmentStatus.tsx` | Shared status badges for appointment lists |
-| `AppointmentListItem.tsx` | Shared list layout, date/time range, Maps link, caregiver and direct completion action |
-| `appointment-order.ts` | Shared scheduled-first, completed-last list ordering |
-| `calendar-layout.ts` | Time-range validation, daily clipping and overlap column assignment |
-| `dialog.ts` | Shared backdrop-click dismissal for all appointment dialogs |
+| `client/src/features/appointments/AppointmentsRoute.tsx` | Loads the selected family and its saved appointments and opens the editor |
+| `client/src/features/appointments/AppointmentsPage.tsx` | Profile selection, totals, banners, and lists |
+| `client/src/features/appointments/AppointmentCalendar.tsx` and `calendar-layout.ts` | Calendar views, dialogs, clipping, and overlapping blocks |
+| `client/src/features/appointments/AppointmentEditor.tsx` | Shared editor, validation, writes, and deletion confirmation |
+| `client/src/features/appointments/AppointmentListItem.tsx` and `OverdueAppointmentsWarning.tsx` | Shared cards and overdue warning |
+| `client/src/features/appointments/appointment-window.ts` and `appointment-overdue.ts` | Shared date-window boundary and overdue rule |
+| `client/src/features/home/useHomeAppointments.ts` and `HomeAppointmentsPanel.tsx` | Home's appointment query, count, person filter, and list |
+| `client/src/mocks/appointmentHandlers.ts` | Demo create, edit, status update, and delete requests |
 
-`CareProfile` and `AppointmentSummary` are currently defined in `AppointmentsPage.tsx`. Profile identity uses both `circleId` and profile `id`; appointment identity also includes the appointment `id`.
+The API returns ISO timestamps, which the UI displays in local time. Older records may omit the end time or status. A missing status is displayed as scheduled. The browser mock serves demo requests on the frontend origin. An unhandled 404 includes the request method and API path to help spot a routing issue.
 
-The UI appointment shape requires `id`, `circleId`, `recipientId`, `title`, `startsAt`, and `status` (`scheduled`, `completed`, or `cancelled`), plus optional `endsAt`, `location` and `assignedCaregiver` (`{ id, name }` or `null`). Missing/null caregiver data displays as “Unassigned”. Timestamps are ISO strings, displayed in local time. When supplied, `endsAt` must be strictly later than `startsAt`.
+### PostgreSQL integration
 
-### Backend integration still needed
+The standalone backend router implements appointment listing, creation, editing, completion, and deletion. It checks family membership and verifies that the appointment exists in that family before validating an update. The migration adds the table to the project's PostgreSQL database and requires PostgreSQL 15 or later. The router is currently unmounted. See the [API contract](api-contract.md) for the request and response shapes.
 
-The standalone PostgreSQL router in `nurture-api/src/routes/appointments.routes.js` implements listing, creation, editing, completion and deletion. It is ready to mount at `/api/circles/:circleId/appointments` after the shared authentication middleware. The browser mock still serves the frontend.
-
-The appointments migration requires PostgreSQL 15 or later. To verify the router independently, install dependencies in `nurture-api`, set `APPOINTMENT_TEST_DATABASE_URL` to a local PostgreSQL database named `nurture_appointments_test`, and run `node --test tests/appointments/appointments.integration.test.cjs` from `nurture-api`. The test applies migrations in an isolated schema and removes it afterward.
-
-The [API contract](api-contract.md) accepts an optional end time and defines the appointment writes used by the browser mock. The client supplies circle context from the request and resolves caregiver names against circle members. The real backend still needs appointment writes, recurrence, and reminder delivery.
+To run the backend integration test, install the dependencies in `nurture-api`, set `APPOINTMENT_TEST_DATABASE_URL` to a local database named `nurture_appointments_test`, and run `node --test tests/appointments/appointments.integration.test.cjs` from `nurture-api`. The test uses an isolated schema and removes it afterward.
 
 ## Verification
 
-From `client/`:
+From `client/`, run:
 
 ```sh
 npm run typecheck
 npm run lint
-npm test -- src/features/appointments
+npm test -- src/features/appointments src/features/home
 ```
 
-The current 17 appointment tests cover direct completion from today/upcoming/profile lists and calendar details, restoration across views, Maps links and missing locations, avoiding extra list-card popups, initially completed appointments with date filters preserved, backdrop dismissal, monthly overflow, selected-profile calendar filtering, year/week/day navigation, leap day, duration/overlap rendering, invalid intervals, column reuse, touching intervals, and overnight clipping. They use a jsdom shim for native dialog methods and simulate backdrop coordinates; native Escape, actual browser backdrop targeting, and browser focus behavior need browser checks.
-
-If Windows test startup fails because the default temporary directory denies access, run the tests with a writable temporary directory in PowerShell:
-
-```powershell
-$calendarTestTemp = Join-Path (Get-Location).Path 'node_modules\.tmp\calendar-tests'
-New-Item -ItemType Directory -Path $calendarTestTemp -Force | Out-Null
-$env:TEMP = $calendarTestTemp
-$env:TMP = $calendarTestTemp
-npm test -- src/features/appointments
-```
+Run the calendar tests with `TZ=America/New_York` to cover the repeated-hour regression. In PowerShell, set `$env:TZ = 'America/New_York'` before running the tests.
 
 Manual checks:
 
-1. Open `/app/appointments`; confirm all profiles are selected and the notice reports three appointments today.
-2. Search for a profile, change the selection, and remove one from the selected list. Confirm the calendar/upcoming list change while the top metrics and today notice stay unchanged.
-3. Open today's list and a profile's list. Check the Maps links and direct completion actions; dismiss the lists with Close, Escape, and a click outside. Confirm that clicking a card title does not open another popup.
-4. Switch calendar views, navigate periods, and open a busy day's overflow. In Daily/Weekly, check duration heights and overlapping blocks; today's Elena and Rose appointments overlap from 4–4:30 PM.
-5. With supplied test data containing no scheduled appointments today, confirm the notice and popup both show the empty message. Also check narrow screens and keyboard navigation.
+1. In demo mode, create an overdue visit for Rose and a future visit for Frank. On Appointments, select only Frank. Verify that the right-hand list shows Frank's visits and the red banner still opens Rose's overdue visit. On Home, set **Showing** to Frank and confirm the Home list and banner both follow that selection.
+2. Add a visit with a caregiver and location. Edit it from Home, check the time on the calendar, mark it complete, and refresh. Restore it with **Mark as to do**, then delete it and confirm it disappears from both pages.
+3. Check a busy day in Monthly, Daily, and Weekly views. Open the monthly overflow, test an overnight visit, and dismiss dialogs with Escape and an outside click. Check keyboard navigation and the date, time, and AM/PM controls on a narrow screen.

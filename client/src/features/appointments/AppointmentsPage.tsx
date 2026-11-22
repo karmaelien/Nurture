@@ -7,6 +7,7 @@ import { OverdueAppointmentsWarning } from './OverdueAppointmentsWarning.tsx'
 import { isAppointmentOverdue } from './appointment-overdue.ts'
 import { appointmentKey, useAppointmentCompletion } from './appointment-completion.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
+import { appointmentUpcomingEnd } from './appointment-window.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import { hasValidAppointmentTime } from './calendar-layout.ts'
 
@@ -91,7 +92,7 @@ export function AppointmentsPage({
     }
   }, [])
   // Upcoming includes both endpoints and measures seven elapsed 24-hour periods from now.
-  const upcomingThrough = now + 7 * 24 * 60 * 60 * 1000
+  const upcomingBefore = appointmentUpcomingEnd(now)
   const today = new Date(now).toDateString()
   // Keep completed entries in today's list; only scheduled entries count toward its notice.
   const appointmentsToday = appointments
@@ -125,7 +126,7 @@ export function AppointmentsPage({
         appointment.status !== 'cancelled' &&
         hasValidAppointmentTime(appointment) &&
         Date.parse(appointment.startsAt) >= now &&
-        Date.parse(appointment.startsAt) <= upcomingThrough &&
+        Date.parse(appointment.startsAt) < upcomingBefore &&
         careProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
     )
     .sort(compareAppointmentListOrder)

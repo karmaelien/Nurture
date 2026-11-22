@@ -37,6 +37,7 @@ export function AppointmentCalendar({
     const today = new Date(now)
     return new Date(today.getFullYear(), today.getMonth(), today.getDate())
   })
+  const [preferredMonthDay, setPreferredMonthDay] = useState(() => new Date(now).getDate())
   const year = anchorDate.getFullYear()
   const monthIndex = anchorDate.getMonth()
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
@@ -120,18 +121,14 @@ export function AppointmentCalendar({
   }, [selectedAppointment, hasDayDetails])
 
   function changePeriod(offset: number) {
-    setAnchorDate((current) => {
-      if (view === 'monthly') {
-        // Clamp the anchor day to avoid skipping shorter months (for example, January 31 to February).
-        const lastDay = new Date(current.getFullYear(), current.getMonth() + offset + 1, 0).getDate()
-        return new Date(current.getFullYear(), current.getMonth() + offset, Math.min(current.getDate(), lastDay))
-      }
-      return new Date(
-        current.getFullYear(),
-        current.getMonth(),
-        current.getDate() + offset * (view === 'weekly' ? 7 : 1),
-      )
-    })
+    if (view === 'monthly') {
+      const lastDay = new Date(year, monthIndex + offset + 1, 0).getDate()
+      setAnchorDate(new Date(year, monthIndex + offset, Math.min(preferredMonthDay, lastDay)))
+      return
+    }
+    const next = new Date(year, monthIndex, anchorDate.getDate() + offset * (view === 'weekly' ? 7 : 1))
+    setAnchorDate(next)
+    setPreferredMonthDay(next.getDate())
   }
   const periodUnit = view === 'monthly' ? 'month' : view === 'weekly' ? 'week' : 'day'
 

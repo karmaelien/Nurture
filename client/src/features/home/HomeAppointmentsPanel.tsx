@@ -16,16 +16,21 @@ import type { useHomeAppointments } from './useHomeAppointments.ts'
 export function HomeAppointmentsPanel({
   appointments,
   circle,
+  recipientId,
   caregivers,
   now,
 }: {
   appointments: ReturnType<typeof useHomeAppointments>
   circle: CircleSummary
+  recipientId?: string
   caregivers: User[]
   now: number
 }) {
   const [editing, setEditing] = useState<Appointment | null>(null)
-  const history = useAppointments(circle.id, appointmentCalendarRange)
+  const history = useAppointments(
+    circle.id,
+    recipientId ? { ...appointmentCalendarRange, recipientId } : appointmentCalendarRange,
+  )
   const { applyCompletion } = useAppointmentCompletion()
   const overdue = (history.data ?? [])
     .map((record) =>

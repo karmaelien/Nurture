@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
+import { careApi } from '../../api/care.ts'
 import { setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
@@ -15,6 +16,42 @@ async function login() {
 }
 
 describe('dashboard', () => {
+  it('matches the appointment page at the seven-day boundary', async () => {
+    vi.setSystemTime(new Date(2026, 10, 17, 12))
+    try {
+      await login()
+      const db = readDb()
+      const boundary = Date.now() + 7 * 86_400_000
+      const visit = db.care.appointments[0]
+      db.care.appointments.push(
+        {
+          ...visit,
+          id: 'within-window',
+          title: 'Seven-day visit',
+          startsAt: new Date(boundary).toISOString(),
+          endsAt: undefined,
+        },
+        {
+          ...visit,
+          id: 'out-of-window',
+          title: 'Later visit',
+          startsAt: new Date(boundary + 1).toISOString(),
+          endsAt: undefined,
+        },
+      )
+      writeDb(db)
+      renderApp('/app')
+      const home = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+      expect(await within(home).findByText('Seven-day visit')).toBeInTheDocument()
+      expect(within(home).queryByText('Later visit')).not.toBeInTheDocument()
+      await userEvent.setup().click(within(home).getByRole('link', { name: 'Appointments · next 7 days' }))
+      const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
+      expect(within(upcoming).getByText('Seven-day visit')).toBeInTheDocument()
+      expect(within(upcoming).queryByText('Later visit')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('warns about overdue appointments outside the upcoming window and clears the warning on completion', async () => {
     await login()
     const db = readDb()
@@ -29,6 +66,13 @@ describe('dashboard', () => {
     writeDb(db)
     const user = userEvent.setup()
     renderApp('/app')
+    await screen.findByRole('button', { name: '1 overdue appointment' })
+    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    const filteredPanel = screen.getByRole('region', { name: 'Appointments · next 7 days' })
+    await within(filteredPanel).findByText('Physical therapy')
+    expect(within(filteredPanel).queryByText('Past checkup')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '1 overdue appointment' })).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
     const warning = await screen.findByRole('button', { name: '1 overdue appointment' })
     const list = screen.getByRole('list', { name: 'Overdue and upcoming appointments' })
     const first = within(list).getAllByRole('listitem')[0]
@@ -61,7 +105,17 @@ describe('dashboard', () => {
     await user.click(within(form).getByRole('button', { name: 'Save appointment' }))
     expect(within(form).getByText('End time must be after start time.')).toBeInTheDocument()
     fireEvent.change(within(form).getByLabelText('End time'), { target: { value: '11:00' } })
-    await user.click(within(form).getByRole('button', { name: 'Save appointment' }))
+    const save = vi.spyOn(careApi, 'createAppointment')
+    try {
+      const formElement = within(form).getByRole('button', { name: 'Save appointment' }).closest('form')!
+      act(() => {
+        fireEvent.submit(formElement)
+        fireEvent.submit(formElement)
+      })
+      expect(save).toHaveBeenCalledTimes(1)
+    } finally {
+      save.mockRestore()
+    }
     const upcoming = screen.getByRole('region', { name: 'Upcoming appointments' })
     const created = (await within(upcoming).findByText('Dental follow-up')).closest('li')!
     await waitFor(() => expect(form).not.toBeInTheDocument())
@@ -144,6 +198,16 @@ describe('dashboard', () => {
     expect(within(restoredEntry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
     expect(within(homePanel).getAllByRole('listitem')[0]).toBe(restoredEntry)
     expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/3$/)
+
+    // Simulate a newer saved change while this app session is still open.
+    const saved = readDb().care.appointments.find((appointment) => appointment.title === 'Annual checkup')!
+    await careApi.updateAppointmentStatus('c_demo', saved.id, 'completed')
+    await user.click(within(homePanel).getByRole('link', { name: 'Appointments · next 7 days' }))
+    const refreshed = await screen.findByRole('region', { name: 'Upcoming appointments' })
+    await waitFor(() => {
+      const checkup = within(refreshed).getByText('Annual checkup').closest('li')!
+      expect(within(checkup).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
+    })
   })
 
   it('reloads saved completion from the mock database on a fresh app mount', async () => {
