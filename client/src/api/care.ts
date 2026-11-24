@@ -3,6 +3,8 @@ import type {
   CreateExpenseRequest,
   UpdateExpenseRequest,
   Appointment,
+  AppointmentCompletionStatus,
+  AppointmentInput,
   AppointmentFilters,
   CareTask,
   Expense,
@@ -33,6 +35,28 @@ export const careApi = {
     request<void>(resourcePath(circleId, `expenses/${encodeURIComponent(expenseId)}`, {}), { method: 'DELETE' }),
   appointments: (circleId: string, filters: AppointmentFilters) =>
     request<{ appointments: Appointment[] }>(resourcePath(circleId, 'appointments', filters)),
+  createAppointment: (circleId: string, body: AppointmentInput) =>
+    request<{ appointment: Appointment }>(resourcePath(circleId, 'appointments', {}), { method: 'POST', body }),
+  updateAppointment: (circleId: string, appointmentId: string, body: AppointmentInput) =>
+    request<{ appointment: Appointment }>(
+      resourcePath(circleId, `appointments/${encodeURIComponent(appointmentId)}`, {}),
+      {
+        method: 'PATCH',
+        body,
+      },
+    ),
+  deleteAppointment: (circleId: string, appointmentId: string) =>
+    request<void>(resourcePath(circleId, `appointments/${encodeURIComponent(appointmentId)}`, {}), {
+      method: 'DELETE',
+    }),
+  updateAppointmentStatus: (circleId: string, appointmentId: string, status: AppointmentCompletionStatus) =>
+    request<{ appointment: Appointment }>(
+      resourcePath(circleId, `appointments/${encodeURIComponent(appointmentId)}`, {}),
+      {
+        method: 'PATCH',
+        body: { status },
+      },
+    ),
   medicationOccurrences: (circleId: string, filters: MedicationOccurrenceFilters) =>
     request<{ medicationOccurrences: MedicationOccurrence[] }>(
       resourcePath(circleId, 'medication-occurrences', filters),

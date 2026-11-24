@@ -25,6 +25,7 @@
   --color-canvas: #f6f8f6;
   --color-line: #dce5e0;
   --color-line-strong: #b9c8c1;
+  --color-field: #7f948b; /* form control borders: 3:1 on surface and canvas (WCAG 1.4.11) */
   --color-link: #1f4d45;
   --color-success: #2f7d5b;
   --color-warning: #9a6212;
@@ -77,6 +78,7 @@
     --color-canvas: #0f1614;
     --color-line: #2a3936;
     --color-line-strong: #3e524d;
+    --color-field: #5f756e;
     --color-link: #86c9b4;
     --color-success: #6cc79e;
     --color-warning: #e3b45e;
@@ -101,6 +103,7 @@
       --color-canvas: #0f1614;
       --color-line: #2a3936;
       --color-line-strong: #3e524d;
+      --color-field: #5f756e;
       --color-link: #86c9b4;
       --color-success: #6cc79e;
       --color-warning: #e3b45e;

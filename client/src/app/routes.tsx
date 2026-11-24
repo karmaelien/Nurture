@@ -1,6 +1,7 @@
 import { Navigate, Outlet, type RouteObject } from 'react-router'
 import { FullPageSpinner } from '../components/ui/FullPageStatus.tsx'
 import { AuthLayout } from '../layouts/AuthLayout.tsx'
+import { AppLayout } from '../layouts/AppLayout.tsx'
 import type { SetupHandle } from '../features/setup/SetupLayout.tsx'
 import { GuestOnly, RequireCircle, RequireSession } from './guards.tsx'
 import { NotFoundPage } from './NotFoundPage.tsx'
@@ -61,23 +62,58 @@ export const routes: RouteObject[] = [
             element: <RequireCircle />,
             children: [
               {
-                index: true,
-                lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                element: <AppLayout />,
+                children: [
+                  {
+                    index: true,
+                    lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
+                  },
+                  {
+                    path: 'expenses',
+                    lazy: async () => ({
+                      Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage,
+                    }),
+                  },
+                  {
+                    path: 'appointments',
+                    lazy: async () => ({
+                      Component: (await import('../features/appointments/AppointmentsRoute.tsx')).AppointmentsRoute,
+                    }),
+                  },
+                  {
+                    path: 'profile',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/MyProfilePage.tsx')).MyProfilePage,
+                    }),
+                  },
+                  {
+                    path: 'circles/:circleId/family',
+                    lazy: async () => ({ Component: (await import('../features/profiles/FamilyPage.tsx')).FamilyPage }),
+                  },
+                  {
+                    path: 'circles/:circleId/people/:recipientId',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/RecipientProfilePage.tsx')).RecipientProfilePage,
+                    }),
+                  },
+                  {
+                    path: 'circles/:circleId/caregivers/:userId',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/CaregiverProfilePage.tsx')).CaregiverProfilePage,
+                    }),
+                  },
+                  {
+                    path: 'circles/:circleId/people/:recipientId/edit',
+                    lazy: async () => ({
+                      Component: (await import('../features/profiles/EditRecipientPage.tsx')).EditRecipientPage,
+                    }),
+                  },
+                ],
               },
               {
                 path: 'circles/:circleId/people/new',
                 lazy: async () => ({
                   Component: (await import('../features/profiles/AddRecipientPage.tsx')).AddRecipientPage,
-                }),
-              },
-              {
-                path: 'expenses',
-                lazy: async () => ({ Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage }),
-              },
-              {
-                path: 'appointments',
-                lazy: async () => ({
-                  Component: (await import('../features/appointments/AppointmentsPage.tsx')).AppointmentsPage,
                 }),
               },
             ],

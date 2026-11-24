@@ -1,8 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { circlesApi } from '../../api/circles.ts'
-import type { RecipientInput, Session } from '../../api/types.ts'
+import { ApiError } from '../../api/client.ts'
+import type {
+  Recipient,
+  RecipientConflictBody,
+  RecipientInput,
+  Relationship,
+  Session,
+  UpdateRecipientRequest,
+} from '../../api/types.ts'
 import { usersApi } from '../../api/users.ts'
 import { sessionKey, useRequiredSession } from '../auth/session.ts'
+import { circleDetailKey } from './queries.ts'
 
 // Each mutation writes its result into the cached session, so guards and pages update without a refetch.
 
@@ -41,8 +50,54 @@ export function useAddRecipient(circleId: string) {
           circle.id === circleId ? { ...circle, recipients: [...circle.recipients, recipient] } : circle,
         ),
       }))
-      // The dashboard caches circle details under this key (see HomePage).
-      return queryClient.invalidateQueries({ queryKey: ['circle', user.id, circleId] })
+      return queryClient.invalidateQueries({ queryKey: circleDetailKey(user.id, circleId) })
     },
+  })
+}
+
+/** Swaps one recipient in the cached session, then refetches the circle's details. */
+function useRecipientSaved(circleId: string) {
+  const queryClient = useQueryClient()
+  const updateSession = useUpdateSession()
+  const { user } = useRequiredSession()
+  return ({ recipient }: { recipient: Recipient }) => {
+    updateSession((session) => ({
+      ...session,
+      circles: session.circles.map((circle) =>
+        circle.id === circleId
+          ? { ...circle, recipients: circle.recipients.map((item) => (item.id === recipient.id ? recipient : item)) }
+          : circle,
+      ),
+    }))
+    return queryClient.invalidateQueries({ queryKey: circleDetailKey(user.id, circleId) })
+  }
+}
+
+/** The details as saved now, when an edit was refused because someone else saved first. */
+export function conflictingRecipient(error: unknown): Recipient | null {
+  if (!(error instanceof ApiError) || error.code !== 'edit_conflict') return null
+  return (error.body as RecipientConflictBody | null)?.recipient ?? null
+}
+
+export function useUpdateRecipient(circleId: string, recipientId: string) {
+  const saved = useRecipientSaved(circleId)
+  return useMutation({
+    mutationFn: (body: UpdateRecipientRequest) => circlesApi.updateRecipient(circleId, recipientId, body),
+    onSuccess: saved,
+    // Someone else's save won: show it everywhere, not just in the conflict notice.
+    onError: (error) => {
+      const recipient = conflictingRecipient(error)
+      if (recipient) return saved({ recipient })
+    },
+  })
+}
+
+export function useSetRelationship(circleId: string, recipientId: string) {
+  const onSuccess = useRecipientSaved(circleId)
+  return useMutation({
+    mutationFn: (relationship: Relationship | null) => circlesApi.setRelationship(circleId, recipientId, relationship),
+    // Arrowing through the chips saves each one; run those saves in order so the last choice wins.
+    scope: { id: `relationship:${circleId}:${recipientId}` },
+    onSuccess,
   })
 }

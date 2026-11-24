@@ -96,7 +96,7 @@ describe('mock profile and circle API', () => {
       id: expect.any(String),
       name: 'Alvarez family',
       role: 'owner',
-      recipients: [{ id: expect.any(String), ...rose, relationship: 'grandparent' }],
+      recipients: [{ id: expect.any(String), ...rose, relationship: 'grandparent', version: 1 }],
     })
     expect((await authApi.me()).circles).toEqual([circle])
 
@@ -107,7 +107,7 @@ describe('mock profile and circle API', () => {
       notes: null,
       relationship: null,
     })
-    expect(recipient).toMatchObject({ name: 'Frank Alvarez', relationship: null })
+    expect(recipient).toMatchObject({ name: 'Frank Alvarez', relationship: null, version: 1 })
     const detail = (await circlesApi.detail(circle.id)).circle
     expect(detail.recipients.map((item) => item.name)).toEqual(['Rose Alvarez', 'Frank Alvarez'])
     expect(detail.members).toEqual([
@@ -128,5 +128,99 @@ describe('mock profile and circle API', () => {
     await usersApi.updateMe({ name: 'Maya A.' })
     const { circle } = await circlesApi.detail('c_demo')
     expect(circle.members.find((member) => member.user.id === 'u_demo')?.user.name).toBe('Maya A.')
+  })
+
+  it('edits only the recipient details sent, keeping each member’s own label', async () => {
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    await circlesApi.setRelationship('c_demo', 'r_rose', 'grandparent')
+
+    const { recipient } = await circlesApi.updateRecipient('c_demo', 'r_rose', {
+      version: 1,
+      preferredName: ' Nana ',
+      notes: '',
+    })
+    expect(recipient).toMatchObject({
+      name: 'Rose Alvarez',
+      preferredName: 'Nana',
+      dateOfBirth: '1941-03-14',
+      notes: null,
+      relationship: 'grandparent',
+      version: 2,
+    })
+    const detail = (await circlesApi.detail('c_demo')).circle
+    expect(detail.recipients[0]).toEqual(recipient)
+    // Daniel's label for Rose is his own and untouched.
+    expect(detail.members.find((member) => member.user.id === 'u_daniel')?.relationships).toEqual({
+      r_rose: 'grandparent',
+    })
+  })
+
+  it('refuses an edit based on an out-of-date version and returns what’s saved now', async () => {
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    await circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, notes: 'Started a new medication.' })
+
+    // A second edit, begun before the first was saved, still holds version 1.
+    const stale = circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, preferredName: 'Nana Rose' })
+    const error = await stale.catch((error: unknown) => error)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({ status: 409, code: 'edit_conflict' })
+    expect((error as ApiError).body).toMatchObject({
+      recipient: { preferredName: 'Grandma Rose', notes: 'Started a new medication.', version: 2 },
+    })
+
+    // Nothing changed, and an edit based on the current version goes through.
+    expect((await circlesApi.detail('c_demo')).circle.recipients[0]).toMatchObject({
+      preferredName: 'Grandma Rose',
+      version: 2,
+    })
+    const { recipient } = await circlesApi.updateRecipient('c_demo', 'r_rose', {
+      version: 2,
+      preferredName: 'Nana Rose',
+    })
+    expect(recipient).toMatchObject({ preferredName: 'Nana Rose', notes: 'Started a new medication.', version: 3 })
+  })
+
+  it('sets and clears the signed-in member’s own relationship label', async () => {
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    expect((await circlesApi.setRelationship('c_demo', 'r_frank', 'parent')).recipient.relationship).toBe('parent')
+    expect((await authApi.me()).circles[0].recipients[1].relationship).toBe('parent')
+    expect((await circlesApi.setRelationship('c_demo', 'r_frank', null)).recipient.relationship).toBeNull()
+    const members = (await circlesApi.detail('c_demo')).circle.members
+    expect(members.find((member) => member.user.id === 'u_demo')?.relationships).toEqual({})
+  })
+
+  it('validates recipient edits and hides recipients outside the user’s circles', async () => {
+    await expectApiError(
+      circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, name: 'Rose' }),
+      401,
+      'unauthorized',
+    )
+    const { token } = await authApi.login(DEMO_ACCOUNT)
+    setToken(token)
+    await expectApiError(
+      circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, name: ' ' }),
+      400,
+      'validation_error',
+    )
+    await expectApiError(
+      circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, dateOfBirth: '2999-01-01' }),
+      400,
+      'validation_error',
+    )
+    // The version is required, so a client can't skip the check by leaving it out.
+    await expectApiError(
+      circlesApi.updateRecipient('c_demo', 'r_rose', { name: 'Rose' } as never),
+      400,
+      'validation_error',
+    )
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_nobody', { version: 1, name: 'X' }), 404, 'not_found')
+    await expectApiError(circlesApi.setRelationship('c_demo', 'r_rose', 'cousin' as never), 400, 'validation_error')
+
+    await signUp()
+    await expectApiError(circlesApi.updateRecipient('c_demo', 'r_rose', { version: 1, name: 'X' }), 404, 'not_found')
+    await expectApiError(circlesApi.setRelationship('c_demo', 'r_rose', null), 404, 'not_found')
   })
 })

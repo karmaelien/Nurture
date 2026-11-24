@@ -1,6 +1,7 @@
 require('dotenv').config();
 
-const required = ['DATABASE_URL', 'JWT_SECRET'];
+const required = ['DATABASE_URL', 'PORT'];
+
 const missing = required.filter((key) => !process.env[key]);
 
 if (missing.length > 0) {
@@ -11,5 +12,5 @@ if (missing.length > 0) {
 module.exports = {
   port: process.env.PORT || 3000,
   databaseUrl: process.env.DATABASE_URL,
-  jwtSecret: process.env.JWT_SECRET,
+  prodSslState: process.env.PROD_SSL_STATE === 'true',
 };
