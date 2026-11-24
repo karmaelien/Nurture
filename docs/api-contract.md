@@ -368,7 +368,8 @@ for time-zone, daylight-saving, and schedule-edit behavior.
 
 #### `GET /api/circles/:circleId/medication-occurrences/overdue`
 
-Query: `{ before, recipientId? }`. Returns `{ medicationOccurrences }` with pending
+Query: `{ before, recipientId?, cursor? }`. Returns
+`{ medicationOccurrences, totalOverdueCount, nextCursor, historyPending }` with pending
 doses scheduled strictly before the cutoff and past their individual overdue delay.
 The UI uses next local midnight as the cutoff; the server caps it at the current time.
 Today's overdue doses are included along with earlier days, without counting earlier doses in today's totals.
@@ -376,6 +377,16 @@ Current family membership is required; results follow the care-profile filter an
 oldest first. Missing schedule instances are generated from the course start, with one
 record per dose time. Taken records are preserved and no age cutoff is applied. See [Medications](medications.md)
 for reconciliation and materialization behavior.
+
+Each response includes up to 100 rows. Pass its non-null `nextCursor` to load the
+next page with the same cutoff/profile. `totalOverdueCount` counts all currently
+materialized, current-definition overdue rows, not only the page. `historyPending`
+marks incomplete backfill, so this count is a lower bound until it is false.
+Generation advances at most 31 calendar days in total per request, shared among
+selected definitions. The client continues it in short requests and indicates that
+older doses are loading; the family lock is released between requests. There is
+no age cutoff. Schedule edits invalidate coverage without making stale pending
+snapshots visible before their range is reconciled.
 
 #### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId`
 

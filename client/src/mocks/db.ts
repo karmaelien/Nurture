@@ -90,7 +90,14 @@ export function readDb(): Db {
         medication.schedule.startsOn ??= dateInZone(new Date(), medication.schedule.timeZone)
         medication.schedule.end ??= { kind: 'never' }
       }
-      for (const dose of db.care.medicationOccurrences) dose.version ??= 1
+      for (const dose of db.care.medicationOccurrences) {
+        dose.version ??= 1
+        if (dose.definitionVersion === undefined) {
+          dose.definitionVersion = 0
+          // Revisit legacy pending history in bounded batches before showing it as current.
+          if (dose.status === 'pending' && db.medicationHistory) delete db.medicationHistory[dose.medicationId]
+        }
+      }
       return db
     }
   } catch {

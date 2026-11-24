@@ -102,26 +102,37 @@ Marking an old dose taken removes it from the overdue section and retains its ta
 record and timestamp in storage. Old pending records have no arbitrary age cutoff.
 
 `GET /api/circles/:circleId/medication-occurrences/overdue?before=...&recipientId=...`
-returns `{ medicationOccurrences }`, sorted oldest first. `before` is required;
-`recipientId` is optional. The endpoint verifies current family membership, updates
+returns `{ medicationOccurrences, totalOverdueCount, nextCursor, historyPending }`,
+sorted oldest first, with up to 100 rows per page. `before` is required;
+`recipientId` and `cursor` are optional. The endpoint verifies current family membership, updates
 old pending metadata from the current definition, and removes pending records whose
 times were removed by a schedule edit. Taken history is preserved. Missing instances
 are generated from each medication's start date through the cutoff even when those
 days were never viewed. Each scheduled time is a separate dose: two untaken times
 produce two overdue rows, and each dose list shows a red overdue-dose count.
 
-History generation runs in bounded date windows and records coverage per medication
-version in the same mock database. Repeated polling reuses that coverage and the
+History generation has a total budget of 31 calendar days per request, divided among
+the selected medication definitions. It records actual completed coverage per medication
+version in the same database. `historyPending` remains true until the requested history
+has been covered. Pending snapshots from older definition versions are excluded until
+reconciled. Repeated polling reuses that coverage and the
 stable dose IDs, preserving taken statuses without duplicating rows. Schedule edits
 invalidate coverage so the pending history follows the updated definition.
 
-The overdue query refetches every minute, allowing any pending dose to become
+The overdue query refetches every second while history is still loading, then every minute,
+allowing any pending dose to become
 overdue when its grace period expires. Its cutoff is the next local midnight,
 capped by the endpoint at the current time, so future doses are excluded.
 A failed request shows a retry
 action. The regular date-range endpoint still materializes requested doses; background
 generation while the application is closed remains part of backend integration;
 reopening the application catches up the missed schedule instances.
+
+Both pages display **Loading older overdue doses…** while backfill continues and
+prefix the currently known overdue count with **At least**. Once complete, the count
+covers all overdue rows, including rows beyond the displayed page. **Show more overdue
+doses** loads another 100 rows without discarding earlier rows. No arbitrary date cutoff
+is introduced, and requests release the database lock between history batches.
 
 `GET /api/circles/:circleId/medication-occurrences` generates doses from saved
 definitions for the requested UTC `[from, to)` window, up to 366 days per request.
@@ -130,11 +141,16 @@ and inclusive course ending. Today on both pages means the viewer's local calend
 day; dose times are displayed in the viewer's local time zone. The schedule cards
 continue to show their original time zone and clock times.
 
-Dose IDs are stable per medication and instant. Repeated loads reuse the saved
+Dose identity includes the medication, care profile, and scheduled instant. Repeated loads reuse the saved
 record and its status rather than adding duplicates. Editing a schedule refreshes
 pending metadata and removes obsolete pending occurrences within the requested
 window. Taken records retain their original name, dosage, person, and time as history.
 Deleting the medication still removes its occurrences, as stated in the confirmation.
+Newly created occurrence IDs also include the definition version. Removing and later
+restoring a time creates a different ID, so an old tab cannot submit an action against
+a newly created dose just because both began at status version 1. Moving a medication
+to another profile creates that person's own pending dose while retaining the original
+person's completed snapshot at the same instant. Existing record IDs are preserved.
 
 During spring daylight saving, a nonexistent clock time moves forward by the gap
 (for example, 2:30 AM becomes 3:30 AM). A repeated fall-back clock time produces one
@@ -239,7 +255,7 @@ definition/profile/caregiver IDs are numeric strings and occurrence IDs are stab
 Every operation locks the family row and checks current membership inside the same
 transaction. The membership lock is held through commit. Definition edits/deletes and
 dose updates check versions; status writes also use a conditional SQL update. Unique
-`(medication_id, scheduled_at)` keys and upserts prevent duplicate generated doses.
+`(medication_id, recipient_id, scheduled_at)` keys and upserts prevent duplicate generated doses.
 Reads and writes share the lock, so an overdue read cannot restore an outdated pending
 status over another caregiver's completion. Failed operations roll back.
 
@@ -263,6 +279,9 @@ To enable when the real API is ready:
 No mock data is copied into PostgreSQL. Browser Web Locks and storage events are demo
 protections; real database transactions provide write safety. Cross-device live push
 and closed-app notification delivery are separate work, not part of this router.
+Medication definitions, date-filtered doses, and overdue queries refresh on returning
+to the app and every minute in both real and mock modes. Real-API refresh does not
+depend on the mock storage listener.
 
 ### Backend verification
 

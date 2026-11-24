@@ -106,6 +106,17 @@ test('normalizes defaults and sorted time/day selections', () => {
   assert.equal(value.schedule.overdueAfterMinutes, 30);
   assert.equal(value.schedule.reminderBeforeMinutes, null);
 });
+
+test('recreated times and different care profiles have distinct dose identities', () => {
+  const from = '2026-03-07T00:00:00Z',
+    to = '2026-03-08T00:00:00Z';
+  const original = generateMedicationDoses(definition, from, to)[0];
+  const recreated = generateMedicationDoses({ ...definition, version: 3, dosage: '2 tablets' }, from, to)[0];
+  const moved = generateMedicationDoses({ ...definition, version: 2, recipientId: '3' }, from, to)[0];
+  assert.notEqual(original.id, recreated.id);
+  assert.notEqual(original.id, moved.id);
+  assert.equal(original.version, recreated.version);
+});
 test('router requires authentication and current database membership before validating content', async () => {
   let allowed = true;
   const db = {

@@ -209,3 +209,102 @@ it('fails safely when an origin-wide browser lock is unavailable', async () => {
     Object.defineProperty(navigator, 'locks', { configurable: true, value: locks })
   }
 })
+
+it('rejects an old tab’s dose action after its time is removed and restored with a new dosage', async () => {
+  const { medication, load } = await fixture()
+  const old = (await load())[0]
+  const { id, ...body } = medication
+  const shifted = (
+    await careApi.updateMedication('c_demo', id, { ...body, schedule: { ...body.schedule, times: ['09:00'] } })
+  ).medication
+  await load()
+  await careApi.updateMedication('c_demo', id, { ...body, version: shifted.version, dosage: '2 tablets' })
+  const current = (await load())[0]
+  expect(current.id).not.toBe(old.id)
+  await expect(careApi.updateMedicationDose('c_demo', old.id, 'completed', old.version)).rejects.toMatchObject({
+    status: 404,
+  })
+  expect((await load())[0].status).toBe('pending')
+})
+
+it('creates a new profile’s dose without replacing the old profile’s taken snapshot', async () => {
+  const { medication, load } = await fixture()
+  const old = (await load())[0]
+  const taken = (await careApi.updateMedicationDose('c_demo', old.id, 'completed', old.version)).medicationOccurrence
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, recipientId: 'r_frank' })
+  const rows = await load()
+  expect(rows).toHaveLength(2)
+  expect(rows.find((dose) => dose.recipientId === 'r_rose')).toEqual(taken)
+  expect(rows.find((dose) => dose.recipientId === 'r_frank')).toMatchObject({ status: 'pending' })
+})
+
+it('pages large overdue lists without losing instances and reports ongoing backfill', async () => {
+  const { medication } = await fixture()
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, {
+    ...body,
+    schedule: {
+      ...body.schedule,
+      startsOn: '0100-01-01',
+      end: { kind: 'never' },
+      times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+    },
+  })
+  const before = '2026-11-24T00:00:00Z'
+  const first = await careApi.overdueMedicationDoses('c_demo', before, 'r_rose')
+  expect(first.historyPending).toBe(true)
+  expect(first.medicationOccurrences).toHaveLength(100)
+  expect(first.nextCursor).toBeTruthy()
+  const second = await careApi.overdueMedicationDoses('c_demo', before, 'r_rose', first.nextCursor!)
+  expect(second.medicationOccurrences).toHaveLength(100)
+  expect(new Set([...first.medicationOccurrences, ...second.medicationOccurrences].map((dose) => dose.id)).size).toBe(
+    200,
+  )
+  expect(second.totalOverdueCount).toBeGreaterThan(first.totalOverdueCount!)
+  const coverage = readDb().medicationHistory![id]
+  expect(Date.parse(coverage.through)).toBeLessThan(Date.parse('0101-01-01T00:00:00Z'))
+  // The next request can still edit the definition instead of waiting for centuries of generation.
+  const current = (await careApi.medications('c_demo')).medications.find((item) => item.id === id)!
+  const { id: ignored, ...latest } = current
+  void ignored
+  await careApi.updateMedication('c_demo', id, { ...latest, schedule: body.schedule })
+})
+
+it('shows the full overdue count and loads another page when requested', async () => {
+  const { medication } = await fixture()
+  for (const other of (await careApi.medications('c_demo')).medications)
+    if (other.id !== medication.id) await careApi.deleteMedication('c_demo', other.id, other.version)
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, {
+    ...body,
+    schedule: {
+      ...body.schedule,
+      startsOn: '2020-01-01',
+      end: { kind: 'onDate', date: '2020-01-07' },
+      times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+    },
+  })
+  renderApp('/app/medications')
+  const attention = await screen.findByRole('region', { name: 'Attention needed' })
+  expect(await within(attention).findByText('168 overdue doses')).toBeInTheDocument()
+  expect(within(attention).getAllByRole('listitem')).toHaveLength(100)
+  fireEvent.click(within(attention).getByRole('button', { name: 'Show more overdue doses' }))
+  await waitFor(() => expect(within(attention).getAllByRole('listitem')).toHaveLength(168))
+  expect(within(attention).queryByRole('button', { name: 'Show more overdue doses' })).not.toBeInTheDocument()
+})
+
+it('keeps a valid undone historical dose visible after its definition was edited and backfilled', async () => {
+  const { medication, load } = await fixture()
+  const dose = (await load())[0]
+  const taken = (await careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version)).medicationOccurrence
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, name: 'Renamed' })
+  await careApi.overdueMedicationDoses('c_demo', '2026-11-24T00:00:00Z')
+  await careApi.updateMedicationDose('c_demo', dose.id, 'pending', taken.version)
+  const overdue = await careApi.overdueMedicationDoses('c_demo', '2026-11-24T00:00:00Z')
+  expect(overdue.medicationOccurrences.find((item) => item.id === dose.id)).toMatchObject({
+    status: 'pending',
+    name: 'Renamed',
+  })
+})

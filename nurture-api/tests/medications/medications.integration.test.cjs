@@ -258,6 +258,99 @@ test(
       assert.equal(moved.length, 1);
       assert.equal(moved[0].scheduledAt, '2020-01-03T08:00:00.000Z');
 
+      // A removed/restored time must not recreate a stale tab's ID/version combination.
+      let restored = (
+        await auth(request(app).post(`${route}/medications`))
+          .send(details)
+          .expect(201)
+      ).body.medication;
+      const restoredRoute = `${route}/medications/${restored.id}`;
+      const originalDose = (await load()).find((dose) => dose.medicationId === restored.id);
+      restored = (
+        await auth(request(app).patch(restoredRoute))
+          .send({ ...details, version: restored.version, schedule: { ...schedule, times: ['09:00'] } })
+          .expect(200)
+      ).body.medication;
+      await load();
+      restored = (
+        await auth(request(app).patch(restoredRoute))
+          .send({ ...details, version: restored.version, dosage: '2 tablets' })
+          .expect(200)
+      ).body.medication;
+      const newDose = (await load()).find(
+        (dose) => dose.medicationId === restored.id && dose.scheduledAt === originalDose.scheduledAt,
+      );
+      assert.notEqual(newDose.id, originalDose.id);
+      await auth(request(app).patch(`${route}/medication-occurrences/${originalDose.id}`))
+        .send({ status: 'completed', version: originalDose.version })
+        .expect(404);
+      const oldPersonTaken = (
+        await auth(request(app).patch(`${route}/medication-occurrences/${newDose.id}`))
+          .send({ status: 'completed', version: newDose.version })
+          .expect(200)
+      ).body.medicationOccurrence;
+      restored = (
+        await auth(request(app).patch(restoredRoute))
+          .send({ ...details, version: restored.version, recipientId: secondRecipient })
+          .expect(200)
+      ).body.medication;
+      const movedRows = (await load()).filter((dose) => dose.medicationId === restored.id);
+      assert.deepEqual(
+        movedRows.find((dose) => dose.id === oldPersonTaken.id),
+        oldPersonTaken,
+      );
+      assert.ok(
+        movedRows.some(
+          (dose) =>
+            dose.recipientId === secondRecipient &&
+            dose.scheduledAt === oldPersonTaken.scheduledAt &&
+            dose.status === 'pending',
+        ),
+      );
+
+      // Ancient schedules are advanced a little at a time, with bounded response pages.
+      const huge = (
+        await auth(request(app).post(`${route}/medications`))
+          .send({
+            ...details,
+            name: 'Long history',
+            assignedCaregiverId: null,
+            schedule: {
+              ...schedule,
+              startsOn: '0100-01-01',
+              end: { kind: 'never' },
+              times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+            },
+          })
+          .expect(201)
+      ).body.medication;
+      const firstPage = (
+        await auth(request(app).get(`${route}/medication-occurrences/overdue`))
+          .query({ before: '2030-01-01T00:00:00Z' })
+          .expect(200)
+      ).body;
+      assert.equal(firstPage.historyPending, true);
+      assert.equal(firstPage.medicationOccurrences.length, 100);
+      assert.ok(firstPage.nextCursor);
+      const secondPage = (
+        await auth(request(app).get(`${route}/medication-occurrences/overdue`))
+          .query({ before: '2030-01-01T00:00:00Z', cursor: firstPage.nextCursor })
+          .expect(200)
+      ).body;
+      assert.equal(
+        new Set(
+          [...firstPage.medicationOccurrences, ...secondPage.medicationOccurrences].map((dose) => dose.id),
+        ).size,
+        200,
+      );
+      const coverage = (await db.query('SELECT history_through FROM medications WHERE id=$1', [huge.id]))
+        .rows[0].history_through;
+      assert.ok(coverage.getTime() < Date.parse('0101-01-01T00:00:00Z'));
+      // Edits remain possible between batches, rather than waiting for the whole history.
+      await auth(request(app).patch(`${route}/medications/${huge.id}`))
+        .send({ ...details, version: huge.version })
+        .expect(200);
+
       // A caregiver with an already-open page loses both reads and writes after removal.
       await db.query('DELETE FROM circle_members WHERE circle_id=$1 AND user_id=$2', [circle, caregiver]);
       await request(app).get(`${route}/medications`).set('x-test-user', caregiver).expect(404);

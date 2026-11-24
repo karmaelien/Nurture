@@ -103,18 +103,23 @@ export function MedicationDoseList({
   doses,
   personName,
   showDate = false,
+  totalOverdueCount,
+  overdueCountIsPartial = false,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
   personName: (id: string) => string
   showDate?: boolean
+  totalOverdueCount?: number
+  overdueCountIsPartial?: boolean
 }) {
   const now = useMinute().getTime()
-  const overdueCount = doses.filter((dose) => isDoseOverdue(dose, now)).length
+  const overdueCount = totalOverdueCount ?? doses.filter((dose) => isDoseOverdue(dose, now)).length
   return (
     <>
       {overdueCount > 0 && (
         <p role="status" className="mb-3 font-semibold text-danger">
+          {overdueCountIsPartial ? 'At least ' : ''}
           {overdueCount} overdue {overdueCount === 1 ? 'dose' : 'doses'}
         </p>
       )}

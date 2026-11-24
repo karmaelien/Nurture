@@ -87,10 +87,13 @@ export const careApi = {
       resourcePath(circleId, `medication-occurrences/${encodeURIComponent(occurrenceId)}`, {}),
       { method: 'PATCH', body: { status, version } },
     ),
-  overdueMedicationDoses: (circleId: string, before: string, recipientId?: string) =>
-    request<{ medicationOccurrences: MedicationOccurrence[] }>(
-      resourcePath(circleId, 'medication-occurrences/overdue', { before, recipientId }),
-    ),
+  overdueMedicationDoses: (circleId: string, before: string, recipientId?: string, cursor?: string) =>
+    request<{
+      medicationOccurrences: MedicationOccurrence[]
+      historyPending?: boolean
+      nextCursor?: string | null
+      totalOverdueCount?: number
+    }>(resourcePath(circleId, 'medication-occurrences/overdue', { before, recipientId, cursor })),
   tasks: (circleId: string, filters: TaskFilters = {}) =>
     request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
   expenses: (circleId: string, filters: ExpenseFilters) =>

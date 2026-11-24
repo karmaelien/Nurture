@@ -1,5 +1,10 @@
 const { httpError } = require('../utils/httpErrors');
-const { generateMedicationDoses, maxDoseRange, scheduleEndDate } = require('../services/medication-schedule');
+const {
+  generateMedicationDoses,
+  maxDoseRange,
+  historyBatchRange,
+  scheduleEndDate,
+} = require('../services/medication-schedule');
 const notFound = () =>
   httpError(404, 'not_found', 'This medication, dose, care profile, or care circle is unavailable.');
 const conflict = (message) => httpError(409, 'edit_conflict', message);
@@ -71,18 +76,26 @@ module.exports = function medicationModel(db) {
           await tx.query(
             `DELETE FROM medication_occurrences WHERE circle_id = $1 AND medication_id = $2
           AND status = 'pending' AND scheduled_at >= $3 AND scheduled_at < $4
-          AND NOT (scheduled_at = ANY($5::timestamptz[]))`,
-            [circleId, definition.id, from, to, expected.map((dose) => dose.scheduledAt)],
+          AND (recipient_id <> $6 OR NOT (scheduled_at = ANY($5::timestamptz[])))`,
+            [
+              circleId,
+              definition.id,
+              from,
+              to,
+              expected.map((dose) => dose.scheduledAt),
+              definition.recipientId,
+            ],
           );
           if (!expected.length) return;
           await tx.query(
             `INSERT INTO medication_occurrences
-          (id, circle_id, medication_id, recipient_id, name, dosage, scheduled_at, overdue_after_minutes, reminder_before_minutes)
-          SELECT x.id, $1, $2, x."recipientId"::int, x.name, x.dosage, x."scheduledAt", x."overdueAfterMinutes", x."reminderBeforeMinutes"
+          (id, circle_id, medication_id, recipient_id, name, dosage, scheduled_at, overdue_after_minutes, reminder_before_minutes, definition_version)
+          SELECT x.id, $1, $2, x."recipientId"::int, x.name, x.dosage, x."scheduledAt", x."overdueAfterMinutes", x."reminderBeforeMinutes", $4
           FROM jsonb_to_recordset($3::jsonb) AS x(id text, "recipientId" text, name text, dosage text,
             "scheduledAt" timestamptz, "overdueAfterMinutes" int, "reminderBeforeMinutes" int)
-          ON CONFLICT (medication_id, scheduled_at) DO UPDATE SET
+          ON CONFLICT (medication_id, recipient_id, scheduled_at) DO UPDATE SET
             recipient_id = EXCLUDED.recipient_id, name = EXCLUDED.name, dosage = EXCLUDED.dosage,
+            definition_version = EXCLUDED.definition_version,
             overdue_after_minutes = EXCLUDED.overdue_after_minutes, reminder_before_minutes = EXCLUDED.reminder_before_minutes,
             version = medication_occurrences.version + CASE WHEN
               ROW(medication_occurrences.recipient_id, medication_occurrences.name, medication_occurrences.dosage,
@@ -90,7 +103,7 @@ module.exports = function medicationModel(db) {
               IS DISTINCT FROM ROW(EXCLUDED.recipient_id, EXCLUDED.name, EXCLUDED.dosage,
                 EXCLUDED.overdue_after_minutes, EXCLUDED.reminder_before_minutes) THEN 1 ELSE 0 END
           WHERE medication_occurrences.status = 'pending'`,
-            [circleId, definition.id, JSON.stringify(expected)],
+            [circleId, definition.id, JSON.stringify(expected), definition.version],
           );
         }
 
@@ -165,20 +178,26 @@ module.exports = function medicationModel(db) {
             const definitions = (
               await tx.query(
                 `SELECT ${medicationColumns}, history_version, history_through
-            FROM medications WHERE circle_id = $1 ORDER BY id`,
-                [circleId],
+            FROM medications WHERE circle_id = $1 AND ($2::int IS NULL OR recipient_id = $2) ORDER BY id`,
+                [circleId, query.recipientId ?? null],
               )
             ).rows;
+            let historyPending = false;
+            const budget = Math.floor(historyBatchRange / Math.max(1, definitions.length));
             for (const definition of definitions) {
               const end = scheduleEndDate(definition.schedule);
               const finish = end ? Math.min(cutoff, Date.parse(`${end}T00:00:00Z`) + 36 * 3600000) : cutoff;
-              const lower = Date.parse(`${definition.schedule.startsOn}T00:00:00Z`) - 36 * 3600000;
+              const lower = Math.max(
+                Date.parse('0001-01-01T00:00:00Z'),
+                Date.parse(`${definition.schedule.startsOn}T00:00:00Z`) - 36 * 3600000,
+              );
               let cursor =
                 definition.history_version === definition.version && definition.history_through
                   ? Math.max(lower, definition.history_through.getTime())
                   : lower;
-              while (cursor < finish) {
-                const upper = Math.min(finish, cursor + maxDoseRange);
+              const initial = cursor;
+              while (cursor < finish && cursor - initial < budget) {
+                const upper = Math.min(finish, cursor + maxDoseRange, initial + budget);
                 await reconcile(definition, new Date(cursor).toISOString(), new Date(upper).toISOString());
                 cursor = upper;
               }
@@ -191,13 +210,21 @@ module.exports = function medicationModel(db) {
                   circleId,
                   definition.id,
                   new Date(cutoff),
-                  new Date(Date.parse(`${definition.schedule.startsOn}T00:00:00Z`) - 36 * 3600000),
+                  new Date(
+                    Math.max(
+                      Date.parse('0001-01-01T00:00:00Z'),
+                      Date.parse(`${definition.schedule.startsOn}T00:00:00Z`) - 36 * 3600000,
+                    ),
+                  ),
                   new Date(finish),
                 ],
               );
               // Never move coverage backwards for narrower queries in the same version.
-              const through =
-                definition.history_version === definition.version && definition.history_through
+              const pending = cursor < finish;
+              historyPending ||= pending;
+              const through = pending
+                ? cursor
+                : definition.history_version === definition.version && definition.history_through
                   ? Math.max(cutoff, definition.history_through.getTime())
                   : cutoff;
               await tx.query(
@@ -205,15 +232,34 @@ module.exports = function medicationModel(db) {
                 [circleId, definition.id, new Date(through)],
               );
             }
-            return (
+            // Return only a bounded page; the count covers all materialized overdue rows.
+            const where = `circle_id = $1 AND status = 'pending' AND scheduled_at < $2
+              AND scheduled_at + overdue_after_minutes * INTERVAL '1 minute' <= $3
+              AND ($4::int IS NULL OR recipient_id = $4)
+              AND EXISTS (SELECT 1 FROM medications m WHERE m.id = medication_occurrences.medication_id
+                AND m.version = medication_occurrences.definition_version)`;
+            const values = [circleId, new Date(cutoff), now, query.recipientId ?? null];
+            const total = await one(
+              `SELECT count(*)::int AS count FROM medication_occurrences WHERE ${where}`,
+              values,
+            );
+            const [cursorAt, cursorId] = query.cursor?.split('|') ?? [];
+            const rows = (
               await tx.query(
-                `SELECT ${doseColumns} FROM medication_occurrences WHERE circle_id = $1
-            AND status = 'pending' AND scheduled_at < $2
-            AND scheduled_at + overdue_after_minutes * INTERVAL '1 minute' <= $3
-            AND ($4::int IS NULL OR recipient_id = $4) ORDER BY scheduled_at, id`,
-                [circleId, new Date(cutoff), now, query.recipientId ?? null],
+                `SELECT ${doseColumns} FROM medication_occurrences WHERE ${where}
+              AND ($5::timestamptz IS NULL OR (scheduled_at, id) > ($5::timestamptz, $6::text))
+              ORDER BY scheduled_at, id LIMIT 101`,
+                [...values, cursorAt ?? null, cursorId ?? null],
               )
             ).rows;
+            const medicationOccurrences = rows.slice(0, 100);
+            const last = medicationOccurrences.at(-1);
+            return {
+              medicationOccurrences,
+              historyPending,
+              totalOverdueCount: total.count,
+              nextCursor: rows.length > 100 && last ? `${last.scheduledAt.toISOString()}|${last.id}` : null,
+            };
           },
           async changeStatus(id, body) {
             let dose = await one(
@@ -255,9 +301,24 @@ module.exports = function medicationModel(db) {
             if (dose.status === body.status) return dose;
             const value = await one(
               `UPDATE medication_occurrences SET status = $3, version = version + 1,
+            definition_version = CASE WHEN $3 = 'pending' THEN $5 ELSE definition_version END,
+            name = CASE WHEN $3 = 'pending' THEN $6 ELSE name END,
+            dosage = CASE WHEN $3 = 'pending' THEN $7 ELSE dosage END,
+            overdue_after_minutes = CASE WHEN $3 = 'pending' THEN $8 ELSE overdue_after_minutes END,
+            reminder_before_minutes = CASE WHEN $3 = 'pending' THEN $9 ELSE reminder_before_minutes END,
             taken_at = CASE WHEN $3 = 'completed' THEN clock_timestamp() ELSE NULL END
             WHERE circle_id = $1 AND id = $2 AND version = $4 RETURNING ${doseColumns}`,
-              [circleId, id, body.status, body.version],
+              [
+                circleId,
+                id,
+                body.status,
+                body.version,
+                definition.version,
+                expected?.name ?? dose.name,
+                expected?.dosage ?? dose.dosage,
+                expected?.overdueAfterMinutes ?? dose.overdueAfterMinutes,
+                expected?.reminderBeforeMinutes ?? null,
+              ],
             );
             if (!value) throw conflict('This dose changed. Refresh the list and review it.');
             return value;

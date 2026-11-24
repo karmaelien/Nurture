@@ -6,6 +6,7 @@ import { useMedicationOccurrences, useOverdueMedicationDoses } from '../care/que
 import { dashboardWindow } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
 import { MedicationDoseList } from './MedicationDoseList.tsx'
+import { OverdueDoseControls } from './OverdueDoseControls.tsx'
 import { doseReminderWindow, isDoseReminderActive } from './medication-schedule.ts'
 
 export function MedicationAttention({ circle, recipientId }: { circle: CircleSummary; recipientId: string }) {
@@ -21,7 +22,7 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
     ...(overdue.data ?? []),
     ...(reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? []),
   ]
-  if (!doses.length && !overdue.isError && !reminders.isError) return null
+  if (!doses.length && !overdue.historyPending && !overdue.isError && !reminders.isError) return null
   return (
     <section aria-label="Attention needed" className="mb-6 rounded-panel border border-line bg-surface p-5 sm:p-6">
       <h2 className="font-display text-h3 font-semibold">Attention needed</h2>
@@ -45,10 +46,18 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
         <MedicationDoseList
           circleId={circle.id}
           doses={doses}
+          totalOverdueCount={overdue.totalOverdueCount}
+          overdueCountIsPartial={overdue.historyPending}
           showDate
           personName={(id) => circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'}
         />
       )}
+      <OverdueDoseControls
+        historyPending={overdue.historyPending}
+        hasNextPage={overdue.hasNextPage}
+        busy={overdue.isFetchingNextPage}
+        onMore={() => void overdue.fetchNextPage()}
+      />
     </section>
   )
 }

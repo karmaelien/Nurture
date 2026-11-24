@@ -51,12 +51,13 @@ export function isDoseOverdue(dose: MedicationOccurrence, now: number) {
 export function dateInZone(now: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
+    era: 'short',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(now)
   const part = (type: string) => parts.find((item) => item.type === type)!.value
-  return `${part('year')}-${part('month')}-${part('day')}`
+  return `${String(part('era') === 'BC' ? 1 - Number(part('year')) : Number(part('year'))).padStart(4, '0')}-${part('month')}-${part('day')}`
 }
 
 // Course duration counts calendar days from the inclusive start, not doses or active weekdays.

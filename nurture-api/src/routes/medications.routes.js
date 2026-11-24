@@ -60,9 +60,7 @@ module.exports = function createMedicationRouter({ db = require('../config/db') 
   );
   router.get('/medication-occurrences/overdue', async (req, res) =>
     res.json({
-      medicationOccurrences: await run(req, (model) =>
-        model.overdue(parse(schemas.overdueSchema, req.query)),
-      ),
+      ...(await run(req, (model) => model.overdue(parse(schemas.overdueSchema, req.query)))),
     }),
   );
   router.patch('/medication-occurrences/:occurrenceId', async (req, res) => {

@@ -138,11 +138,60 @@ it('fills unvisited history across yearly windows without duplicating or resetti
       end: { kind: 'onDate', date: '2026-01-05' },
     },
   }
-  const first = materializeMedicationHistory([], weekly, '2026-01-06T00:00:00Z')
+  let first = materializeMedicationHistory([], weekly, '2026-01-06T00:00:00Z')
+  expect(first.pending).toBe(true)
+  expect(first.doses.length).toBeLessThan(53)
+  for (let batch = 0; first.pending && batch < 20; batch++)
+    first = materializeMedicationHistory(first.doses, weekly, '2026-01-06T00:00:00Z', first.coverage)
+  expect(first.pending).toBe(false)
   expect(first.doses).toHaveLength(53)
   first.doses[0].status = 'completed'
   const second = materializeMedicationHistory(first.doses, weekly, '2026-01-06T00:00:00Z', first.coverage)
   expect(second.doses).toHaveLength(53)
   expect(second.doses[0].status).toBe('completed')
   expect(new Set(second.doses.map((dose) => dose.id)).size).toBe(53)
+})
+
+it('gives a removed and restored time a new identity even if its first status version matches', () => {
+  const from = '2026-03-07T00:00:00Z',
+    to = '2026-03-10T00:00:00Z'
+  const old = reconcileMedicationDoses([], [medication], from, to)
+  const shifted = reconcileMedicationDoses(
+    old,
+    [{ ...medication, version: 2, schedule: { ...medication.schedule, times: ['09:00'] } }],
+    from,
+    to,
+  )
+  const restored = reconcileMedicationDoses(shifted, [{ ...medication, version: 3, dosage: '2 tablets' }], from, to)
+  expect(restored[0].version).toBe(old[0].version)
+  expect(restored[0].id).not.toBe(old[0].id)
+})
+
+it('retains one person’s taken history and creates the other person’s dose at the same instant', () => {
+  const from = '2026-03-07T00:00:00Z',
+    to = '2026-03-10T00:00:00Z'
+  const stored = generateMedicationDoses(medication, from, to)
+  stored[0].status = 'completed'
+  const changed = reconcileMedicationDoses(stored, [{ ...medication, version: 2, recipientId: 'other' }], from, to)
+  expect(changed.filter((dose) => dose.recipientId === 'other')).toHaveLength(3)
+  expect(changed.find((dose) => dose.recipientId === medication.recipientId)).toMatchObject({ status: 'completed' })
+  expect(new Set(changed.map((dose) => dose.id)).size).toBe(4)
+})
+
+it('bounds work on an ancient course and advances saved coverage instead of restarting it', () => {
+  const ancient = {
+    ...medication,
+    schedule: {
+      ...medication.schedule,
+      startsOn: '0100-01-01',
+      end: { kind: 'never' as const },
+      times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+    },
+  }
+  const first = materializeMedicationHistory([], ancient, '2026-01-01T00:00:00Z')
+  expect(first.pending).toBe(true)
+  expect(first.doses.length).toBeLessThanOrEqual(31 * 24)
+  const second = materializeMedicationHistory(first.doses, ancient, '2026-01-01T00:00:00Z', first.coverage)
+  expect(Date.parse(second.coverage.through)).toBeGreaterThan(Date.parse(first.coverage.through))
+  expect(second.doses.length - first.doses.length).toBeLessThanOrEqual(31 * 24)
 })

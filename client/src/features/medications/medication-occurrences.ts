@@ -3,6 +3,7 @@ import { dateInZone, defaultOverdueMinutes, scheduleEndDate } from './medication
 
 const day = 86_400_000
 export const maxDoseRange = 366 * day
+export const historyBatchRange = 31 * day
 const formatters = new Map<string, Intl.DateTimeFormat>()
 
 function localMinute(instant: number, timeZone: string) {
@@ -10,6 +11,7 @@ function localMinute(instant: number, timeZone: string) {
   if (!formatter) {
     formatter = new Intl.DateTimeFormat('en-US', {
       timeZone,
+      era: 'short',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -21,7 +23,7 @@ function localMinute(instant: number, timeZone: string) {
   }
   const parts = formatter.formatToParts(instant)
   const part = (type: string) => parts.find((value) => value.type === type)!.value
-  return `${part('year').padStart(4, '0')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`
+  return `${String(part('era') === 'BC' ? 1 - Number(part('year')) : Number(part('year'))).padStart(4, '0')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`
 }
 
 /** Resolve a wall-clock minute using the offsets around that date, including DST transitions.
@@ -65,10 +67,11 @@ export function generateMedicationDoses(medication: Medication, from: string, to
     for (const time of schedule.times) {
       const scheduledAt = doseInstant(calendarDate, time, schedule.timeZone)
       if (!scheduledAt || Date.parse(scheduledAt) < lower || Date.parse(scheduledAt) >= upper) continue
-      const id = `dose_${medication.id}_${Date.parse(scheduledAt)}`
+      const id = `dose_${medication.id}_${medication.recipientId}_v${medication.version}_${Date.parse(scheduledAt)}`
       result.set(id, {
         id,
         version: 1,
+        definitionVersion: medication.version,
         medicationId: medication.id,
         recipientId: medication.recipientId,
         name: medication.name,
@@ -92,7 +95,7 @@ export function reconcileMedicationDoses(
   from: string,
   to: string,
 ) {
-  const key = (dose: MedicationOccurrence) => `${dose.medicationId}:${Date.parse(dose.scheduledAt)}`
+  const key = (dose: MedicationOccurrence) => `${dose.medicationId}:${dose.recipientId}:${Date.parse(dose.scheduledAt)}`
   const generated = medications.flatMap((medication) => generateMedicationDoses(medication, from, to))
   const expected = new Set(generated.map(key))
   const medicationIds = new Set(medications.map((medication) => medication.id))
@@ -128,21 +131,28 @@ export function materializeMedicationHistory(
   medication: Medication,
   before: string,
   coverage?: { version: number; through: string },
+  budget = historyBatchRange,
 ) {
   const end = scheduleEndDate(medication.schedule)
   const cutoff = Date.parse(before)
   const finish = end ? Math.min(cutoff, Date.parse(`${end}T00:00:00Z`) + 36 * 3_600_000) : cutoff
-  let cursor =
-    coverage?.version === medication.version
-      ? Date.parse(coverage.through)
-      : Date.parse(`${medication.schedule.startsOn}T00:00:00Z`) - 36 * 3_600_000
+  const lower = Math.max(
+    Date.parse('0001-01-01T00:00:00Z'),
+    Date.parse(`${medication.schedule.startsOn}T00:00:00Z`) - 36 * 3_600_000,
+  )
+  let cursor = coverage?.version === medication.version ? Math.max(lower, Date.parse(coverage.through)) : lower
+  const initial = cursor
   let doses = stored
-  while (cursor < finish) {
-    const upper = Math.min(finish, cursor + maxDoseRange)
+  while (cursor < finish && cursor - initial < budget) {
+    const upper = Math.min(finish, cursor + maxDoseRange, initial + budget)
     doses = reconcileMedicationDoses(doses, [medication], new Date(cursor).toISOString(), new Date(upper).toISOString())
     cursor = upper
   }
-  const through =
-    coverage?.version === medication.version && Date.parse(coverage.through) > cutoff ? coverage.through : before
-  return { doses, coverage: { version: medication.version, through } }
+  const pending = cursor < finish
+  const through = pending
+    ? new Date(cursor).toISOString()
+    : coverage?.version === medication.version && Date.parse(coverage.through) > cutoff
+      ? coverage.through
+      : before
+  return { doses, coverage: { version: medication.version, through }, pending, consumed: Math.max(0, cursor - initial) }
 }

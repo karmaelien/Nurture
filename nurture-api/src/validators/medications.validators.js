@@ -85,7 +85,18 @@ const rangeSchema = z
       Date.parse(value.to) - Date.parse(value.from) <= maxDoseRange,
     'Choose a date range of up to 366 days.',
   );
-const overdueSchema = z.strictObject({ before: timestamp, recipientId: id.optional() });
+const overdueSchema = z.strictObject({
+  before: timestamp,
+  recipientId: id.optional(),
+  cursor: z
+    .string()
+    .max(250)
+    .refine((value) => {
+      const parts = value.split('|');
+      return parts.length === 2 && timestamp.safeParse(parts[0]).success && parts[1].length > 0;
+    }, 'Invalid overdue cursor.')
+    .optional(),
+});
 const listSchema = z.strictObject({});
 module.exports = {
   validId,

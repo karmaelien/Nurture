@@ -2,6 +2,7 @@
 // medication's IANA zone; persistence and filtering use UTC instants.
 const day = 86400000;
 const maxDoseRange = 366 * day;
+const historyBatchRange = 31 * day;
 const formatters = new Map();
 function localMinute(instant, timeZone) {
   if (!formatters.has(timeZone))
@@ -9,6 +10,7 @@ function localMinute(instant, timeZone) {
       timeZone,
       new Intl.DateTimeFormat('en-US', {
         timeZone,
+        era: 'short',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -19,7 +21,7 @@ function localMinute(instant, timeZone) {
     );
   const parts = formatters.get(timeZone).formatToParts(instant);
   const part = (type) => parts.find((item) => item.type === type).value;
-  return `${part('year').padStart(4, '0')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
+  return `${String(part('era') === 'BC' ? 1 - Number(part('year')) : Number(part('year'))).padStart(4, '0')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 function scheduleEndDate(schedule) {
   if (schedule.end.kind === 'never') return null;
@@ -66,10 +68,11 @@ function generateMedicationDoses(medication, from, to) {
     for (const time of schedule.times) {
       const scheduledAt = doseInstant(date.toISOString().slice(0, 10), time, schedule.timeZone);
       if (!scheduledAt || Date.parse(scheduledAt) < lower || Date.parse(scheduledAt) >= upper) continue;
-      const id = `dose_${medication.id}_${Date.parse(scheduledAt)}`;
+      const id = `dose_${medication.id}_${medication.recipientId}_v${medication.version}_${Date.parse(scheduledAt)}`;
       doses.set(id, {
         id,
         version: 1,
+        definitionVersion: medication.version,
         medicationId: medication.id,
         recipientId: medication.recipientId,
         name: medication.name,
@@ -83,4 +86,4 @@ function generateMedicationDoses(medication, from, to) {
   }
   return [...doses.values()];
 }
-module.exports = { maxDoseRange, scheduleEndDate, doseInstant, generateMedicationDoses };
+module.exports = { maxDoseRange, historyBatchRange, scheduleEndDate, doseInstant, generateMedicationDoses };

@@ -1,4 +1,4 @@
-import { skipToken, useQuery } from '@tanstack/react-query'
+import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { careApi } from '../../api/care.ts'
 import type { AppointmentFilters, ExpenseFilters, MedicationOccurrenceFilters, TaskFilters } from '../../api/types.ts'
 import { useRequiredSession } from '../auth/session.ts'
@@ -34,6 +34,8 @@ export function useMedications(circleId: string | null) {
     queryKey: careKeys.medications(user.id, circleId),
     queryFn: circleId ? () => careApi.medications(circleId) : skipToken,
     select: (data) => data.medications,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     retry: false,
   })
 }
@@ -44,20 +46,30 @@ export function useMedicationOccurrences(circleId: string | null, filters: Medic
     queryKey: careKeys.medicationOccurrences(user.id, circleId, filters),
     queryFn: circleId ? () => careApi.medicationOccurrences(circleId, filters) : skipToken,
     select: (data) => data.medicationOccurrences,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     retry: false,
   })
 }
 
 export function useOverdueMedicationDoses(circleId: string, before: string, recipientId?: string) {
   const { user } = useRequiredSession()
-  return useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['care', user.id, circleId, 'medication-occurrences', { overdueBefore: before, recipientId }],
-    queryFn: () => careApi.overdueMedicationDoses(circleId, before, recipientId),
-    select: (data) => data.medicationOccurrences,
+    queryFn: ({ pageParam }) => careApi.overdueMedicationDoses(circleId, before, recipientId, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     retry: false,
-    // Pending doses can cross their grace period throughout the day, including after midnight.
-    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    // Continue bounded history work while keeping each request and displayed page small.
+    refetchInterval: (query) => (query.state.data?.pages.some((page) => page.historyPending) ? 1000 : 60_000),
   })
+  return {
+    ...query,
+    data: query.data?.pages.flatMap((page) => page.medicationOccurrences),
+    historyPending: query.data?.pages.some((page) => page.historyPending) ?? false,
+    totalOverdueCount: query.data?.pages[0]?.totalOverdueCount,
+  }
 }
 
 export function useTasks(circleId: string | null, filters: TaskFilters = {}) {

@@ -5,7 +5,7 @@ import {
   generateMedicationDoses,
   materializeMedicationHistory,
   reconcileMedicationDoses,
-  refreshPendingDose,
+  historyBatchRange,
 } from '../features/medications/medication-occurrences.ts'
 import { isDoseOverdue } from '../features/medications/medication-schedule.ts'
 import { medicationInputSchema, medicationUpdateSchema } from '../features/medications/medication-input.ts'
@@ -32,7 +32,18 @@ export const medicationHandlers = [
     const { db, circle } = context
     const query = new URL(request.url).searchParams
     const parsed = z
-      .strictObject({ before: z.iso.datetime(), recipientId: z.string().min(1).optional() })
+      .strictObject({
+        before: z.iso.datetime(),
+        recipientId: z.string().min(1).optional(),
+        cursor: z
+          .string()
+          .max(250)
+          .refine((value) => {
+            const parts = value.split('|')
+            return parts.length === 2 && Number.isFinite(Date.parse(parts[0])) && parts[1].length > 0
+          })
+          .optional(),
+      })
       .safeParse(Object.fromEntries(query))
     if (!parsed.success || [...query.keys()].some((key) => query.getAll(key).length !== 1))
       return error(400, 'validation_error', 'Provide a valid previous-day cutoff and care profile.')
@@ -46,43 +57,50 @@ export const medicationHandlers = [
         .map((medication) => [medication.id, medication]),
     )
     db.medicationHistory ??= {}
-    for (const medication of definitions.values()) {
-      if (parsed.data.recipientId && medication.recipientId !== parsed.data.recipientId) continue
+    let historyPending = false
+    const selected = [...definitions.values()].filter(
+      (medication) => !parsed.data.recipientId || medication.recipientId === parsed.data.recipientId,
+    )
+    const budget = Math.floor(historyBatchRange / Math.max(1, selected.length))
+    for (const medication of selected) {
       const generated = materializeMedicationHistory(
         db.care.medicationOccurrences,
         medication,
         new Date(cutoff).toISOString(),
         db.medicationHistory[medication.id],
+        budget,
       )
       db.care.medicationOccurrences = generated.doses
       db.medicationHistory[medication.id] = generated.coverage
+      historyPending ||= generated.pending
     }
-    // Recheck stored pending history against current definitions after backfilling missing dates.
-    db.care.medicationOccurrences = db.care.medicationOccurrences.filter((dose) => {
-      if (!belongs(dose.recipientId) || dose.status !== 'pending' || Date.parse(dose.scheduledAt) >= cutoff) return true
-      const medication = definitions.get(dose.medicationId)
-      if (!medication) return false
-      const expected = generateMedicationDoses(
-        medication,
-        dose.scheduledAt,
-        new Date(Date.parse(dose.scheduledAt) + 1).toISOString(),
-      )[0]
-      if (!expected) return false
-      refreshPendingDose(dose, expected)
-      return true
-    })
+    // Old pending snapshots are hidden until their definition's bounded reconciliation
+    // reaches them. Do not re-generate every saved historical dose on each request.
     writeDb(db, false)
     const now = Date.now()
-    const medicationOccurrences = db.care.medicationOccurrences
+    const all = db.care.medicationOccurrences
       .filter(
         (dose) =>
           belongs(dose.recipientId) &&
           (!parsed.data.recipientId || dose.recipientId === parsed.data.recipientId) &&
           Date.parse(dose.scheduledAt) < cutoff &&
+          dose.definitionVersion === definitions.get(dose.medicationId)?.version &&
           isDoseOverdue(dose, now),
       )
       .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) || a.id.localeCompare(b.id))
-    return HttpResponse.json({ medicationOccurrences })
+    const [cursorAt, cursorId] = parsed.data.cursor?.split('|') ?? []
+    const page = all
+      .filter(
+        (dose) =>
+          !cursorAt ||
+          Date.parse(dose.scheduledAt) > Date.parse(cursorAt) ||
+          (Date.parse(dose.scheduledAt) === Date.parse(cursorAt) && dose.id.localeCompare(cursorId) > 0),
+      )
+      .slice(0, 101)
+    const medicationOccurrences = page.slice(0, 100)
+    const last = medicationOccurrences.at(-1)
+    const nextCursor = page.length > 100 && last ? `${last.scheduledAt}|${last.id}` : null
+    return HttpResponse.json({ medicationOccurrences, nextCursor, historyPending, totalOverdueCount: all.length })
   }),
   http.patch('/api/circles/:circleId/medication-occurrences/:occurrenceId', async ({ request, params }) => {
     const body = await request.json().catch(() => null)
@@ -134,6 +152,14 @@ export const medicationHandlers = [
         'edit_conflict',
         'This dose changed with its medication schedule. Refresh the list and review it before trying again.',
       )
+    if (current.status === 'completed' && parsed.data.status === 'pending' && expected) {
+      Object.assign(current, expected, {
+        id: current.id,
+        version: current.version,
+        status: 'completed',
+        takenAt: current.takenAt,
+      })
+    }
     if (parsed.data.status === 'completed' && current.status !== 'completed') current.takenAt = new Date().toISOString()
     if (parsed.data.status === 'pending') current.takenAt = null
     if (current.status !== parsed.data.status) current.version += 1

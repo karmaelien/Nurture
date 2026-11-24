@@ -94,6 +94,7 @@ export type MedicationUpdate = MedicationInput & { version: number }
 export type MedicationOccurrence = {
   id: string // unique to this occurrence
   version: number // conditional status writes reject stale copies
+  definitionVersion?: number // mock reconciliation coverage; the server keeps this internally
   medicationId: string
   recipientId: string
   name: string
