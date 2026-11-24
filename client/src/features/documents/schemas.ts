@@ -27,7 +27,8 @@ export const createDocumentSchema = z
 export const updateDocumentSchema = createDocumentSchema
   .omit({ recipientId: true })
   .partial()
-  .refine((v) => Object.keys(v).length > 0)
+  .extend({ version: z.number().int().positive().max(2147483647) })
+  .refine((v) => Object.keys(v).some((key) => key !== 'version'))
 export function documentFileError(file: File) {
   if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) return 'Choose a PDF, JPEG, or PNG file.'
   if (!file.size) return 'Choose a file that is not empty.'

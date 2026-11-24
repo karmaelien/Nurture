@@ -18,11 +18,16 @@ it('filters inaccessible documents and denies file access and management to read
   expect(list.map((d) => d.id)).not.toContain('doc_demo_2')
   expect(list.every((d) => !d.canManage)).toBe(true)
   await expect(documentsApi.file('c_demo', 'doc_demo_2')).rejects.toMatchObject({ status: 404 })
-  await expect(documentsApi.update('c_demo', 'doc_demo_0', { title: 'Changed' })).rejects.toMatchObject({ status: 403 })
+  await expect(documentsApi.update('c_demo', 'doc_demo_0', { version: 1, title: 'Changed' })).rejects.toMatchObject({
+    status: 403,
+  })
   await expect(documentsApi.remove('c_demo', 'doc_demo_0')).rejects.toMatchObject({ status: 403 })
 })
 it('changes sharing and deletes files while enforcing current membership', async () => {
-  await documentsApi.update('c_demo', 'doc_demo_2', { sharing: { mode: 'selected', memberIds: ['u_daniel'] } })
+  await documentsApi.update('c_demo', 'doc_demo_2', {
+    version: 1,
+    sharing: { mode: 'selected', memberIds: ['u_daniel'] },
+  })
   await loginDaniel()
   expect((await documentsApi.file('c_demo', 'doc_demo_2')).size).toBeGreaterThan(0)
   const db = readDb()
@@ -43,8 +48,27 @@ it('rejects invalid sharing and out-of-circle member IDs without changing data',
     }).success,
   ).toBe(false)
   await expect(
-    documentsApi.update('c_demo', 'doc_demo_0', { sharing: { mode: 'selected', memberIds: ['outsider'] } }),
+    documentsApi.update('c_demo', 'doc_demo_0', { version: 1, sharing: { mode: 'selected', memberIds: ['outsider'] } }),
   ).rejects.toMatchObject({ status: 404 })
   const result = await request<{ document: { title: string } }>('/api/circles/c_demo/documents/doc_demo_0')
   expect(result.document.title).toBe('November visit summary')
+})
+
+it('rejects stale edits instead of restoring revoked sharing', async () => {
+  const original = (await documentsApi.list('c_demo')).documents.find((d) => d.id === 'doc_demo_0')!
+  const updated = await documentsApi.update('c_demo', original.id, {
+    version: original.version,
+    sharing: { mode: 'selected', memberIds: [] },
+  })
+  expect(updated.document.version).toBe(original.version + 1)
+  await expect(
+    documentsApi.update('c_demo', original.id, {
+      version: original.version,
+      title: 'Stale title',
+      sharing: original.sharing,
+    }),
+  ).rejects.toMatchObject({ status: 409, code: 'document_conflict' })
+  const saved = (await documentsApi.list('c_demo')).documents.find((d) => d.id === original.id)!
+  expect(saved.title).toBe(original.title)
+  expect(saved.sharing.memberIds).toEqual([])
 })

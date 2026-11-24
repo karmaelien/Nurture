@@ -145,6 +145,7 @@ export type UpdateExpenseRequest = Partial<CreateExpenseRequest>
 export type DocumentCategory = 'medical' | 'insurance' | 'financial' | 'personal' | 'other'
 export type DocumentSharing = { mode: 'circle'; memberIds: [] } | { mode: 'selected'; memberIds: string[] }
 export type CareDocument = {
+  version: number // required on edits; increments after every successful update
   id: string
   recipientId: string
   title: string
@@ -158,4 +159,6 @@ export type CareDocument = {
   canManage: boolean
 }
 export type CreateDocumentRequest = Pick<CareDocument, 'recipientId' | 'title' | 'category' | 'sharing'>
-export type UpdateDocumentRequest = Partial<Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>>
+export type UpdateDocumentRequest = { version: number } & Partial<
+  Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>
+>

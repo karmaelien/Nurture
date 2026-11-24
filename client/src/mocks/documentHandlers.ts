@@ -59,6 +59,7 @@ function seed() {
         mimeType: 'application/pdf',
         sizeBytes: bytes.length,
         uploadedBy: 'u_demo',
+        version: 1,
         uploadedAt: new Date(Date.now() - index * 86400000).toISOString(),
         sharing: item.selected
           ? { mode: 'selected', memberIds: index === 0 ? ['u_daniel'] : [] }
@@ -182,7 +183,14 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
     return error(400, 'validation_error', 'Provide a title, category, recipient, and sharing choice.')
   if (parsed.data.sharing?.memberIds.some((id) => !circle.members.some((m) => m.user.id === id))) return missing()
   if (record) {
-    Object.assign(record.document, parsed.data)
+    const update = updateDocumentSchema.parse(parsed.data)
+    if (update.version !== record.document.version)
+      return error(
+        409,
+        'document_conflict',
+        'This document changed. Cancel editing, refresh the list, and reopen it before saving.',
+      )
+    Object.assign(record.document, update, { version: record.document.version + 1 })
     return HttpResponse.json({ document: serialize(record.document) })
   }
   const data = createDocumentSchema.parse(parsed.data)
@@ -194,6 +202,7 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
     mimeType: uploaded!.type as CareDocument['mimeType'],
     sizeBytes: bytes!.length,
     uploadedBy: userId,
+    version: 1,
     uploadedAt: new Date().toISOString(),
     canManage: true,
   }

@@ -47,9 +47,11 @@ export function DocumentForm({
   circle: CircleDetail
   userId: string
   document?: CareDocument
-  save: (metadata: CreateDocumentRequest, file?: File) => Promise<void>
+  save: (metadata: CreateDocumentRequest, file?: File, version?: number) => Promise<void>
   cancel: () => void
 }) {
+  // Keep the version of the form snapshot even if query data refreshes behind it.
+  const [version] = useState(document?.version)
   const [title, setTitle] = useState(document?.title ?? '')
   const [recipientId, setRecipientId] = useState(document?.recipientId ?? circle.recipients[0]?.id ?? '')
   const [category, setCategory] = useState<DocumentCategory>(document?.category ?? 'medical')
@@ -75,7 +77,7 @@ export function DocumentForm({
     setError('')
     setPending(true)
     try {
-      await save(parsed.data, file)
+      await save(parsed.data, file, version)
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {

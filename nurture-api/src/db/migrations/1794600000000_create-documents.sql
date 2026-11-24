@@ -1,6 +1,7 @@
 -- Up Migration
 CREATE TABLE care_documents (
   id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
   circle_id integer NOT NULL REFERENCES circles(id) ON DELETE CASCADE,
   recipient_id integer NOT NULL,
   title text NOT NULL CHECK (length(btrim(title)) BETWEEN 1 AND 200),

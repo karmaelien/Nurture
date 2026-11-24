@@ -160,6 +160,7 @@ type DocumentSharing =
 // these response fields in care_documents.file_bytes (PostgreSQL BYTEA).
 // File bytes are returned only by GET /documents/:documentId/file under the circle path.
 type CareDocument = {
+  version: number // required on edits; increments after every successful update
   id: string
   recipientId: string
   title: string
@@ -183,7 +184,7 @@ type CreateDocumentRequest = {
 }
 
 // At least one field; a supplied sharing object replaces the entire sharing rule.
-type UpdateDocumentRequest = Partial<Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>>
+type UpdateDocumentRequest = { version: number } & Partial<Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>>
 ```
 
 A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
@@ -564,7 +565,12 @@ a temporary browser object URL for viewing/downloading and revokes it afterward.
 #### `PATCH /api/circles/:circleId/documents/:documentId`
 
 Uploader or circle owner only. Body: `UpdateDocumentRequest`. Changes supplied metadata
-only; recipient and file bytes cannot be replaced. Failed validation leaves the record
+only; recipient and file bytes cannot be replaced. Include the `version` captured when
+editing began and at least one changed field. The server checks the version while
+locking the document in the transaction. A stale version returns `409 document_conflict`
+without changing metadata or sharing. Successful edits increment the version.
+Cancel editing, refresh, and reopen the form after a conflict; do not silently retry with
+a newer version. Failed validation leaves the record
 and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
 
 | Status | Body |
@@ -573,6 +579,7 @@ and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
 | 400 | `validation_error` |
 | 403 | `document_manager_only` |
 | 404 | `not_found` |
+| 409 | `document_conflict` |
 
 #### `DELETE /api/circles/:circleId/documents/:documentId`
 

@@ -71,7 +71,7 @@ test('upload, list, download, edit and delete persist private bytes and metadata
   assert.deepEqual(downloaded.body, pdf);
   assert.equal(downloaded.headers['cache-control'], 'private, no-store');
   assert.match(downloaded.headers['content-disposition'], /^attachment/);
-  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ title: 'Edited' }).expect(200);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: 1, title: 'Edited' }).expect(200);
   assert.equal((await auth(request(app).get(route())).expect(200)).body.documents[0].title, 'Edited');
   await auth(request(app).delete(`${route()}/${doc.id}`)).expect(204);
   assert.equal((await db.query('SELECT count(*) FROM care_documents')).rows[0].count, '0');
@@ -81,7 +81,7 @@ test('selected readers see files but cannot manage; hidden members and outsiders
   const doc = await create();
   assert.equal((await auth(request(app).get(`${route()}/${doc.id}`), reader)).body.document.canManage, false);
   await auth(request(app).get(`${route()}/${doc.id}/file`), reader).expect(200);
-  for (const method of ['patch', 'delete']) await auth(request(app)[method](`${route()}/${doc.id}`), reader).send({ title: 'No' }).expect(403);
+  for (const method of ['patch', 'delete']) await auth(request(app)[method](`${route()}/${doc.id}`), reader).send({ version: 1, title: 'No' }).expect(403);
   for (const user of [hidden, outsider]) {
     for (const suffix of ['', '/file']) await auth(request(app).get(`${route()}/${doc.id}${suffix}`), user).expect(404);
     await auth(request(app).delete(`${route()}/${doc.id}`), user).expect(404);
@@ -90,13 +90,13 @@ test('selected readers see files but cannot manage; hidden members and outsiders
   await request(app).get(route()).expect(401);
   await request(app).post(route()).expect(401);
   await auth(request(app).get(`${route()}/${doc.id}`), owner).expect(200);
-  await auth(request(app).patch(`${route()}/${doc.id}`), owner).send({ title: 'Owner edit' }).expect(200);
+  await auth(request(app).patch(`${route()}/${doc.id}`), owner).send({ version: 1, title: 'Owner edit' }).expect(200);
 });
 test('sharing changes take effect and owner/uploader exceptions persist', async () => {
   const doc = await create();
-  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ sharing: { mode: 'circle', memberIds: [] } }).expect(200);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: 1, sharing: { mode: 'circle', memberIds: [] } }).expect(200);
   await auth(request(app).get(`${route()}/${doc.id}/file`), hidden).expect(200);
-  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ sharing: { mode: 'selected', memberIds: [] } }).expect(200);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: 2, sharing: { mode: 'selected', memberIds: [] } }).expect(200);
   await auth(request(app).get(`${route()}/${doc.id}`), reader).expect(404);
   await auth(request(app).get(`${route()}/${doc.id}`), owner).expect(200);
   await auth(request(app).get(`${route()}/${doc.id}`)).expect(200);
@@ -130,7 +130,7 @@ test('filters combine, search uses literal substring, invalid patches preserve m
   assert.deepEqual(filtered.body.documents.map(d => d.id), [doc.id]);
   await auth(request(app).get(route())).query({ recipientId: foreignRecipient }).expect(404);
   for (const body of [{}, { recipientId: recipient }, { title: '' }]) await auth(request(app).patch(`${route()}/${doc.id}`)).send(body).expect(400);
-  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ sharing: { mode: 'selected', memberIds: [outsider] } }).expect(404);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: 1, sharing: { mode: 'selected', memberIds: [outsider] } }).expect(404);
   assert.equal((await auth(request(app).get(`${route()}/${doc.id}`))).body.document.title, doc.title);
 });
 test('failed uploads and grants roll back bytes, metadata and permissions together', async () => {
@@ -173,4 +173,19 @@ test('multipart supports frontend field order and exact size limit, rejects malf
   const doc = await create();
   await auth(request(app).get(`${route()}/${doc.id}/file`)).query({ disposition: 'inline' }).expect('Content-Disposition', /^inline/).expect(200);
   await auth(request(app).get(`${route()}/${doc.id}/file`)).query({ disposition: 'bad' }).expect(400);
+});
+
+test('stale edits cannot restore revoked access and concurrent saves have one winner', async () => {
+  const doc = await create();
+  await auth(request(app).patch(`${route()}/${doc.id}`), owner).send({ version: doc.version, sharing: { mode: 'selected', memberIds: [] } }).expect(200);
+  const stale = await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: doc.version, title: 'Stale', sharing: doc.sharing }).expect(409);
+  assert.equal(stale.body.error.code, 'document_conflict');
+  await auth(request(app).get(`${route()}/${doc.id}/file`), reader).expect(404);
+  const saved = (await auth(request(app).get(`${route()}/${doc.id}`))).body.document;
+  assert.equal(saved.title, doc.title);
+  assert.equal(saved.version, doc.version + 1);
+  const results = await Promise.all(['First', 'Second'].map(title => auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: saved.version, title })));
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ title: 'Missing version' }).expect(400);
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: saved.version + 1 }).expect(400);
 });

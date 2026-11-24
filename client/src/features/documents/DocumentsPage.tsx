@@ -124,8 +124,9 @@ function DocumentDetails({
             circle={circle}
             userId={user.id}
             cancel={() => setEditing(false)}
-            save={async ({ title, category, sharing }) => {
-              await documentsApi.update(circle.id, document.id, { title, category, sharing })
+            save={async ({ title, category, sharing }, _file, version) => {
+              if (version === undefined) throw new Error('Reload the document before editing.')
+              await documentsApi.update(circle.id, document.id, { title, category, sharing, version })
               await refresh()
               setEditing(false)
               setNotice('Document updated.')

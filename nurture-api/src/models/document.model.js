@@ -13,9 +13,9 @@ module.exports = function documentModel(db) {
         if (!membership) throw missing();
         const owner = membership.role === 'owner';
         const manage = row => owner || String(row.uploaded_by) === String(user.id);
-        const projection = `d.id, d.recipient_id, d.title, d.category, d.file_name, d.mime_type, d.size_bytes, d.uploaded_by, d.uploaded_at, d.sharing_mode, ARRAY(SELECT user_id::text FROM document_grants g WHERE g.document_id=d.id ORDER BY user_id) AS member_ids`;
+        const projection = `d.id, d.version, d.recipient_id, d.title, d.category, d.file_name, d.mime_type, d.size_bytes, d.uploaded_by, d.uploaded_at, d.sharing_mode, ARRAY(SELECT user_id::text FROM document_grants g WHERE g.document_id=d.id ORDER BY user_id) AS member_ids`;
         const visible = `(d.uploaded_by=$2 OR $3 OR d.sharing_mode='circle' OR EXISTS (SELECT 1 FROM document_grants g WHERE g.document_id=d.id AND g.user_id=$2))`;
-        const wire = row => ({ id: String(row.id), recipientId: String(row.recipient_id), title: row.title, category: row.category,
+        const wire = row => ({ id: String(row.id), version: row.version, recipientId: String(row.recipient_id), title: row.title, category: row.category,
           fileName: row.file_name, mimeType: row.mime_type, sizeBytes: row.size_bytes,
           uploadedBy: row.uploaded_by === null ? null : String(row.uploaded_by), uploadedAt: row.uploaded_at.toISOString(),
           sharing: { mode: row.sharing_mode, memberIds: row.member_ids }, canManage: manage(row) });
@@ -58,8 +58,9 @@ module.exports = function documentModel(db) {
             return wire(await find(row.id));
           },
           async update(row, body) {
+            if (body.version !== row.version) throw httpError(409, 'document_conflict', 'This document changed. Cancel editing, refresh the list, and reopen it before saving.');
             await checkSharing(body.sharing);
-            await tx.query('UPDATE care_documents SET title=$2,category=$3,sharing_mode=$4 WHERE id=$1', [row.id, body.title ?? row.title, body.category ?? row.category, body.sharing?.mode ?? row.sharing_mode]);
+            await tx.query('UPDATE care_documents SET version=version+1,title=$2,category=$3,sharing_mode=$4 WHERE id=$1', [row.id, body.title ?? row.title, body.category ?? row.category, body.sharing?.mode ?? row.sharing_mode]);
             if (body.sharing) await grants(row.id, body.sharing);
             return wire(await find(row.id));
           },

@@ -8,7 +8,7 @@ const sharing = z.discriminatedUnion('mode', [
 ]);
 const fields = { title: z.string().trim().min(1).max(200), category, sharing };
 const createSchema = z.object({ recipientId: id, ...fields }).strict();
-const updateSchema = z.object(fields).partial().strict().refine(value => Object.keys(value).length > 0);
+const updateSchema = z.object(fields).partial().extend({ version: z.number().int().positive().max(2147483647) }).strict().refine(value => Object.keys(value).some(key => key !== 'version'));
 const querySchema = z.object({ recipientId: id.optional(), category: category.optional(), search: z.string().trim().max(200).optional() }).strict();
 const fileQuerySchema = z.object({ disposition: z.enum(['inline', 'attachment']).default('attachment') }).strict();
 const parse = (schema, value) => {

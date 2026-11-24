@@ -49,3 +49,24 @@ it('opens an upload form and validates missing file selection', async () => {
   expect(screen.getByRole('alert')).toHaveTextContent('Choose a file to upload.')
   expect(screen.getByLabelText('Who can access')).toHaveValue('selected')
 })
+
+it('shows a conflict without replacing a stale form or restoring access', async () => {
+  const { documentsApi } = await import('../../api/documents.ts')
+  const user = userEvent.setup()
+  renderApp('/app/documents?circleId=c_demo')
+  await screen.findByRole('button', { name: /November visit summary/ })
+  await user.click(screen.getByRole('button', { name: 'Edit details & sharing' }))
+  const original = (await documentsApi.list('c_demo')).documents.find((d) => d.id === 'doc_demo_0')!
+  await documentsApi.update('c_demo', original.id, {
+    version: original.version,
+    sharing: { mode: 'selected', memberIds: [] },
+  })
+  await user.clear(screen.getByLabelText('Document title'))
+  await user.type(screen.getByLabelText('Document title'), 'My unsaved edit')
+  await user.click(screen.getByRole('button', { name: 'Save changes' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('This document changed.')
+  expect(screen.getByLabelText('Document title')).toHaveValue('My unsaved edit')
+  const saved = (await documentsApi.list('c_demo')).documents.find((d) => d.id === original.id)!
+  expect(saved.title).toBe(original.title)
+  expect(saved.sharing.memberIds).toEqual([])
+})
