@@ -15,6 +15,105 @@ async function logIn() {
   setToken((await authApi.login(DEMO_ACCOUNT)).token)
 }
 
+it('views saved dose history by date and care profile and can undo a taken dose', async () => {
+  vi.setSystemTime(new Date(2026, 11, 3, 12))
+  try {
+    await logIn()
+    await careApi.createMedication('c_demo', {
+      recipientId: 'r_rose',
+      name: 'History sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-01',
+        end: { kind: 'onDate', date: '2026-12-02' },
+      },
+    })
+    const dates = dashboardWindow(new Date(2026, 11, 2, 12))
+    const { medicationOccurrences } = await careApi.medicationOccurrences('c_demo', {
+      from: dates.todayStart,
+      to: dates.tomorrowStart,
+    })
+    const dose = medicationOccurrences.find((item) => item.name === 'History sample')!
+    await careApi.updateMedicationDose('c_demo', dose.id, 'completed')
+    const user = userEvent.setup()
+    renderApp('/app/medications')
+    const history = await screen.findByRole('region', { name: 'Doses' })
+    expect(within(history).getByLabelText('Dose date')).toHaveValue('2026-12-03')
+    fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-12-02' } })
+    expect(await within(history).findByText(/^Taken on .+ at /)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+    expect(
+      await within(history).findByText('No doses scheduled on this date for this care profile.'),
+    ).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
+    await user.click(await within(history).findByRole('button', { name: /^Mark pending: History sample/ }))
+    expect(await within(history).findByRole('button', { name: /^Mark taken: History sample/ })).toBeInTheDocument()
+    expect(within(history).queryByText(/^Taken on .+ at /)).not.toBeInTheDocument()
+    fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-12-01' } })
+    expect(await within(history).findByText(/Dec 1, 2026/)).toBeInTheDocument()
+    fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-11-30' } })
+    expect(
+      await within(history).findByText('No doses scheduled on this date for this care profile.'),
+    ).toBeInTheDocument()
+    fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '' } })
+    expect(within(history).getByText('Choose a date to view doses.')).toBeInTheDocument()
+    await user.click(within(history).getByRole('button', { name: 'Today' }))
+    expect(within(history).getByLabelText('Dose date')).toHaveValue('2026-12-03')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('combines overdue doses and reminders in order without duplicating rows', async () => {
+  vi.setSystemTime(new Date(2026, 11, 3, 11, 50))
+  try {
+    await logIn()
+    const { medications } = await careApi.medications('c_demo')
+    for (const medication of medications) await careApi.deleteMedication('c_demo', medication.id)
+    await careApi.createMedication('c_demo', {
+      recipientId: 'r_rose',
+      name: 'Attention sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00', '12:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-03',
+        end: { kind: 'onDate', date: '2026-12-03' },
+        reminderBeforeMinutes: 15,
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/app/medications')
+    let attention = await screen.findByRole('region', { name: 'Attention needed' })
+    await waitFor(() => expect(within(attention).getAllByRole('listitem')).toHaveLength(2))
+    const rows = within(attention).getAllByRole('listitem')
+    expect(within(rows[0]).getByText('Overdue')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('Due in 10 min')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Dose history' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Dose reminders' })).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention needed' })).not.toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
+    attention = await screen.findByRole('region', { name: 'Attention needed' })
+    await user.click(within(attention).getAllByRole('button', { name: /^Mark taken: Attention sample/ })[0])
+    await waitFor(() => expect(within(attention).getAllByRole('listitem')).toHaveLength(1))
+    expect(within(attention).getByText('Due in 10 min')).toBeInTheDocument()
+    const doses = screen.getByRole('region', { name: 'Doses' })
+    expect(await within(doses).findByText('1 / 2 taken')).toBeInTheDocument()
+    await user.click(within(attention).getByRole('button', { name: /^Mark taken: Attention sample/ }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention needed' })).not.toBeInTheDocument())
+    expect(await within(doses).findByText('2 / 2 taken')).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('opens from navigation and filters medications by care profile', async () => {
   await logIn()
   const user = userEvent.setup()
@@ -350,7 +449,7 @@ it('shares taken status between Medications and Home and preserves it after remo
     })
     const user = userEvent.setup()
     renderApp('/app/medications')
-    const today = await screen.findByRole('region', { name: 'Today’s doses' })
+    const today = await screen.findByRole('region', { name: 'Doses' })
     const takeButton = await within(today).findByRole('button', { name: /^Mark taken: Parity sample/ })
     expect(within(takeButton.closest('li')!).getByText('Overdue')).toBeInTheDocument()
     await user.click(takeButton)
@@ -374,7 +473,7 @@ it('shares taken status between Medications and Home and preserves it after remo
     home = await screen.findByRole('region', { name: 'Today’s medications' })
     await user.click(await within(home).findByRole('button', { name: /^Mark pending: Parity sample/ }))
     await user.click(screen.getByRole('link', { name: 'Medications' }))
-    const restoredToday = await screen.findByRole('region', { name: 'Today’s doses' })
+    const restoredToday = await screen.findByRole('region', { name: 'Doses' })
     expect(await within(restoredToday).findByRole('button', { name: /^Mark taken: Parity sample/ })).toBeInTheDocument()
   } finally {
     vi.useRealTimers()
@@ -390,7 +489,7 @@ it('keeps a dose pending when recording it fails', async () => {
   )
   const user = userEvent.setup()
   renderApp('/app/medications')
-  const today = await screen.findByRole('region', { name: 'Today’s doses' })
+  const today = await screen.findByRole('region', { name: 'Doses' })
   await user.click(await within(today).findByRole('button', { name: /^Mark taken: Sample medication B/ }))
   expect(await within(today).findByRole('alert')).toHaveTextContent('Dose could not be saved.')
   expect(within(today).getByRole('button', { name: /^Mark taken: Sample medication B/ })).toBeEnabled()
@@ -468,9 +567,9 @@ it('shows today’s overdue doses on both pages and removes them when taken', as
     await screen.findByRole('region', { name: 'Overdue doses' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
-    overdue = await screen.findByRole('region', { name: 'Overdue doses' })
+    overdue = await screen.findByRole('region', { name: 'Attention needed' })
     await user.click(within(overdue).getByRole('button', { name: /^Mark taken: Today overdue sample/ }))
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Overdue doses' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention needed' })).not.toBeInTheDocument())
     const dates = dashboardWindow(new Date())
     const { medicationOccurrences } = await careApi.medicationOccurrences('c_demo', {
       from: dates.todayStart,
@@ -515,14 +614,14 @@ it('carries previous-day pending doses across both pages without changing today�
     await screen.findByRole('region', { name: 'Overdue doses' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
-    previous = await screen.findByRole('region', { name: 'Overdue doses' })
+    previous = await screen.findByRole('region', { name: 'Attention needed' })
     const dates = dashboardWindow(new Date())
     const loadToday = async () =>
       (await careApi.medicationOccurrences('c_demo', { from: dates.todayStart, to: dates.tomorrowStart }))
         .medicationOccurrences
     const before = await loadToday()
     await user.click(within(previous).getByRole('button', { name: /^Mark taken: Yesterday sample/ }))
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Overdue doses' })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention needed' })).not.toBeInTheDocument())
     expect(await loadToday()).toEqual(before)
     await user.click(screen.getByRole('link', { name: 'Overview' }))
     await screen.findByRole('region', { name: 'Today’s medications' })
@@ -605,7 +704,7 @@ it('shows both missed takes without visiting the earlier day and resolves them s
     expect(readDb().care.medicationOccurrences.filter((dose) => dose.medicationId === medication.id)).toHaveLength(0)
     const user = userEvent.setup()
     renderApp('/app/medications')
-    const previous = await screen.findByRole('region', { name: 'Overdue doses' })
+    const previous = await screen.findByRole('region', { name: 'Attention needed' })
     expect(within(previous).getAllByText('Twice sample · 1 tablet')).toHaveLength(2)
     expect(within(previous).getByText('2 overdue doses')).toBeInTheDocument()
     await user.click(within(previous).getAllByRole('button', { name: /^Mark taken: Twice sample/ })[0])
@@ -649,9 +748,9 @@ it('shows next-day reminders on both pages, filters them, and clears them when t
     await screen.findByRole('region', { name: 'Dose reminders' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
-    reminders = await screen.findByRole('region', { name: 'Dose reminders' })
+    reminders = await screen.findByRole('region', { name: 'Attention needed' })
     await user.click(within(reminders).getByRole('button', { name: /^Mark taken: Reminder sample/ }))
-    await waitFor(() => expect(screen.queryByRole('region', { name: 'Dose reminders' })).not.toBeInTheDocument())
+    await waitFor(() => expect(within(reminders).queryByText('Reminder sample · 1 tablet')).not.toBeInTheDocument())
     await user.click(screen.getByRole('link', { name: 'Overview' }))
     await screen.findByRole('region', { name: 'Today’s medications' })
     expect(screen.queryByRole('region', { name: 'Dose reminders' })).not.toBeInTheDocument()

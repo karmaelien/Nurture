@@ -82,7 +82,7 @@ viewer's local time zone. Repeating the same taken write preserves its first tim
 Mark pending clears it. Older taken records without a timestamp stay Taken without
 inventing a recorded time. The timestamp indicates when the dose was marked taken.
 
-Home's Today’s medications panel and Medications' Today’s doses section use the
+Home's Today’s medications panel and Medications' Doses section use the
 same occurrence endpoint and shared list component. Both support Mark taken and
 Mark pending. Home's completion count and all person-filtered dose queries refresh
 after a successful write; a failed write leaves the previous status visible with
@@ -90,7 +90,8 @@ an error. The count and list follow the selected care profile.
 
 ### Overdue doses
 
-Both pages also show **Overdue doses** for all pending doses that have passed
+Home shows **Overdue doses** and Medications includes them in **Attention needed**
+for all pending doses that have passed
 their grace period, including today's doses and doses from earlier days. Each row shows
 the full scheduled date and time, plus a red tag such as Overdue from yesterday
 or Overdue from 2 days ago. These labels count local calendar days. This section follows Home's Showing filter or
@@ -144,6 +145,25 @@ calls completed doses Taken. Every write checks current family membership and th
 record's recipient. Obsolete pending doses and missing records return 404. Status
 is persisted in the existing mock database and survives a fresh page load.
 
+### Doses and history
+
+Medications combines today's doses and history in one **Doses** section, defaulting
+to today. Choose a date up to today with **Dose date**, or use **Today** to return
+to the current day. The default and Today button follow the new day at midnight;
+an explicitly selected date stays selected. The page's Care profile filter applies.
+The section shows a taken/total count for the selected date.
+Each row shows the scheduled local date and time, medication and dosage, and
+Taken, Pending, or the appropriate overdue status. Taken doses include their
+recorded timestamp when available. Mark taken and Mark pending use the same saved
+occurrences as Home, today's doses, reminders, and overdue doses, refreshing all
+views after a successful write.
+
+The selected date is bounded by the viewer's local midnights, including daylight
+saving transitions. History loads one day at a time using the existing occurrence
+endpoint, generating missing scheduled instances and retaining saved taken records.
+Loading, empty, and retry states appear within the section. Deleted medications
+and their occurrences remain deleted; this does not introduce a separate archive.
+
 ### In-app reminders
 
 Add/Edit medication includes **Remind before (minutes)**, from 0 to 1440 minutes.
@@ -152,8 +172,11 @@ existing definitions without this setting remain disabled. Use 0 for a reminder
 at the scheduled dose time. The schedule and generated occurrences store this as
 nullable `reminderBeforeMinutes`.
 
-Home and Medications show a **Dose reminders** panel for pending doses beginning
-at the selected lead time. Rows show Due in N min or Due now and support Mark
+Home shows a **Dose reminders** panel; Medications combines reminders and overdue
+doses in **Attention needed**, with overdue doses first and reminders below in one
+scrollable list. This panel is hidden when neither needs attention, and each
+failed request has its own retry action. Reminders begin at the selected lead
+time. Rows show Due in N min or Due now and support Mark
 taken. A reminder clears when taken or when the dose becomes overdue, at which
 point the existing overdue displays apply. Both pages follow their selected care
 profile. Reminders include doses scheduled after midnight and prior-day doses

@@ -12,9 +12,8 @@ import { useCircleSelection } from '../circles/selection.ts'
 import { MedicationEditor } from './MedicationEditor.tsx'
 import { defaultOverdueMinutes, scheduleCourse, scheduleSummary } from './medication-schedule.ts'
 import { zoneName } from '../profiles/time.ts'
-import { TodayMedicationDoses } from './TodayMedicationDoses.tsx'
-import { OverdueDoses } from './OverdueDoses.tsx'
-import { MedicationReminders } from './MedicationReminders.tsx'
+import { MedicationDoses } from './MedicationDoses.tsx'
+import { MedicationAttention } from './MedicationAttention.tsx'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -62,9 +61,8 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
           ))}
         </select>
       </label>
-      <MedicationReminders circle={circle} recipientId={recipientId} />
-      <OverdueDoses circle={circle} recipientId={recipientId} />
-      <TodayMedicationDoses circle={circle} recipientId={recipientId} />
+      <MedicationAttention circle={circle} recipientId={recipientId} />
+      <MedicationDoses circle={circle} recipientId={recipientId} />
       {detail.isError && (
         <div className="mb-5">
           <Alert tone="danger">
@@ -76,6 +74,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
         </div>
       )}
       <section aria-label="Medication list" className="rounded-panel border border-line bg-surface p-5 sm:p-6">
+        <h2 className="mb-4 font-display text-h3 font-semibold">Medications</h2>
         {medications.isPending ? (
           <p role="status" className="text-muted">
             Loading medications…
