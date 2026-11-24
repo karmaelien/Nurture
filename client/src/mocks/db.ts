@@ -8,6 +8,7 @@ import type { CircleDetail, Member, User } from '../api/types.ts'
 type DbUser = User & { password: string }
 
 export type Db = {
+  medicationHistory?: Record<string, { version: number; through: string }>
   users: DbUser[]
   circles: CircleDetail[]
   care: ReturnType<typeof seedCareData>

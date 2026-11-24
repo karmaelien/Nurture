@@ -13,6 +13,7 @@ import { MedicationEditor } from './MedicationEditor.tsx'
 import { defaultOverdueMinutes, scheduleCourse, scheduleSummary } from './medication-schedule.ts'
 import { zoneName } from '../profiles/time.ts'
 import { TodayMedicationDoses } from './TodayMedicationDoses.tsx'
+import { PreviousOverdueDoses } from './PreviousOverdueDoses.tsx'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -60,6 +61,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
           ))}
         </select>
       </label>
+      <PreviousOverdueDoses circle={circle} recipientId={recipientId} />
       <TodayMedicationDoses circle={circle} recipientId={recipientId} />
       {detail.isError && (
         <div className="mb-5">

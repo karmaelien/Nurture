@@ -110,3 +110,30 @@ export function reconcileMedicationDoses(
   }
   return result
 }
+
+/** Fill unvisited course dates in bounded windows; stable IDs preserve taken records.
+ * Coverage avoids regenerating the same history on each one-minute refresh.
+ */
+export function materializeMedicationHistory(
+  stored: MedicationOccurrence[],
+  medication: Medication,
+  before: string,
+  coverage?: { version: number; through: string },
+) {
+  const end = scheduleEndDate(medication.schedule)
+  const cutoff = Date.parse(before)
+  const finish = end ? Math.min(cutoff, Date.parse(`${end}T00:00:00Z`) + 36 * 3_600_000) : cutoff
+  let cursor =
+    coverage?.version === medication.version
+      ? Date.parse(coverage.through)
+      : Date.parse(`${medication.schedule.startsOn}T00:00:00Z`) - 36 * 3_600_000
+  let doses = stored
+  while (cursor < finish) {
+    const upper = Math.min(finish, cursor + maxDoseRange)
+    doses = reconcileMedicationDoses(doses, [medication], new Date(cursor).toISOString(), new Date(upper).toISOString())
+    cursor = upper
+  }
+  const through =
+    coverage?.version === medication.version && Date.parse(coverage.through) > cutoff ? coverage.through : before
+  return { doses, coverage: { version: medication.version, through } }
+}

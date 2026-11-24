@@ -10,6 +10,17 @@ export const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
 export const everyDay = [0, 1, 2, 3, 4, 5, 6]
 export const defaultOverdueMinutes = 30
 
+export function overdueDoseLabel(scheduledAt: string, now: number) {
+  const scheduled = new Date(scheduledAt)
+  const today = new Date(now)
+  // Compare local calendar dates, so crossing midnight counts even on a 23/25-hour DST day.
+  const calendarDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  const days = Math.round((calendarDay(today) - calendarDay(scheduled)) / 86_400_000)
+  if (days === 1) return 'Overdue from yesterday'
+  if (days > 1) return `Overdue from ${days} days ago`
+  return 'Overdue'
+}
+
 export function isDoseOverdue(dose: MedicationOccurrence, now: number) {
   return (
     dose.status === 'pending' &&

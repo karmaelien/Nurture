@@ -48,6 +48,18 @@ export function useMedicationOccurrences(circleId: string | null, filters: Medic
   })
 }
 
+export function useOverdueMedicationDoses(circleId: string, before: string, recipientId?: string) {
+  const { user } = useRequiredSession()
+  return useQuery({
+    queryKey: ['care', user.id, circleId, 'medication-occurrences', { overdueBefore: before, recipientId }],
+    queryFn: () => careApi.overdueMedicationDoses(circleId, before, recipientId),
+    select: (data) => data.medicationOccurrences,
+    retry: false,
+    // Yesterday's last dose may cross its grace period after midnight.
+    refetchInterval: 60_000,
+  })
+}
+
 export function useTasks(circleId: string | null, filters: TaskFilters = {}) {
   const { user } = useRequiredSession()
   return useQuery({

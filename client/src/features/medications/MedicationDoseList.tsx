@@ -8,18 +8,20 @@ import { Button } from '../../components/ui/Button.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
-import { isDoseOverdue } from './medication-schedule.ts'
+import { isDoseOverdue, overdueDoseLabel } from './medication-schedule.ts'
 
 function Dose({
   circleId,
   dose,
   person,
   now,
+  showDate,
 }: {
   circleId: string
   dose: MedicationOccurrence
   person: string
   now: number
+  showDate: boolean
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -48,6 +50,7 @@ function Dose({
   return (
     <li className="py-4 first:pt-0 last:pb-0">
       <p className="font-semibold">
+        {showDate && <>{new Date(dose.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · </>}
         {formatTime(dose.scheduledAt)} · {person}
       </p>
       <p className="text-muted">
@@ -57,7 +60,7 @@ function Dose({
         <span
           className={`inline-flex h-11 items-center rounded-control border px-4 text-[15px] ${taken ? 'border-primary text-primary' : overdue ? 'border-danger text-danger' : 'border-line text-muted'}`}
         >
-          {taken ? 'Taken' : overdue ? 'Overdue' : 'Pending'}
+          {taken ? 'Taken' : overdue ? overdueDoseLabel(dose.scheduledAt, now) : 'Pending'}
         </span>
         <Button
           variant="outline"
@@ -87,17 +90,34 @@ export function MedicationDoseList({
   circleId,
   doses,
   personName,
+  showDate = false,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
   personName: (id: string) => string
+  showDate?: boolean
 }) {
   const now = useMinute().getTime()
+  const overdueCount = doses.filter((dose) => isDoseOverdue(dose, now)).length
   return (
-    <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
-      {doses.map((dose) => (
-        <Dose key={dose.id} circleId={circleId} dose={dose} person={personName(dose.recipientId)} now={now} />
-      ))}
-    </ul>
+    <>
+      {overdueCount > 0 && (
+        <p role="status" className="mb-3 font-semibold text-danger">
+          {overdueCount} overdue {overdueCount === 1 ? 'dose' : 'doses'}
+        </p>
+      )}
+      <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
+        {doses.map((dose) => (
+          <Dose
+            key={dose.id}
+            circleId={circleId}
+            dose={dose}
+            person={personName(dose.recipientId)}
+            now={now}
+            showDate={showDate}
+          />
+        ))}
+      </ul>
+    </>
   )
 }

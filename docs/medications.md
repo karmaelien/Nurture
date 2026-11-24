@@ -88,6 +88,36 @@ Mark pending. Home's completion count and all person-filtered dose queries refre
 after a successful write; a failed write leaves the previous status visible with
 an error. The count and list follow the selected care profile.
 
+### Previous days
+
+Both pages also show **Overdue from previous days** when pending doses from
+before the viewer's local midnight have passed their grace period. Each row shows
+the full scheduled date and time, plus a red tag such as Overdue from yesterday
+or Overdue from 2 days ago. These labels count local calendar days. This section follows Home's Showing filter or
+Medications' Care profile filter, and it is separate from today's list and totals.
+Marking an old dose taken removes it from the overdue section and retains its taken
+record and timestamp in storage. Old pending records have no arbitrary age cutoff.
+
+`GET /api/circles/:circleId/medication-occurrences/overdue?before=...&recipientId=...`
+returns `{ medicationOccurrences }`, sorted oldest first. `before` is required;
+`recipientId` is optional. The endpoint verifies current family membership, updates
+old pending metadata from the current definition, and removes pending records whose
+times were removed by a schedule edit. Taken history is preserved. Missing instances
+are generated from each medication's start date through the cutoff even when those
+days were never viewed. Each scheduled time is a separate dose: two untaken times
+produce two overdue rows, and each dose list shows a red overdue-dose count.
+
+History generation runs in bounded date windows and records coverage per medication
+version in the same mock database. Repeated polling reuses that coverage and the
+stable dose IDs, preserving taken statuses without duplicating rows. Schedule edits
+invalidate coverage so the pending history follows the updated definition.
+
+The previous-day query refetches every minute, allowing a late-night dose to become
+overdue after midnight when its grace period expires. A failed request shows a retry
+action. The regular date-range endpoint still materializes requested doses; background
+generation while the application is closed remains part of backend integration;
+reopening the application catches up the missed schedule instances.
+
 `GET /api/circles/:circleId/medication-occurrences` generates doses from saved
 definitions for the requested UTC `[from, to)` window, up to 366 days per request.
 Generation uses the medication's own time zone, selected weekdays, inclusive start,

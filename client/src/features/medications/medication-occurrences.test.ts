@@ -1,6 +1,11 @@
 import { expect, it } from 'vitest'
 import type { Medication } from '../../api/types.ts'
-import { doseInstant, generateMedicationDoses, reconcileMedicationDoses } from './medication-occurrences.ts'
+import {
+  doseInstant,
+  generateMedicationDoses,
+  materializeMedicationHistory,
+  reconcileMedicationDoses,
+} from './medication-occurrences.ts'
 import { isDoseOverdue } from './medication-schedule.ts'
 
 const medication: Medication = {
@@ -84,4 +89,23 @@ it('retains taken history, updates pending metadata, and prunes obsolete pending
   expect(changed.filter((dose) => dose.status === 'completed')).toHaveLength(1)
   expect(changed.filter((dose) => dose.status === 'pending')).toHaveLength(3)
   expect(new Set(changed.map((dose) => dose.id)).size).toBe(changed.length)
+})
+
+it('fills unvisited history across yearly windows without duplicating or resetting taken doses', () => {
+  const weekly: Medication = {
+    ...medication,
+    schedule: {
+      ...medication.schedule,
+      daysOfWeek: [1],
+      startsOn: '2025-01-01',
+      end: { kind: 'onDate', date: '2026-01-05' },
+    },
+  }
+  const first = materializeMedicationHistory([], weekly, '2026-01-06T00:00:00Z')
+  expect(first.doses).toHaveLength(53)
+  first.doses[0].status = 'completed'
+  const second = materializeMedicationHistory(first.doses, weekly, '2026-01-06T00:00:00Z', first.coverage)
+  expect(second.doses).toHaveLength(53)
+  expect(second.doses[0].status).toBe('completed')
+  expect(new Set(second.doses.map((dose) => dose.id)).size).toBe(53)
 })

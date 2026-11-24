@@ -436,3 +436,144 @@ it('generates doses once, retains status on refetch, and protects status writes'
   setToken(token)
   await expect(careApi.updateMedicationDose('c_demo', doses[0].id, 'pending')).rejects.toMatchObject({ status: 404 })
 })
+
+it('carries previous-day pending doses across both pages without changing today’s totals', async () => {
+  vi.setSystemTime(new Date(2026, 11, 2, 12))
+  try {
+    await logIn()
+    await careApi.createMedication('c_demo', {
+      recipientId: 'r_rose',
+      name: 'Yesterday sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-01',
+        end: { kind: 'never' },
+      },
+    })
+    const yesterday = dashboardWindow(new Date(2026, 11, 1, 12))
+    await careApi.medicationOccurrences('c_demo', { from: yesterday.todayStart, to: yesterday.tomorrowStart })
+    const user = userEvent.setup()
+    renderApp('/app')
+    let previous = await screen.findByRole('region', { name: 'Overdue from previous days' })
+    expect(within(previous).getByText('Overdue from yesterday')).toBeInTheDocument()
+    expect(within(previous).getByRole('button', { name: /^Mark taken: Yesterday sample/ })).toBeInTheDocument()
+    expect(within(previous).getByText(/Dec 1, 2026/)).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Overdue from previous days' })).not.toBeInTheDocument(),
+    )
+    await user.selectOptions(screen.getByLabelText('Showing'), '')
+    await screen.findByRole('region', { name: 'Overdue from previous days' })
+    await user.click(screen.getByRole('link', { name: 'Medications' }))
+    await screen.findByRole('heading', { name: 'Medications', level: 1 })
+    previous = await screen.findByRole('region', { name: 'Overdue from previous days' })
+    const dates = dashboardWindow(new Date())
+    const loadToday = async () =>
+      (await careApi.medicationOccurrences('c_demo', { from: dates.todayStart, to: dates.tomorrowStart }))
+        .medicationOccurrences
+    const before = await loadToday()
+    await user.click(within(previous).getByRole('button', { name: /^Mark taken: Yesterday sample/ }))
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Overdue from previous days' })).not.toBeInTheDocument(),
+    )
+    expect(await loadToday()).toEqual(before)
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    await screen.findByRole('region', { name: 'Today’s medications' })
+    expect(screen.queryByRole('region', { name: 'Overdue from previous days' })).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('keeps older stored pending doses and honors grace periods crossing midnight', async () => {
+  vi.setSystemTime(new Date('2026-12-02T00:10:00Z'))
+  try {
+    await logIn()
+    const { medication } = await careApi.createMedication('c_demo', {
+      recipientId: 'r_frank',
+      name: 'Midnight sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['23:45'],
+        timeZone: 'UTC',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-01',
+        end: { kind: 'onDate', date: '2026-12-01' },
+        overdueAfterMinutes: 60,
+      },
+    })
+    await careApi.medicationOccurrences('c_demo', { from: '2026-12-01T00:00:00Z', to: '2026-12-02T00:00:00Z' })
+    const tracked = new Set([medication.id])
+    const load = async () =>
+      (await careApi.overdueMedicationDoses('c_demo', '2026-12-02T00:00:00Z', 'r_frank')).medicationOccurrences.filter(
+        (dose) => tracked.has(dose.medicationId),
+      )
+    expect(await load()).toHaveLength(0)
+    vi.setSystemTime(new Date('2026-12-02T00:45:00Z'))
+    expect((await load()).map((dose) => dose.medicationId)).toEqual([medication.id])
+    const { medication: old } = await careApi.createMedication('c_demo', {
+      recipientId: 'r_frank',
+      name: 'Older stored sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00'],
+        timeZone: 'UTC',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2020-01-02',
+        end: { kind: 'onDate', date: '2020-01-02' },
+      },
+    })
+    tracked.add(old.id)
+    await careApi.medicationOccurrences('c_demo', { from: '2020-01-02T00:00:00Z', to: '2020-01-03T00:00:00Z' })
+    expect((await load()).map((dose) => dose.medicationId)).toEqual([old.id, medication.id])
+    await expect(careApi.overdueMedicationDoses('c_demo', 'invalid')).rejects.toMatchObject({ status: 400 })
+    await expect(careApi.overdueMedicationDoses('c_demo', '2026-12-02T00:00:00Z', 'outsider')).rejects.toMatchObject({
+      status: 404,
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('shows both missed takes without visiting the earlier day and resolves them separately', async () => {
+  vi.setSystemTime(new Date(2026, 11, 3, 12))
+  try {
+    await logIn()
+    const { medication } = await careApi.createMedication('c_demo', {
+      recipientId: 'r_frank',
+      name: 'Twice sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00', '20:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-02',
+        end: { kind: 'onDate', date: '2026-12-02' },
+      },
+    })
+    const { readDb } = await import('../../mocks/db.ts')
+    expect(readDb().care.medicationOccurrences.filter((dose) => dose.medicationId === medication.id)).toHaveLength(0)
+    const user = userEvent.setup()
+    renderApp('/app/medications')
+    const previous = await screen.findByRole('region', { name: 'Overdue from previous days' })
+    expect(within(previous).getAllByText('Twice sample · 1 tablet')).toHaveLength(2)
+    expect(within(previous).getByText('2 overdue doses')).toBeInTheDocument()
+    await user.click(within(previous).getAllByRole('button', { name: /^Mark taken: Twice sample/ })[0])
+    expect(await within(previous).findByText('1 overdue dose')).toBeInTheDocument()
+    expect(within(previous).getAllByText('Twice sample · 1 tablet')).toHaveLength(1)
+    const { medicationOccurrences } = await careApi.overdueMedicationDoses(
+      'c_demo',
+      dashboardWindow(new Date()).todayStart,
+    )
+    expect(medicationOccurrences.filter((dose) => dose.medicationId === medication.id)).toHaveLength(1)
+  } finally {
+    vi.useRealTimers()
+  }
+})

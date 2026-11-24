@@ -79,6 +79,10 @@ export const careApi = {
       resourcePath(circleId, `medication-occurrences/${encodeURIComponent(occurrenceId)}`, {}),
       { method: 'PATCH', body: { status } },
     ),
+  overdueMedicationDoses: (circleId: string, before: string, recipientId?: string) =>
+    request<{ medicationOccurrences: MedicationOccurrence[] }>(
+      resourcePath(circleId, 'medication-occurrences/overdue', { before, recipientId }),
+    ),
   tasks: (circleId: string, filters: TaskFilters = {}) =>
     request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
   expenses: (circleId: string, filters: ExpenseFilters) =>

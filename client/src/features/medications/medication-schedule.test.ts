@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { medicationInputSchema } from './medication-input.ts'
-import { dateInZone, everyDay, scheduleEndDate } from './medication-schedule.ts'
+import { dateInZone, everyDay, overdueDoseLabel, scheduleEndDate } from './medication-schedule.ts'
 import type { MedicationInput } from '../../api/types.ts'
 
 const medication: MedicationInput = {
@@ -16,6 +16,13 @@ const medication: MedicationInput = {
     end: { kind: 'never' },
   },
 }
+
+it('labels older overdue doses by local calendar day', () => {
+  const late = new Date(2026, 2, 8, 23, 59).toISOString()
+  expect(overdueDoseLabel(late, new Date(2026, 2, 9, 0, 1).getTime())).toBe('Overdue from yesterday')
+  expect(overdueDoseLabel(late, new Date(2026, 2, 10, 0, 1).getTime())).toBe('Overdue from 2 days ago')
+  expect(overdueDoseLabel(late, new Date(2026, 2, 8, 23, 59).getTime())).toBe('Overdue')
+})
 
 it('counts inclusive course days across daylight saving and leap days', () => {
   expect(scheduleEndDate({ ...medication.schedule, end: { kind: 'afterDays', days: 3 } })).toBe('2026-03-09')

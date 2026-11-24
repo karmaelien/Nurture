@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
@@ -16,6 +16,8 @@ import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 import { MedicationDoseList } from '../medications/MedicationDoseList.tsx'
+import { PreviousOverdueDoses } from '../medications/PreviousOverdueDoses.tsx'
+import { useMinute } from '../profiles/time.ts'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
@@ -38,11 +40,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [recipientId, setRecipientId] = useState('')
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
+  const now = useMinute()
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
   const medications = useMedicationOccurrences(circle.id, {
@@ -153,16 +151,19 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <Panel
-          id="medications"
-          title="Today’s medications"
-          to={circleLink('/app/medications', circle.id)}
-          icon={<Pill />}
-          query={medications}
-          empty={!medications.data?.length}
-        >
-          <MedicationDoseList circleId={circle.id} doses={medications.data ?? []} personName={name} />
-        </Panel>
+        <div className="min-w-0">
+          <PreviousOverdueDoses circle={circle} recipientId={recipient} />
+          <Panel
+            id="medications"
+            title="Today’s medications"
+            to={circleLink('/app/medications', circle.id)}
+            icon={<Pill />}
+            query={medications}
+            empty={!medications.data?.length}
+          >
+            <MedicationDoseList circleId={circle.id} doses={medications.data ?? []} personName={name} />
+          </Panel>
+        </div>
         <HomeAppointmentsPanel
           appointments={appointments}
           circle={circle}

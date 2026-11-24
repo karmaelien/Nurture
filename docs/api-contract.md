@@ -363,6 +363,16 @@ for time-zone, daylight-saving, and schedule-edit behavior.
 | 400    | `validation_error`                                  |
 | 404    | `not_found`                                         |
 
+#### `GET /api/circles/:circleId/medication-occurrences/overdue` (browser mock)
+
+Query: `{ before, recipientId? }`. Returns `{ medicationOccurrences }` with pending
+doses scheduled strictly before the cutoff and past their individual overdue delay.
+The UI uses local midnight as the cutoff, keeping this list separate from today's totals.
+Current family membership is required; results follow the care-profile filter and sort
+oldest first. Missing schedule instances are generated from the course start, with one
+record per dose time. Taken records are preserved and no age cutoff is applied. See [Medications](medications.md)
+for reconciliation and materialization behavior.
+
 #### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` (browser mock)
 
 Body: `{ status: 'pending' | 'completed' }`. Returns `200 { medicationOccurrence }`.
