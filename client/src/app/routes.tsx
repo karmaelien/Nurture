@@ -69,6 +69,12 @@ export const routes: RouteObject[] = [
                     lazy: async () => ({ Component: (await import('../features/home/HomePage.tsx')).HomePage }),
                   },
                   {
+                    path: 'documents',
+                    lazy: async () => ({
+                      Component: (await import('../features/documents/DocumentsPage.tsx')).DocumentsPage,
+                    }),
+                  },
+                  {
                     path: 'expenses',
                     lazy: async () => ({
                       Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage,
@@ -114,22 +120,6 @@ export const routes: RouteObject[] = [
                 path: 'circles/:circleId/people/new',
                 lazy: async () => ({
                   Component: (await import('../features/profiles/AddRecipientPage.tsx')).AddRecipientPage,
-                }),
-              },
-              {
-                path: 'documents',
-                lazy: async () => ({
-                  Component: (await import('../features/documents/DocumentsPage.tsx')).DocumentsPage,
-                }),
-              },
-              {
-                path: 'expenses',
-                lazy: async () => ({ Component: (await import('../features/expenses/ExpensesPage.tsx')).ExpensesPage }),
-              },
-              {
-                path: 'appointments',
-                lazy: async () => ({
-                  Component: (await import('../features/appointments/AppointmentsRoute.tsx')).AppointmentsRoute,
                 }),
               },
             ],

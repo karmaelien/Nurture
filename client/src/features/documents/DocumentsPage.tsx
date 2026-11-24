@@ -5,7 +5,6 @@ import type { CareDocument, CircleDetail, CircleSummary } from '../../api/types.
 import { circlesApi } from '../../api/circles.ts'
 import { documentsApi } from '../../api/documents.ts'
 import { errorMessage } from '../../api/client.ts'
-import { AppHeader } from '../../layouts/AppHeader.tsx'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
@@ -379,7 +378,6 @@ export function DocumentsPage() {
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
-      <AppHeader />
       <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
         <div className="flex justify-end">
           <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />

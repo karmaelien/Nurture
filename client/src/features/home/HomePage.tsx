@@ -1,10 +1,9 @@
-import { AppHeader } from '../../layouts/AppHeader.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
@@ -15,8 +14,6 @@ import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
 import { useHomeAppointments } from './useHomeAppointments.ts'
-import { CircleSelection } from '../circles/CircleSelection.tsx'
-import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
@@ -226,7 +223,6 @@ export function HomePage() {
   }, [hash, locationKey, circle?.id])
   return (
     <div className="min-h-dvh">
-      <AppHeader />
       <main id="overview" className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
           <div>

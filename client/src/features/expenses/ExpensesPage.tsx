@@ -1,4 +1,3 @@
-import { AppHeader } from '../../layouts/AppHeader.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { useState, type FormEvent, type ReactNode } from 'react'
@@ -352,7 +351,6 @@ export function ExpensesPage() {
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
-      <AppHeader />
       <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
         <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
         {circle ? (
