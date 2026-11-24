@@ -68,16 +68,24 @@ export const careApi = {
       method: 'PATCH',
       body,
     }),
-  deleteMedication: (circleId: string, medicationId: string) =>
-    request<void>(resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}`, {}), { method: 'DELETE' }),
+  deleteMedication: (circleId: string, medicationId: string, version: number) =>
+    request<void>(resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}`, {}), {
+      method: 'DELETE',
+      body: { version },
+    }),
   medicationOccurrences: (circleId: string, filters: MedicationOccurrenceFilters) =>
     request<{ medicationOccurrences: MedicationOccurrence[] }>(
       resourcePath(circleId, 'medication-occurrences', filters),
     ),
-  updateMedicationDose: (circleId: string, occurrenceId: string, status: MedicationOccurrence['status']) =>
+  updateMedicationDose: (
+    circleId: string,
+    occurrenceId: string,
+    status: MedicationOccurrence['status'],
+    version: number,
+  ) =>
     request<{ medicationOccurrence: MedicationOccurrence }>(
       resourcePath(circleId, `medication-occurrences/${encodeURIComponent(occurrenceId)}`, {}),
-      { method: 'PATCH', body: { status } },
+      { method: 'PATCH', body: { status, version } },
     ),
   overdueMedicationDoses: (circleId: string, before: string, recipientId?: string) =>
     request<{ medicationOccurrences: MedicationOccurrence[] }>(

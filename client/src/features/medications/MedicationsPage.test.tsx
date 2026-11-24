@@ -38,7 +38,7 @@ it('views saved dose history by date and care profile and can undo a taken dose'
       to: dates.tomorrowStart,
     })
     const dose = medicationOccurrences.find((item) => item.name === 'History sample')!
-    await careApi.updateMedicationDose('c_demo', dose.id, 'completed')
+    await careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version)
     const user = userEvent.setup()
     renderApp('/app/medications')
     const history = await screen.findByRole('region', { name: 'Doses' })
@@ -73,7 +73,7 @@ it('combines overdue doses and reminders in order without duplicating rows', asy
   try {
     await logIn()
     const { medications } = await careApi.medications('c_demo')
-    for (const medication of medications) await careApi.deleteMedication('c_demo', medication.id)
+    for (const medication of medications) await careApi.deleteMedication('c_demo', medication.id, medication.version)
     await careApi.createMedication('c_demo', {
       recipientId: 'r_rose',
       name: 'Attention sample',
@@ -421,13 +421,13 @@ it('rejects stale edits, duplicate deletion, and writes from outside the family'
   const { id, ...body } = medication
   await careApi.updateMedication('c_demo', id, { ...body, dosage: 'Updated dosage' })
   await expect(careApi.updateMedication('c_demo', id, body)).rejects.toMatchObject({ status: 409 })
-  await careApi.deleteMedication('c_demo', id)
-  await expect(careApi.deleteMedication('c_demo', id)).rejects.toMatchObject({ status: 404 })
+  await careApi.deleteMedication('c_demo', id, medication.version + 1)
+  await expect(careApi.deleteMedication('c_demo', id, medication.version + 1)).rejects.toMatchObject({ status: 404 })
   await expect(careApi.updateMedication('c_demo', id, body)).rejects.toMatchObject({ status: 404 })
   const { token } = await authApi.register({ name: 'Other', email: 'other-med@example.test', password: 'password123' })
   setToken(token)
   await expect(careApi.updateMedication('c_demo', 'med_frank', body)).rejects.toMatchObject({ status: 404 })
-  await expect(careApi.deleteMedication('c_demo', 'med_frank')).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.deleteMedication('c_demo', 'med_frank', 1)).rejects.toMatchObject({ status: 404 })
 })
 
 it('shares taken status between Medications and Home and preserves it after remount', async () => {
@@ -522,13 +522,13 @@ it('generates doses once, retains status on refetch, and protects status writes'
     '2026-12-04T13:00:00.000Z',
     '2026-12-05T01:00:00.000Z',
   ])
-  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed')
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed', (await load())[0].version)
   expect(await load()).toHaveLength(4)
   const recorded = (await load())[0]
   expect(recorded).toMatchObject({ id: doses[0].id, status: 'completed', takenAt: expect.any(String) })
-  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed')
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed', (await load())[0].version)
   expect((await load())[0].takenAt).toBe(recorded.takenAt)
-  await careApi.updateMedicationDose('c_demo', doses[0].id, 'pending')
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'pending', recorded.version)
   expect((await load())[0]).toMatchObject({ status: 'pending', takenAt: null })
   const { token } = await authApi.register({
     name: 'Outsider',
@@ -536,7 +536,9 @@ it('generates doses once, retains status on refetch, and protects status writes'
     password: 'password123',
   })
   setToken(token)
-  await expect(careApi.updateMedicationDose('c_demo', doses[0].id, 'pending')).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.updateMedicationDose('c_demo', doses[0].id, 'pending', recorded.version)).rejects.toMatchObject({
+    status: 404,
+  })
 })
 
 it('shows today’s overdue doses on both pages and removes them when taken', async () => {

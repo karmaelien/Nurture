@@ -1,6 +1,7 @@
 import { seedCareData } from './careData.ts'
 import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
 import type { CircleDetail, Member, User } from '../api/types.ts'
+import { DB_KEY, MockStorageError } from './storage.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -8,6 +9,7 @@ import type { CircleDetail, Member, User } from '../api/types.ts'
 type DbUser = User & { password: string }
 
 export type Db = {
+  changeId?: string
   medicationHistory?: Record<string, { version: number; through: string }>
   users: DbUser[]
   circles: CircleDetail[]
@@ -17,7 +19,6 @@ export type Db = {
 }
 
 // Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v6'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
@@ -89,6 +90,7 @@ export function readDb(): Db {
         medication.schedule.startsOn ??= dateInZone(new Date(), medication.schedule.timeZone)
         medication.schedule.end ??= { kind: 'never' }
       }
+      for (const dose of db.care.medicationOccurrences) dose.version ??= 1
       return db
     }
   } catch {
@@ -99,11 +101,15 @@ export function readDb(): Db {
   return db
 }
 
-export function writeDb(db: Db) {
+export function writeDb(db: Db, notify = true) {
+  if (notify) db.changeId = crypto.randomUUID()
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify(db))
+    const serialized = JSON.stringify(db)
+    if (serialized !== localStorage.getItem(DB_KEY)) localStorage.setItem(DB_KEY, serialized)
   } catch {
-    // Mock data simply won't persist.
+    throw new MockStorageError(
+      'Your changes could not be saved in this browser. Free up browser storage or allow site storage, then try again.',
+    )
   }
 }
 

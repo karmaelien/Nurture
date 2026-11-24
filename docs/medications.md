@@ -65,7 +65,8 @@ editor refreshes the list and asks the user to close and reopen to review it.
 Missing or out-of-family medication IDs return 404, and profile/caregiver assignments
 are checked against the current family before any write.
 
-`DELETE` at the same path removes the definition and its stored dose occurrences.
+`DELETE` at the same path requires `{ version }` and removes the definition and its stored dose occurrences.
+An outdated confirmation returns `409 edit_conflict` without deleting the newer definition.
 The confirmation states this explicitly. Repeated deletion returns 404. Successful
 writes refresh the family's care queries, so deleted mock doses disappear from Home.
 These operations still use the existing browser mock database.
@@ -140,10 +141,40 @@ During spring daylight saving, a nonexistent clock time moves forward by the gap
 dose at its first occurrence. Times that resolve to the same instant are deduplicated.
 
 `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` accepts exactly
-`{ status: 'pending' | 'completed' }` and returns `{ medicationOccurrence }`. The UI
+`{ status: 'pending' | 'completed', version }` and returns `{ medicationOccurrence }`. The UI
 calls completed doses Taken. Every write checks current family membership and the
 record's recipient. Obsolete pending doses and missing records return 404. Status
 is persisted in the existing mock database and survives a fresh page load.
+
+Each occurrence has a version, beginning at 1 (older saved occurrences are upgraded).
+Status transitions and changed pending metadata advance that version. Stale actions
+return `409 edit_conflict` rather than overwriting a newer taken/pending decision,
+including when the status changed away and back. Repeating the current status with
+the current version preserves its version and taken timestamp. The list refreshes
+after a conflict or missing-dose response so the caregiver can review current data.
+Undoing a taken occurrence whose schedule time was removed returns `409 schedule_conflict`;
+its taken record is retained rather than becoming pending and disappearing on reload.
+
+### Multiple tabs and save failures
+
+All mock database handlers use the same origin-wide Web Lock around reading,
+checking permissions/versions, and writing. This includes authentication, family,
+appointment and expense writes, plus reads that generate dose records, because
+they share one stored database. Artificial network delays happen before acquiring
+the lock. Browsers without Web Locks return an explicit storage-unavailable error
+rather than using an unsafe cross-tab fallback.
+
+Successful user writes update a change marker. Other tabs listen for that marker
+and refresh their cached data; focus and visibility changes also refresh the data.
+Read-only dose generation leaves the marker unchanged, avoiding refresh loops
+between tabs. An open medication editor retains the version it was opened with,
+so refreshing its background list does not silently make an old form current.
+
+Failed browser writes return `503 storage_unavailable`, leaving the last saved
+database intact and showing a retryable error in the existing form or dose row.
+These protections apply to the browser mock, whose data is shared only within
+the same browser origin. Real multi-device storage still needs backend transactions
+and conditional version checks when medication endpoints are implemented.
 
 ### Doses and history
 

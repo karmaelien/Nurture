@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { careApi } from '../../api/care.ts'
-import { errorMessage } from '../../api/client.ts'
+import { ApiError, errorMessage } from '../../api/client.ts'
 import type { MedicationOccurrence } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -39,11 +39,13 @@ function Dose({
     setBusy(true)
     setError(undefined)
     try {
-      await careApi.updateMedicationDose(circleId, dose.id, taken ? 'pending' : 'completed')
+      await careApi.updateMedicationDose(circleId, dose.id, taken ? 'pending' : 'completed', dose.version)
       // Every date/person-filtered view, including Home's count, reads the same saved status.
       await cache.invalidateQueries({ queryKey: ['care', user.id, circleId, 'medication-occurrences'] })
     } catch (cause) {
       setError(errorMessage(cause))
+      if (cause instanceof ApiError && [404, 409].includes(cause.status))
+        await cache.invalidateQueries({ queryKey: ['care', user.id, circleId, 'medication-occurrences'] })
     } finally {
       saving.current = false
       setBusy(false)

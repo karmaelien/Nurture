@@ -78,6 +78,7 @@ export function seedCareData(now = new Date()) {
   const medicationOccurrences: MedicationOccurrence[] = [
     {
       id: 'dose_morning',
+      version: 1,
       medicationId: 'med_rose',
       recipientId: 'r_rose',
       name: 'Sample medication A',
@@ -87,6 +88,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 'dose_noon',
+      version: 1,
       medicationId: 'med_frank',
       recipientId: 'r_frank',
       name: 'Sample medication B',
@@ -96,6 +98,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 'dose_evening',
+      version: 1,
       medicationId: 'med_rose',
       recipientId: 'r_rose',
       name: 'Sample medication A',

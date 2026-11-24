@@ -68,6 +68,7 @@ export function generateMedicationDoses(medication: Medication, from: string, to
       const id = `dose_${medication.id}_${Date.parse(scheduledAt)}`
       result.set(id, {
         id,
+        version: 1,
         medicationId: medication.id,
         recipientId: medication.recipientId,
         name: medication.name,
@@ -107,9 +108,16 @@ export function reconcileMedicationDoses(
   for (const dose of generated) {
     const record = existing.get(key(dose))
     if (!record) result.push(dose)
-    else if (record.status === 'pending') Object.assign(record, dose, { id: record.id })
+    else if (record.status === 'pending') refreshPendingDose(record, dose)
   }
   return result
+}
+
+/** Metadata changes invalidate old dose actions; identical reads keep the same version. */
+export function refreshPendingDose(record: MedicationOccurrence, expected: MedicationOccurrence) {
+  const fields = ['recipientId', 'name', 'dosage', 'overdueAfterMinutes', 'reminderBeforeMinutes'] as const
+  const changed = fields.some((field) => record[field] !== expected[field])
+  Object.assign(record, expected, { id: record.id, version: record.version + (changed ? 1 : 0) })
 }
 
 /** Fill unvisited course dates in bounded windows; stable IDs preserve taken records.

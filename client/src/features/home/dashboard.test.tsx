@@ -74,7 +74,7 @@ describe('dashboard', () => {
     expect(screen.queryByRole('button', { name: '1 overdue appointment' })).not.toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
     const warning = await screen.findByRole('button', { name: '1 overdue appointment' })
-    const list = screen.getByRole('list', { name: 'Overdue and upcoming appointments' })
+    const list = await screen.findByRole('list', { name: 'Overdue and upcoming appointments' })
     const first = within(list).getAllByRole('listitem')[0]
     expect(within(first).getByText('Past checkup')).toBeInTheDocument()
     expect(within(first).getByText('Overdue')).toBeInTheDocument()

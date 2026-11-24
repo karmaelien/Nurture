@@ -114,6 +114,7 @@ type Appointment = {
 
 type MedicationOccurrence = {
   id: string; // unique to this occurrence
+  version: number; // required when changing status; stale versions return 409
   medicationId: string;
   recipientId: string;
   name: string;
@@ -376,10 +377,17 @@ for reconciliation and materialization behavior.
 
 #### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` (browser mock)
 
-Body: `{ status: 'pending' | 'completed' }`. Returns `200 { medicationOccurrence }`.
+Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { medicationOccurrence }`.
 The interface labels completed doses Taken. Requires current family membership; missing
 or inaccessible occurrences return 404 and invalid bodies return 400. Status updates refresh
 Home and Medications and are saved in the browser mock database.
+Stale dose versions return `409 edit_conflict`. A successful status transition increments
+the dose version; repeating its current status with the current version preserves its
+taken timestamp and version. Undoing a taken occurrence whose time was removed from
+the schedule returns `409 schedule_conflict` and preserves the taken history.
+Medication deletion requires a JSON `{ version: number }` body and rejects stale
+confirmation versions with `409 edit_conflict`. Failed browser persistence returns
+`503 storage_unavailable`; a save must not be reported as successful.
 
 #### `GET /api/circles/:circleId/tasks`
 

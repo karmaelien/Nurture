@@ -120,8 +120,8 @@ export function MedicationEditor({
       onSaved()
       dialog.current?.close()
     } catch (cause) {
-      if (cause instanceof ApiError && cause.status === 409) {
-        await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id, 'medications'] })
+      if (cause instanceof ApiError && [404, 409].includes(cause.status)) {
+        await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id] })
       }
       setError(errorMessage(cause))
     } finally {
@@ -159,7 +159,7 @@ export function MedicationEditor({
             <Button
               variant="danger"
               loading={busy}
-              onClick={() => void perform(() => careApi.deleteMedication(circle.id, medication.id))}
+              onClick={() => void perform(() => careApi.deleteMedication(circle.id, medication.id, medication.version))}
             >
               Confirm delete
             </Button>

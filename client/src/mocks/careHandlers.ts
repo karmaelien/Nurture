@@ -1,4 +1,5 @@
-import { delay, http, HttpResponse } from 'msw'
+import { delayedHttp as http } from './http.ts'
+import { HttpResponse } from 'msw'
 import { expenseCategorySchema } from '../features/expenses/schemas.ts'
 import { readDb, writeDb } from './db.ts'
 import { maxDoseRange, reconcileMedicationDoses } from '../features/medications/medication-occurrences.ts'
@@ -43,7 +44,6 @@ function byDate<T extends { id: string }>(key: (record: T) => string | null, des
 
 export const careHandlers = Object.entries(resources).map(([resource, config]) =>
   http.get(`/api/circles/:circleId/${resource}`, async ({ request, params }) => {
-    await delay()
     const db = readDb()
     const token = bearerToken(request)
     const userId = token ? db.sessions[token] : undefined
@@ -94,7 +94,7 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
         circle.recipients.some((person) => person.id === medication.recipientId),
       )
       db.care.medicationOccurrences = reconcileMedicationDoses(db.care.medicationOccurrences, definitions, from, to)
-      writeDb(db)
+      writeDb(db, false)
       const medicationOccurrences = db.care.medicationOccurrences.filter(
         (record) =>
           included(record) &&

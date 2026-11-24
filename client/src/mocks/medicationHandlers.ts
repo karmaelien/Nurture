@@ -1,9 +1,11 @@
-import { http, HttpResponse } from 'msw'
+import { http } from './http.ts'
+import { HttpResponse } from 'msw'
 import { z } from 'zod'
 import {
   generateMedicationDoses,
   materializeMedicationHistory,
   reconcileMedicationDoses,
+  refreshPendingDose,
 } from '../features/medications/medication-occurrences.ts'
 import { isDoseOverdue } from '../features/medications/medication-schedule.ts'
 import { medicationInputSchema, medicationUpdateSchema } from '../features/medications/medication-input.ts'
@@ -66,10 +68,10 @@ export const medicationHandlers = [
         new Date(Date.parse(dose.scheduledAt) + 1).toISOString(),
       )[0]
       if (!expected) return false
-      Object.assign(dose, expected, { id: dose.id })
+      refreshPendingDose(dose, expected)
       return true
     })
-    writeDb(db)
+    writeDb(db, false)
     const now = Date.now()
     const medicationOccurrences = db.care.medicationOccurrences
       .filter(
@@ -87,17 +89,37 @@ export const medicationHandlers = [
     const context = scope(request, params.circleId)
     if (context.failure) return context.failure
     const { db, circle } = context
-    const parsed = z.strictObject({ status: z.enum(['pending', 'completed']) }).safeParse(body)
+    const parsed = z
+      .strictObject({ status: z.enum(['pending', 'completed']), version: z.number().int().positive() })
+      .safeParse(body)
     if (!parsed.success) return error(400, 'validation_error', 'Choose taken or pending.')
     const dose = db.care.medicationOccurrences.find(
       (item) => item.id === params.occurrenceId && circle.recipients.some((person) => person.id === item.recipientId),
     )
     if (!dose) return error(404, 'not_found', 'This dose is unavailable.')
+    if (dose.version !== parsed.data.version)
+      return error(
+        409,
+        'edit_conflict',
+        'This dose changed in another tab or by another caregiver. The list has been refreshed; review its current status.',
+      )
     const medication = db.care.medications.find(
       (item) => item.id === dose.medicationId && circle.recipients.some((person) => person.id === item.recipientId),
     )
     if (!medication) return error(404, 'not_found', 'This medication is unavailable.')
     const end = new Date(Date.parse(dose.scheduledAt) + 1).toISOString()
+    const expected = generateMedicationDoses(medication, dose.scheduledAt, end)[0]
+    // Taken history may outlive a removed schedule time. Refuse undo rather than silently deleting it.
+    if (
+      dose.status === 'completed' &&
+      parsed.data.status === 'pending' &&
+      (!expected || expected.recipientId !== dose.recipientId)
+    )
+      return error(
+        409,
+        'schedule_conflict',
+        'This taken dose is no longer in the current schedule for this care profile and cannot be marked pending. Its taken history has been kept.',
+      )
     db.care.medicationOccurrences = reconcileMedicationDoses(
       db.care.medicationOccurrences,
       [medication],
@@ -106,8 +128,15 @@ export const medicationHandlers = [
     )
     const current = db.care.medicationOccurrences.find((item) => item.id === dose.id)
     if (!current) return error(404, 'not_found', 'This dose is no longer in the current schedule. Refresh the list.')
+    if (current.version !== parsed.data.version)
+      return error(
+        409,
+        'edit_conflict',
+        'This dose changed with its medication schedule. Refresh the list and review it before trying again.',
+      )
     if (parsed.data.status === 'completed' && current.status !== 'completed') current.takenAt = new Date().toISOString()
     if (parsed.data.status === 'pending') current.takenAt = null
+    if (current.status !== parsed.data.status) current.version += 1
     current.status = parsed.data.status
     writeDb(db)
     return HttpResponse.json({ medicationOccurrence: current })
@@ -171,7 +200,10 @@ export const medicationHandlers = [
     writeDb(db)
     return HttpResponse.json({ medication })
   }),
-  http.delete(`${path}/:medicationId`, ({ request, params }) => {
+  http.delete(`${path}/:medicationId`, async ({ request, params }) => {
+    const parsed = z
+      .strictObject({ version: z.number().int().positive() })
+      .safeParse(await request.json().catch(() => null))
     const context = scope(request, params.circleId)
     if (context.failure) return context.failure
     const { db, circle } = context
@@ -179,6 +211,13 @@ export const medicationHandlers = [
       (item) => item.id === params.medicationId && circle.recipients.some((person) => person.id === item.recipientId),
     )
     if (index < 0) return error(404, 'not_found', 'This medication is unavailable.')
+    if (!parsed.success) return error(400, 'validation_error', 'Provide the medication version being deleted.')
+    if (db.care.medications[index].version !== parsed.data.version)
+      return error(
+        409,
+        'edit_conflict',
+        'This medication changed while deletion was open. Close and reopen it to review the latest version.',
+      )
     const [medication] = db.care.medications.splice(index, 1)
     if (db.medicationHistory) delete db.medicationHistory[medication.id]
     db.care.medicationOccurrences = db.care.medicationOccurrences.filter((dose) => dose.medicationId !== medication.id)
