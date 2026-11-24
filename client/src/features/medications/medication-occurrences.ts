@@ -75,6 +75,7 @@ export function generateMedicationDoses(medication: Medication, from: string, to
         scheduledAt,
         status: 'pending',
         overdueAfterMinutes: schedule.overdueAfterMinutes ?? defaultOverdueMinutes,
+        reminderBeforeMinutes: schedule.reminderBeforeMinutes ?? null,
       })
     }
   }

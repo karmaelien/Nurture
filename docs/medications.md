@@ -88,13 +88,14 @@ Mark pending. Home's completion count and all person-filtered dose queries refre
 after a successful write; a failed write leaves the previous status visible with
 an error. The count and list follow the selected care profile.
 
-### Previous days
+### Overdue doses
 
-Both pages also show **Overdue from previous days** when pending doses from
-before the viewer's local midnight have passed their grace period. Each row shows
+Both pages also show **Overdue doses** for all pending doses that have passed
+their grace period, including today's doses and doses from earlier days. Each row shows
 the full scheduled date and time, plus a red tag such as Overdue from yesterday
 or Overdue from 2 days ago. These labels count local calendar days. This section follows Home's Showing filter or
-Medications' Care profile filter, and it is separate from today's list and totals.
+Medications' Care profile filter. Today's overdue doses also remain in today's
+list and count once in today's totals; earlier doses do not affect those totals.
 Marking an old dose taken removes it from the overdue section and retains its taken
 record and timestamp in storage. Old pending records have no arbitrary age cutoff.
 
@@ -112,8 +113,10 @@ version in the same mock database. Repeated polling reuses that coverage and the
 stable dose IDs, preserving taken statuses without duplicating rows. Schedule edits
 invalidate coverage so the pending history follows the updated definition.
 
-The previous-day query refetches every minute, allowing a late-night dose to become
-overdue after midnight when its grace period expires. A failed request shows a retry
+The overdue query refetches every minute, allowing any pending dose to become
+overdue when its grace period expires. Its cutoff is the next local midnight,
+capped by the endpoint at the current time, so future doses are excluded.
+A failed request shows a retry
 action. The regular date-range endpoint still materializes requested doses; background
 generation while the application is closed remains part of backend integration;
 reopening the application catches up the missed schedule instances.
@@ -141,5 +144,25 @@ calls completed doses Taken. Every write checks current family membership and th
 record's recipient. Obsolete pending doses and missing records return 404. Status
 is persisted in the existing mock database and survives a fresh page load.
 
-Reminders and the real backend remain to be implemented. Doses are currently
-materialized by mock API reads; this is not a background notification service.
+### In-app reminders
+
+Add/Edit medication includes **Remind before (minutes)**, from 0 to 1440 minutes.
+New forms default to 15 minutes. Leave the field blank to disable reminders;
+existing definitions without this setting remain disabled. Use 0 for a reminder
+at the scheduled dose time. The schedule and generated occurrences store this as
+nullable `reminderBeforeMinutes`.
+
+Home and Medications show a **Dose reminders** panel for pending doses beginning
+at the selected lead time. Rows show Due in N min or Due now and support Mark
+taken. A reminder clears when taken or when the dose becomes overdue, at which
+point the existing overdue displays apply. Both pages follow their selected care
+profile. Reminders include doses scheduled after midnight and prior-day doses
+still within their grace period, without changing today's dose totals.
+
+The display updates every minute while the app is open. A stable UTC date range
+covers the maximum 24-hour lead and grace periods across midnight and daylight
+saving changes. Dose writes refresh the shared occurrence queries on both pages.
+
+The real backend and reminder delivery while the app is closed remain to be
+implemented. Doses are currently materialized by mock API reads; these panels do
+not send browser notifications, emails, or background notifications.

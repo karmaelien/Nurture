@@ -14,6 +14,7 @@ import { medicationClockTime, medicationInputSchema } from './medication-input.t
 import {
   dateInZone,
   defaultOverdueMinutes,
+  defaultReminderMinutes,
   everyDay,
   medicationTimeZoneLabel,
   weekdays,
@@ -86,6 +87,7 @@ export function MedicationEditor({
         daysOfWeek: values.getAll('weekdays').map(Number),
         startsOn: field('startsOn'),
         overdueAfterMinutes: Number(field('overdueAfterMinutes')),
+        reminderBeforeMinutes: field('reminderBeforeMinutes') === '' ? null : Number(field('reminderBeforeMinutes')),
         end:
           ending === 'never'
             ? { kind: 'never' }
@@ -287,6 +289,17 @@ export function MedicationEditor({
             name="timeZone"
             defaultValue={zone}
             hint="Dose times and course dates follow this time zone."
+          />
+          <TextField
+            label="Remind before (minutes)"
+            name="reminderBeforeMinutes"
+            type="number"
+            min={0}
+            max={1440}
+            step={1}
+            defaultValue={medication ? (medication.schedule.reminderBeforeMinutes ?? '') : defaultReminderMinutes}
+            hint="Leave blank to turn reminders off. Use 0 to remind at the dose time."
+            optional
           />
           <TextField
             label="Overdue after (minutes)"

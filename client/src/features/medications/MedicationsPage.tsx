@@ -13,7 +13,8 @@ import { MedicationEditor } from './MedicationEditor.tsx'
 import { defaultOverdueMinutes, scheduleCourse, scheduleSummary } from './medication-schedule.ts'
 import { zoneName } from '../profiles/time.ts'
 import { TodayMedicationDoses } from './TodayMedicationDoses.tsx'
-import { PreviousOverdueDoses } from './PreviousOverdueDoses.tsx'
+import { OverdueDoses } from './OverdueDoses.tsx'
+import { MedicationReminders } from './MedicationReminders.tsx'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -61,7 +62,8 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
           ))}
         </select>
       </label>
-      <PreviousOverdueDoses circle={circle} recipientId={recipientId} />
+      <MedicationReminders circle={circle} recipientId={recipientId} />
+      <OverdueDoses circle={circle} recipientId={recipientId} />
       <TodayMedicationDoses circle={circle} recipientId={recipientId} />
       {detail.isError && (
         <div className="mb-5">
@@ -114,6 +116,14 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                         <span className="block text-small text-muted">
                           Overdue after {medication.schedule.overdueAfterMinutes ?? defaultOverdueMinutes} minutes
                         </span>
+                        {medication.schedule.reminderBeforeMinutes !== null &&
+                          medication.schedule.reminderBeforeMinutes !== undefined && (
+                            <span className="block text-small text-muted">
+                              {medication.schedule.reminderBeforeMinutes === 0
+                                ? 'Reminder at dose time'
+                                : `Reminder ${medication.schedule.reminderBeforeMinutes} minutes before`}
+                            </span>
+                          )}
                       </dd>
                     </div>
                     <div>

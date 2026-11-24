@@ -55,7 +55,7 @@ export function useOverdueMedicationDoses(circleId: string, before: string, reci
     queryFn: () => careApi.overdueMedicationDoses(circleId, before, recipientId),
     select: (data) => data.medicationOccurrences,
     retry: false,
-    // Yesterday's last dose may cross its grace period after midnight.
+    // Pending doses can cross their grace period throughout the day, including after midnight.
     refetchInterval: 60_000,
   })
 }

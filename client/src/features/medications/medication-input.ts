@@ -30,6 +30,7 @@ export const medicationInputSchema = z.strictObject({
         .transform((days) => [...days].sort((a, b) => a - b)),
       startsOn: calendarDate,
       overdueAfterMinutes: z.number().int().min(0).max(1440).default(defaultOverdueMinutes),
+      reminderBeforeMinutes: z.number().int().min(0).max(1440).nullable().default(null),
       end: z.discriminatedUnion('kind', [
         z.strictObject({ kind: z.literal('never') }),
         z.strictObject({

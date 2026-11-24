@@ -122,6 +122,7 @@ type MedicationOccurrence = {
   status: "pending" | "completed";
   takenAt?: string | null; // time marked taken; null after undo; absent on older records
   overdueAfterMinutes?: number; // pending-dose display grace period; defaults to 30
+  reminderBeforeMinutes?: number | null; // 0–1440 minutes before; null/omitted disables
 };
 
 type CareTask = {
@@ -462,7 +463,7 @@ These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Tasks:** create/update/delete operations and recurring task schedules.
-- **Medication backend and reminders:** connect medication definitions and dose tracking to the real API, and implement reminder delivery.
+- **Medication backend and background reminders:** connect medication definitions and dose tracking to the real API, and implement reminder delivery while the app is closed. In-app reminder panels are implemented; see [medications](medications.md).
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend

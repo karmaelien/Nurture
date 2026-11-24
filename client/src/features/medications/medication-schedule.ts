@@ -9,6 +9,25 @@ export function medicationTimeZoneLabel(zone: string) {
 export const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const everyDay = [0, 1, 2, 3, 4, 5, 6]
 export const defaultOverdueMinutes = 30
+export const defaultReminderMinutes = 15
+
+export function isDoseReminderActive(dose: MedicationOccurrence, now: number) {
+  const lead = dose.reminderBeforeMinutes
+  return (
+    lead !== null &&
+    lead !== undefined &&
+    dose.status === 'pending' &&
+    now >= Date.parse(dose.scheduledAt) - lead * 60_000 &&
+    !isDoseOverdue(dose, now)
+  )
+}
+
+// Stable UTC-day bounds cover every allowed 24-hour lead/grace period, including midnight and DST.
+export function doseReminderWindow(now: number) {
+  const day = 86_400_000
+  const start = Math.floor(now / day) * day
+  return { from: new Date(start - day).toISOString(), to: new Date(start + 2 * day + 1).toISOString() }
+}
 
 export function overdueDoseLabel(scheduledAt: string, now: number) {
   const scheduled = new Date(scheduledAt)

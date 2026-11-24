@@ -8,7 +8,7 @@ import { Button } from '../../components/ui/Button.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
-import { isDoseOverdue, overdueDoseLabel } from './medication-schedule.ts'
+import { isDoseOverdue, isDoseReminderActive, overdueDoseLabel } from './medication-schedule.ts'
 
 function Dose({
   circleId,
@@ -30,6 +30,8 @@ function Dose({
   const [error, setError] = useState<string>()
   const taken = dose.status === 'completed'
   const overdue = isDoseOverdue(dose, now)
+  const reminder = isDoseReminderActive(dose, now)
+  const minutesUntil = Math.ceil((Date.parse(dose.scheduledAt) - now) / 60_000)
   const action = taken ? 'Mark pending' : 'Mark taken'
   async function changeStatus() {
     if (saving.current) return
@@ -58,9 +60,17 @@ function Dose({
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <span
-          className={`inline-flex h-11 items-center rounded-control border px-4 text-[15px] ${taken ? 'border-primary text-primary' : overdue ? 'border-danger text-danger' : 'border-line text-muted'}`}
+          className={`inline-flex h-11 items-center rounded-control border px-4 text-[15px] ${taken ? 'border-primary text-primary' : overdue ? 'border-danger text-danger' : reminder ? 'border-warning text-warning' : 'border-line text-muted'}`}
         >
-          {taken ? 'Taken' : overdue ? overdueDoseLabel(dose.scheduledAt, now) : 'Pending'}
+          {taken
+            ? 'Taken'
+            : overdue
+              ? overdueDoseLabel(dose.scheduledAt, now)
+              : reminder
+                ? minutesUntil > 0
+                  ? `Due in ${minutesUntil} min`
+                  : 'Due now'
+                : 'Pending'}
         </span>
         <Button
           variant="outline"

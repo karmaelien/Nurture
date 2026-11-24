@@ -16,7 +16,8 @@ import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
 import { MedicationDoseList } from '../medications/MedicationDoseList.tsx'
-import { PreviousOverdueDoses } from '../medications/PreviousOverdueDoses.tsx'
+import { OverdueDoses } from '../medications/OverdueDoses.tsx'
+import { MedicationReminders } from '../medications/MedicationReminders.tsx'
 import { useMinute } from '../profiles/time.ts'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
@@ -152,7 +153,8 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
           </ul>
         </Panel>
         <div className="min-w-0">
-          <PreviousOverdueDoses circle={circle} recipientId={recipient} />
+          <MedicationReminders circle={circle} recipientId={recipient} />
+          <OverdueDoses circle={circle} recipientId={recipient} />
           <Panel
             id="medications"
             title="Today’s medications"

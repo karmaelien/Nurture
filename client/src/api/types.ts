@@ -73,6 +73,7 @@ export type MedicationSchedule = {
   daysOfWeek: number[] // Sunday = 0 through Saturday = 6
   startsOn: string // inclusive YYYY-MM-DD in timeZone
   overdueAfterMinutes?: number // omitted in older definitions; defaults to 30
+  reminderBeforeMinutes?: number | null // null/omitted disables reminders
   end: { kind: 'never' } | { kind: 'afterDays'; days: number } | { kind: 'onDate'; date: string }
 }
 
@@ -100,6 +101,7 @@ export type MedicationOccurrence = {
   status: 'pending' | 'completed'
   takenAt?: string | null // actual recording timestamp; never inferred from scheduledAt
   overdueAfterMinutes?: number
+  reminderBeforeMinutes?: number | null
 }
 
 export type CareTask = {

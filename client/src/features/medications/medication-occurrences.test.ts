@@ -6,7 +6,7 @@ import {
   materializeMedicationHistory,
   reconcileMedicationDoses,
 } from './medication-occurrences.ts'
-import { isDoseOverdue } from './medication-schedule.ts'
+import { doseReminderWindow, isDoseOverdue, isDoseReminderActive } from './medication-schedule.ts'
 
 const medication: Medication = {
   id: 'test',
@@ -73,6 +73,43 @@ it('flags only pending doses at the configured late threshold', () => {
   expect(isDoseOverdue(dose, scheduled + 30 * 60_000)).toBe(true)
   expect(isDoseOverdue({ ...dose, overdueAfterMinutes: 60 }, scheduled + 30 * 60_000)).toBe(false)
   expect(isDoseOverdue({ ...dose, status: 'completed' }, scheduled + 120 * 60_000)).toBe(false)
+})
+
+it('activates reminders at the lead boundary and clears them when taken or overdue', () => {
+  const dose = {
+    ...generateMedicationDoses(medication, '2026-03-07T00:00:00Z', '2026-03-08T00:00:00Z')[0],
+    reminderBeforeMinutes: 15,
+  }
+  const scheduled = Date.parse(dose.scheduledAt)
+  expect(isDoseReminderActive(dose, scheduled - 15 * 60_000 - 1)).toBe(false)
+  expect(isDoseReminderActive(dose, scheduled - 15 * 60_000)).toBe(true)
+  expect(isDoseReminderActive(dose, scheduled + 29 * 60_000)).toBe(true)
+  expect(isDoseReminderActive(dose, scheduled + 30 * 60_000)).toBe(false)
+  expect(isDoseReminderActive({ ...dose, status: 'completed' }, scheduled)).toBe(false)
+  expect(isDoseReminderActive({ ...dose, reminderBeforeMinutes: null }, scheduled)).toBe(false)
+  expect(isDoseReminderActive({ ...dose, reminderBeforeMinutes: 0 }, scheduled - 1)).toBe(false)
+  expect(isDoseReminderActive({ ...dose, reminderBeforeMinutes: 0 }, scheduled)).toBe(true)
+})
+
+it('loads a next-day dose before midnight and includes the maximum reminder lead', () => {
+  const upcoming: Medication = {
+    ...medication,
+    schedule: {
+      ...medication.schedule,
+      times: ['00:05'],
+      timeZone: 'UTC',
+      startsOn: '2026-12-02',
+      end: { kind: 'afterDays', days: 1 },
+      reminderBeforeMinutes: 15,
+    },
+  }
+  const now = Date.parse('2026-12-01T23:50:00Z')
+  const window = doseReminderWindow(now)
+  const doses = generateMedicationDoses(upcoming, window.from, window.to)
+  expect(doses).toHaveLength(1)
+  expect(isDoseReminderActive(doses[0], now)).toBe(true)
+  const midnight = Date.parse('2026-12-01T00:00:00Z')
+  expect(Date.parse(doseReminderWindow(midnight).to)).toBeGreaterThan(midnight + 24 * 60 * 60_000)
 })
 
 it('retains taken history, updates pending metadata, and prunes obsolete pending times', () => {
