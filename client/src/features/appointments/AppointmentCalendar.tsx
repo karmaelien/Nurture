@@ -1,13 +1,9 @@
-import { TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { AppointmentDetails } from './AppointmentDetails.tsx'
-import { AppointmentListItem } from './AppointmentListItem.tsx'
-import { isAppointmentOverdue } from './appointment-overdue.ts'
-import { compareAppointmentListOrder } from './appointment-order.ts'
 import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
-import { appointmentLayoutEnd, hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
+import { hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 type CalendarView = 'daily' | 'weekly' | 'monthly'
@@ -19,14 +15,12 @@ export function AppointmentCalendar({
   now,
   onComplete,
   onMarkTodo,
-  onEdit,
 }: {
   profiles: CareProfile[]
   appointments: AppointmentSummary[]
   now: number
   onComplete?: (appointment: AppointmentSummary) => void
   onMarkTodo?: (appointment: AppointmentSummary) => void
-  onEdit?: (appointment: AppointmentSummary) => void
 }) {
   const headingId = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -37,7 +31,6 @@ export function AppointmentCalendar({
     const today = new Date(now)
     return new Date(today.getFullYear(), today.getMonth(), today.getDate())
   })
-  const [preferredMonthDay, setPreferredMonthDay] = useState(() => new Date(now).getDate())
   const year = anchorDate.getFullYear()
   const monthIndex = anchorDate.getMonth()
   const daysInMonth = new Date(year, monthIndex + 1, 0).getDate()
@@ -87,7 +80,7 @@ export function AppointmentCalendar({
       return (
         hasValidAppointmentTime(appointment) &&
         date < periodEnd &&
-        appointmentLayoutEnd(appointment) > periodStart.getTime() &&
+        new Date(appointment.endsAt) > periodStart &&
         profiles.some((profile) => profile.id === appointment.recipientId && profile.circleId === appointment.circleId)
       )
     })
@@ -95,11 +88,7 @@ export function AppointmentCalendar({
   const formatTime = (value: string) =>
     new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(new Date(value))
   const formatTimeRange = (appointment: AppointmentSummary) =>
-    appointment.endsAt
-      ? `${formatTime(appointment.startsAt)} – ${formatTime(appointment.endsAt)}`
-      : formatTime(appointment.startsAt)
-  const statusLabel = (appointment: AppointmentSummary) =>
-    isAppointmentOverdue(appointment, now) ? 'overdue' : appointment.status
+    `${formatTime(appointment.startsAt)} – ${formatTime(appointment.endsAt)}`
   const selectedAppointment = periodAppointments.find(
     (appointment) => JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]) === selectedKey,
   )
@@ -107,9 +96,7 @@ export function AppointmentCalendar({
     (profile) => profile.id === selectedAppointment?.recipientId && profile.circleId === selectedAppointment?.circleId,
   )
   const dayAppointments = selectedDay
-    ? layoutDayAppointments(periodAppointments, new Date(selectedDay))
-        .map((entry) => entry.appointment)
-        .sort(compareAppointmentListOrder)
+    ? layoutDayAppointments(periodAppointments, new Date(selectedDay)).map((entry) => entry.appointment)
     : []
   const hasDayDetails = dayAppointments.length > 0
 
@@ -121,14 +108,18 @@ export function AppointmentCalendar({
   }, [selectedAppointment, hasDayDetails])
 
   function changePeriod(offset: number) {
-    if (view === 'monthly') {
-      const lastDay = new Date(year, monthIndex + offset + 1, 0).getDate()
-      setAnchorDate(new Date(year, monthIndex + offset, Math.min(preferredMonthDay, lastDay)))
-      return
-    }
-    const next = new Date(year, monthIndex, anchorDate.getDate() + offset * (view === 'weekly' ? 7 : 1))
-    setAnchorDate(next)
-    setPreferredMonthDay(next.getDate())
+    setAnchorDate((current) => {
+      if (view === 'monthly') {
+        // Clamp the anchor day to avoid skipping shorter months (for example, January 31 to February).
+        const lastDay = new Date(current.getFullYear(), current.getMonth() + offset + 1, 0).getDate()
+        return new Date(current.getFullYear(), current.getMonth() + offset, Math.min(current.getDate(), lastDay))
+      }
+      return new Date(
+        current.getFullYear(),
+        current.getMonth(),
+        current.getDate() + offset * (view === 'weekly' ? 7 : 1),
+      )
+    })
   }
   const periodUnit = view === 'monthly' ? 'month' : view === 'weekly' ? 'week' : 'day'
 
@@ -253,8 +244,8 @@ export function AppointmentCalendar({
                                     type="button"
                                     aria-haspopup="dialog"
                                     className="h-full w-full cursor-pointer overflow-hidden rounded-control border border-surface bg-wash px-1.5 py-1 text-left align-top text-small leading-4 hover:bg-sage"
-                                    aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
-                                    title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
+                                    aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${appointment.status}`}
+                                    title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${appointment.status}`}
                                     onClick={() =>
                                       setSelectedKey(
                                         JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]),
@@ -264,12 +255,6 @@ export function AppointmentCalendar({
                                     <span
                                       className={`block truncate font-semibold ${appointment.status === 'completed' ? 'line-through' : ''}`}
                                     >
-                                      {isAppointmentOverdue(appointment, now) && (
-                                        <TriangleAlert
-                                          className="mr-1 inline-block size-3 align-text-bottom text-danger"
-                                          aria-hidden
-                                        />
-                                      )}
                                       {appointment.status === 'cancelled' ? 'Cancelled: ' : ''}
                                       {appointment.title}
                                     </span>
@@ -339,8 +324,8 @@ export function AppointmentCalendar({
                                         type="button"
                                         aria-haspopup="dialog"
                                         className={`${view === 'monthly' ? 'h-8' : 'h-10'} w-full min-w-0 cursor-pointer overflow-hidden rounded-control bg-wash px-1.5 py-1 text-left text-small leading-4 hover:bg-sage`}
-                                        aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
-                                        title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
+                                        aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${appointment.status}`}
+                                        title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${appointment.status}`}
                                         onClick={() =>
                                           setSelectedKey(
                                             JSON.stringify([
@@ -354,12 +339,6 @@ export function AppointmentCalendar({
                                         <span
                                           className={`block truncate font-semibold ${appointment.status === 'completed' ? 'line-through' : ''}`}
                                         >
-                                          {isAppointmentOverdue(appointment, now) && (
-                                            <TriangleAlert
-                                              className="mr-1 inline-block size-3 align-text-bottom text-danger"
-                                              aria-hidden
-                                            />
-                                          )}
                                           {appointment.status === 'cancelled' ? 'Cancelled: ' : ''}
                                           {appointment.title}
                                         </span>
@@ -414,7 +393,6 @@ export function AppointmentCalendar({
             headingId={`${headingId}-details`}
             onComplete={onComplete}
             onMarkTodo={onMarkTodo}
-            onEdit={onEdit}
           />
         )}
         {!selectedAppointment && hasDayDetails && (
@@ -429,15 +407,19 @@ export function AppointmentCalendar({
                 )!
                 return (
                   <li key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}>
-                    <div className="py-3">
-                      <AppointmentListItem
-                        appointment={appointment}
-                        profileName={profile.name}
-                        onComplete={onComplete ? () => onComplete(appointment) : undefined}
-                        onMarkTodo={onMarkTodo ? () => onMarkTodo(appointment) : undefined}
-                        onEdit={onEdit && (() => onEdit(appointment))}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      className="w-full rounded-control py-3 text-left hover:bg-wash"
+                      onClick={() => {
+                        setSelectedKey(JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id]))
+                        setSelectedDay(null)
+                      }}
+                    >
+                      <span className="block font-semibold">{appointment.title}</span>
+                      <span className="block text-muted">
+                        {formatTimeRange(appointment)} · {profile.name}
+                      </span>
+                    </button>
                   </li>
                 )
               })}

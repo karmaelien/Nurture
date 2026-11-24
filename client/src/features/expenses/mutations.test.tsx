@@ -122,7 +122,6 @@ describe('expense mutations', () => {
           dateOfBirth: null,
           notes: null,
           relationship: null,
-          version: 1,
         },
       ],
     })

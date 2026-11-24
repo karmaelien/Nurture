@@ -2,22 +2,18 @@ import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 
 // Shared by calendar, upcoming-list, and today's dialogs so fields and completion stay consistent.
-export type AppointmentDetailData = Omit<AppointmentSummary, 'endsAt'> & { endsAt?: string }
-
-export function AppointmentDetails<T extends AppointmentDetailData>({
+export function AppointmentDetails({
   appointment,
   profile,
   headingId,
   onComplete,
   onMarkTodo,
-  onEdit,
 }: {
-  appointment: T
+  appointment: AppointmentSummary
   profile: CareProfile
   headingId: string
-  onComplete?: (appointment: T) => void
-  onMarkTodo?: (appointment: T) => void
-  onEdit?: (appointment: T) => void
+  onComplete?: (appointment: AppointmentSummary) => void
+  onMarkTodo?: (appointment: AppointmentSummary) => void
 }) {
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
@@ -37,20 +33,12 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
         <div>
           <dt className="font-semibold">Ends</dt>
           <dd>
-            {appointment.endsAt ? (
-              <time dateTime={appointment.endsAt}>{formatDate(appointment.endsAt)}</time>
-            ) : (
-              'Not provided'
-            )}
+            <time dateTime={appointment.endsAt}>{formatDate(appointment.endsAt)}</time>
           </dd>
         </div>
         <div>
           <dt className="font-semibold">Duration</dt>
-          <dd>
-            {appointment.endsAt
-              ? `${(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes`
-              : 'Not provided'}
-          </dd>
+          <dd>{(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes</dd>
         </div>
         <div>
           <dt className="font-semibold">Care circle</dt>
@@ -79,11 +67,6 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
       {appointment.status === 'completed' && onMarkTodo && (
         <Button className="mt-6" onClick={() => onMarkTodo(appointment)}>
           Mark as to do
-        </Button>
-      )}
-      {onEdit && (
-        <Button variant="secondary" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
-          Edit appointment
         </Button>
       )}
     </>

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CalendarDays, ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
+import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
@@ -28,6 +29,60 @@ const categoryNames: Record<ExpenseCategory, string> = {
   other: 'Other',
 }
 
+type QueryState = { isPending: boolean; isError: boolean; error: unknown; refetch: () => unknown }
+
+function Panel({
+  id,
+  title,
+  icon,
+  query,
+  empty,
+  action,
+  children,
+}: {
+  id: string
+  title: string
+  icon: ReactNode
+  query: QueryState
+  empty: boolean
+  action?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="min-w-0 scroll-mt-6 rounded-panel border border-line bg-surface p-5 sm:p-6"
+    >
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 id={`${id}-title`} className="font-display text-h3 font-semibold">
+          {title}
+        </h2>
+        <span className="text-primary" aria-hidden>
+          {icon}
+        </span>
+      </div>
+      {query.isError ? (
+        <div role="alert">
+          <p>{errorMessage(query.error)}</p>
+          <Button variant="secondary" className="mt-3" onClick={() => query.refetch()}>
+            Try again
+          </Button>
+        </div>
+      ) : query.isPending ? (
+        <p role="status" className="text-muted">
+          Loading…
+        </p>
+      ) : empty ? (
+        <p className="text-muted">Nothing to show for this period.</p>
+      ) : (
+        children
+      )}
+      {action && <div className="mt-6">{action}</div>}
+    </section>
+  )
+}
+
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-panel bg-wash p-5">
@@ -47,6 +102,11 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
   }, [])
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
+  const appointments = useAppointments(circle.id, {
+    from: windowDates.from,
+    to: windowDates.to,
+    recipientId: recipient,
+  })
   const medications = useMedicationOccurrences(circle.id, {
     from: windowDates.todayStart,
     to: windowDates.tomorrowStart,
@@ -69,15 +129,6 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
       ? 'Unassigned'
       : (details.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
         (details.isError ? 'Caregiver unavailable' : 'Loading caregiver…'))
-  const appointments = useHomeAppointments(
-    circle,
-    {
-      from: windowDates.from,
-      to: new Date(appointmentUpcomingEnd(now.getTime())).toISOString(),
-      recipientId: recipient,
-    },
-    assigned,
-  )
   const total = expenses.data?.reduce((sum, expense) => sum + expense.amountCents, 0) ?? 0
   const categories = Object.entries(categoryNames)
     .map(([category, label]) => ({
@@ -127,7 +178,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                 : `${medications.data?.filter((dose) => dose.status === 'completed').length ?? 0} / ${medications.data?.length ?? 0}`
           }
         />
-        <Stat label="Upcoming appointments · next 7 days" value={appointments.upcomingCountLabel} />
+        <Stat label="Upcoming appointments · next 7 days" value={count(appointments)} />
       </div>
       {details.isError && (
         <div role="alert" className="mb-6 flex flex-wrap items-center gap-3">
@@ -178,13 +229,34 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
           </ul>
         </Panel>
-        <HomeAppointmentsPanel
-          appointments={appointments}
-          circle={circle}
-          recipientId={recipient}
-          now={now.getTime()}
-          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
-        />
+        <Panel
+          id="appointments"
+          title="Appointments · next 7 days"
+          icon={<CalendarDays />}
+          query={appointments}
+          empty={!appointments.data?.length}
+        >
+          <ul className="divide-y divide-line">
+            {appointments.data?.map((appointment) => (
+              <li key={appointment.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
+                <div className="h-fit min-w-14 rounded-control bg-wash p-2 text-center" aria-hidden>
+                  <p>{new Date(appointment.startsAt).toLocaleDateString(undefined, { weekday: 'short' })}</p>
+                  <p className="font-semibold">{new Date(appointment.startsAt).getDate()}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold">{appointment.title}</p>
+                  <p>
+                    {name(appointment.recipientId)} · {formatDate(appointment.startsAt)} ·{' '}
+                    {formatTime(appointment.startsAt)}
+                  </p>
+                  <p className="text-muted">
+                    {appointment.location ?? 'Location not set'} · {assigned(appointment.assignedCaregiverId)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Panel>
         <Panel
           id="expenses"
           title="Care spending"

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -12,6 +12,7 @@ import { useLogin } from './session.ts'
 
 export function LoginPage() {
   const login = useLogin()
+  const [params] = useSearchParams()
   const {
     register,
     handleSubmit,
@@ -31,7 +32,9 @@ export function LoginPage() {
   return (
     <>
       <h1 className="font-display text-h1 font-bold">Log in to Nurture</h1>
-      <p className="mt-2 text-muted">Welcome back.</p>
+      <p className="mt-2 text-muted">
+        {params.get('next') ? 'Log in to continue where you left off.' : 'Welcome back.'}
+      </p>
 
       <form noValidate onSubmit={onSubmit} className="mt-8 grid gap-5">
         {errors.root && <Alert tone="danger">{errors.root.message}</Alert>}

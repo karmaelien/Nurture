@@ -346,7 +346,6 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
     </div>
   )
 }
-/** Rendered inside AppLayout, which supplies the shared header and navigation. */
 export function ExpensesPage() {
   const { circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)

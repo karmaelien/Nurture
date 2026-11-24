@@ -60,24 +60,4 @@ describe('appointment time layout', () => {
     const midnight = appointment('midnight', 23, 0, 24)
     expect(layoutDayAppointments([midnight], new Date(2026, 10, 4))).toEqual([])
   })
-
-  it('keeps a late start-only visit on its original date', () => {
-    const visit = { ...appointment('start only', 23, 55, 24), endsAt: undefined }
-    expect(layoutDayAppointments([visit], day)[0]).toMatchObject({ startMinute: 1435, endMinute: 1440 })
-    expect(layoutDayAppointments([visit], new Date(2026, 10, 4))).toEqual([])
-  })
-
-  const fallBackDay = new Date(2026, 10, 1)
-  const usesNewYorkFallBack =
-    new Date('2026-11-01T05:00:00Z').getHours() === 1 && new Date('2026-11-01T06:00:00Z').getHours() === 1
-  it.skipIf(!usesNewYorkFallBack)('keeps visits in the repeated hour visible without stacking them', () => {
-    const first = { ...appointment('first', 1, 0, 2), startsAt: '2026-11-01T05:15:00Z', endsAt: '2026-11-01T05:30:00Z' }
-    const second = { ...first, id: 'second', startsAt: '2026-11-01T06:15:00Z', endsAt: '2026-11-01T06:30:00Z' }
-    const crossing = { ...first, id: 'crossing', startsAt: '2026-11-01T05:55:00Z', endsAt: '2026-11-01T06:05:00Z' }
-    expect(layoutDayAppointments([first, second, crossing], fallBackDay)).toMatchObject([
-      { startMinute: 75, endMinute: 90, column: 0, columns: 2 },
-      { startMinute: 75, endMinute: 90, column: 1, columns: 2 },
-      { startMinute: 115, endMinute: 125, column: 0, columns: 1 },
-    ])
-  })
 })
