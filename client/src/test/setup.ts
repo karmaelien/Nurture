@@ -1,3 +1,4 @@
+import { resetMockDocuments } from '../mocks/documentHandlers.ts'
 import '@testing-library/jest-dom/vitest'
 import { cleanup, configure } from '@testing-library/react'
 import { setupServer } from 'msw/node'
@@ -38,6 +39,7 @@ beforeAll(() => {
 })
 afterEach(() => {
   cleanup()
+  resetMockDocuments()
   server.resetHandlers()
   localStorage.clear()
 })

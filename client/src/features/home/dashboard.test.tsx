@@ -252,7 +252,7 @@ describe('dashboard', () => {
     expect(within(navigation).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current')
     const circleId = new URLSearchParams(router.state.location.search).get('circleId')
     expect(circleId).toBeTruthy()
-    expect(within(navigation).getByRole('link', { name: 'Care' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Tasks' })).toHaveAttribute(
       'href',
       `/app?circleId=${circleId}#tasks`,
     )

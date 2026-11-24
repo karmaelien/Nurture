@@ -4,7 +4,7 @@ This is the contract between the client and the server. Until the backend is rea
 
 ## Data model
 
-Caregivers and the people they care for are many-to-many, joined through **care circles**. A circle is the unit of sharing: everyone in it sees everything in it.
+Caregivers and the people they care for are many-to-many, joined through **care circles**. A circle is the unit of sharing. Documents may additionally restrict access to selected members.
 
 ```
 User ──< Membership >── Circle ──< Recipient
@@ -22,14 +22,14 @@ User ──< Membership >── Circle ──< Recipient
 
 Rules:
 
-- **Access comes from membership.** A member of a circle can read and write everything in it. A non-member can't tell the circle exists (requests return 404, not 403).
+- **Access comes from membership.** A member of a circle can read and write its care data, except documents, which use the document permissions below. A non-member can't tell the circle exists (requests return 404, not 403).
 - **Owners** can also rename the circle and, later, manage members. Every circle has at least one owner. The user who creates a circle is its owner.
 - **Where care data lives:** medications, appointments, tasks, expenses, and documents belong to a recipient. Messages and budgets belong to the circle.
 - **Not in scope yet:** invites, removing members, leaving or deleting a circle, finer-grained roles (such as view-only), and linking a recipient to their own user account. The model leaves room for each without restructuring.
 
 ## Conventions
 
-- JSON in and out. Every path starts with `/api`.
+- JSON in and out, except document uploads (multipart) and file retrieval (binary). Every path starts with `/api`.
 - Auth uses a bearer token: `Authorization: Bearer <token>`. Login and registration return the token. A user can have several tokens at once, one per device, and logging out ends only the current one.
 - Emails are trimmed and lowercased before they are stored or compared.
 - IDs are opaque strings. Timestamps are ISO 8601 strings in UTC.
@@ -148,7 +148,43 @@ type Expense = {
 type CreateExpenseRequest = Omit<Expense, "id">;
 
 // At least one field is required. Omitted fields keep their existing values.
-type UpdateExpenseRequest = Partial<CreateExpenseRequest>;
+type UpdateExpenseRequest = Partial<CreateExpenseRequest>
+
+type DocumentCategory = 'medical' | 'insurance' | 'financial' | 'personal' | 'other'
+
+type DocumentSharing =
+  | { mode: 'circle'; memberIds: [] }
+  | { mode: 'selected'; memberIds: string[] }
+
+// JSON metadata returned by the API. The actual file is stored separately from
+// these response fields in care_documents.file_bytes (PostgreSQL BYTEA).
+// File bytes are returned only by GET /documents/:documentId/file under the circle path.
+type CareDocument = {
+  version: number // required on edits; increments after every successful update
+  id: string
+  recipientId: string
+  title: string
+  category: DocumentCategory
+  fileName: string // original filename, for display only
+  mimeType: 'application/pdf' | 'image/jpeg' | 'image/png'
+  sizeBytes: number
+  uploadedBy: string | null // null if the uploader's account was deleted
+  uploadedAt: string
+  sharing: DocumentSharing
+  canManage: boolean // computed for the signed-in user; never accepted as input
+}
+
+// Metadata part of the multipart upload, JSON-encoded in the `metadata` field.
+// The separate `file` part contains raw bytes saved to file_bytes in the same transaction.
+type CreateDocumentRequest = {
+  recipientId: string
+  title: string // trimmed, 1-200 characters
+  category: DocumentCategory
+  sharing: DocumentSharing
+}
+
+// At least one field; a supplied sharing object replaces the entire sharing rule.
+type UpdateDocumentRequest = { version: number } & Partial<Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>>
 ```
 
 A new user has `circles: []`. The client sends them through setup: their own profile (`PATCH /api/users/me`), then their first circle and recipient (`POST /api/circles`).
@@ -421,18 +457,151 @@ same circle; the expense ID cannot change.
 
 No body. Deletes the expense. A missing or already-deleted expense returns `404`.
 
-| Status | Body        |
-| ------ | ----------- |
-| 204    | No body     |
-| 404    | `not_found` |
+| Status | Body |
+| --- | --- |
+| 204 | No body |
+| 404 | `not_found` |
+
+### Documents
+
+The browser mock and standalone backend router implement this contract. Mounting the
+router in the shared server and configuring the PostgreSQL connection remain integration steps.
+Documents belong to one recipient and its circle. The initial file types are PDF, JPEG,
+and PNG, with one non-empty file per upload and a maximum of 10 MiB (10,485,760 bytes).
+Parsing, content search, and AI summaries are deferred.
+
+All endpoints require auth (`401 unauthorized`). A missing/inaccessible circle,
+document, or recipient returns `404 not_found`. Check circle membership and document
+access before validating request fields. Never expose restricted document metadata,
+counts, search results, or file bytes to unauthorized users.
+
+| User (must currently belong to the circle) | List/view/download | Edit metadata/sharing or delete |
+| --- | --- | --- |
+| Uploader or circle owner | Yes | Yes |
+| Other member, sharing mode `circle` | Yes | No |
+| Selected member, sharing mode `selected` | Yes | No |
+| Unselected member, sharing mode `selected` | No | No |
+
+Any member can upload for a recipient in the circle. Ownership of the recipient does
+not grant additional permissions. The uploader and current circle owners always have
+access; the UI must state **“You and circle owners always have access.”**
+`canManage` reflects these rules, but the backend must enforce them independently.
+An authorized reader attempting to manage a document receives `403 document_manager_only`.
+
+Sharing is explicit on upload; do not silently default an omitted rule to circle-wide
+access. `selected` allows an empty list (uploader and owners only). Member IDs must be
+unique and identify current members of this circle; unknown/out-of-circle IDs return
+`404 not_found`. `circle` requires an empty member list and includes future members.
+Uploader/owner IDs need not be selected to retain access.
+
+Removing a member immediately blocks subsequent document requests and removes their
+explicit sharing grants, so rejoining does not restore a previous selected-member grant.
+Removal does not delete documents they uploaded; circle owners can still manage them.
+Downloaded copies cannot be revoked. Future extraction/search must use the same access rules.
+
+Metadata and file bytes are stored together in PostgreSQL. The backend stores the raw
+binary file in `care_documents.file_bytes` (`BYTEA`, not base64), with its byte length
+constrained to match `size_bytes`. This uses the same PostgreSQL connection locally
+and on Azure Database for PostgreSQL; no filesystem directory or Blob Storage is required.
+Metadata/list queries exclude `file_bytes`; only an authorized file request loads it.
+Do not include file bytes in JSON metadata/list responses or expose public file URLs.
+Deleting a recipient or circle also cascades its document rows, bytes, and sharing grants.
+Validate actual file contents as well as the claimed file type and sanitize filenames.
+Unknown metadata fields and invalid/null required fields return `400 validation_error`.
+
+#### `GET /api/circles/:circleId/documents`
+
+Query: `{ recipientId?, category?, search? }`. Search is a trimmed, case-insensitive
+substring match on title or filename (maximum 200 characters; empty means no search).
+Filters combine with AND. Only accessible documents are returned, sorted by `uploadedAt`
+descending, then ID ascending. No pagination in the initial version.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ documents: CareDocument[] }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+
+#### `POST /api/circles/:circleId/documents`
+
+Multipart body: `file` (one binary file) and `metadata` (JSON-encoded `CreateDocumentRequest`).
+The server generates the ID, uploader, upload time, and file metadata. Return success
+only after metadata, bytes, and sharing grants commit in one transaction. Failed uploads
+roll back all three.
+
+| Status | Body |
+| --- | --- |
+| 201 | `{ document: CareDocument }` |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+| 413 | `file_too_large` |
+| 415 | `unsupported_file_type` |
+| 500 | `internal_error` (database operation failed) |
+
+#### `GET /api/circles/:circleId/documents/:documentId`
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ document: CareDocument }` |
+| 404 | `not_found` |
+
+#### `GET /api/circles/:circleId/documents/:documentId/file`
+
+Query: `{ disposition? }`, `inline` or `attachment` (default). Recheck access on every
+request, read `file_bytes` from PostgreSQL after authorization, and return the bytes
+through the authenticated API. The initial implementation buffers the file (up to 10 MiB).
+Return the validated
+`Content-Type`, safe `Content-Disposition`, `Cache-Control: private, no-store`, and
+`X-Content-Type-Options: nosniff`. The frontend fetches with its bearer token, then uses
+a temporary browser object URL for viewing/downloading and revokes it afterward.
+
+| Status | Body |
+| --- | --- |
+| 200 | Binary file |
+| 400 | `validation_error` |
+| 404 | `not_found` |
+| 500 | `internal_error` (database operation failed) |
+
+#### `PATCH /api/circles/:circleId/documents/:documentId`
+
+Uploader or circle owner only. Body: `UpdateDocumentRequest`. Changes supplied metadata
+only; recipient and file bytes cannot be replaced. Include the `version` captured when
+editing began and at least one changed field. The server checks the version while
+locking the document in the transaction. A stale version returns `409 document_conflict`
+without changing metadata or sharing. Successful edits increment the version.
+Cancel editing, refresh, and reopen the form after a conflict; do not silently retry with
+a newer version. Failed validation leaves the record
+and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ document: CareDocument }` |
+| 400 | `validation_error` |
+| 403 | `document_manager_only` |
+| 404 | `not_found` |
+| 409 | `document_conflict` |
+
+#### `DELETE /api/circles/:circleId/documents/:documentId`
+
+Uploader or circle owner only. Deletes the document and its stored file. Return success
+only after metadata, bytes, and sharing grants are deleted in one transaction. Failed
+deletion rolls back and can be retried. A missing or already-deleted document returns `404`.
+
+| Status | Body |
+| --- | --- |
+| 204 | No body |
+| 403 | `document_manager_only` |
+| 404 | `not_found` |
+| 500 | `internal_error` (database operation failed) |
 
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Other care-data mutations and schedules:** create/update/delete operations for medication occurrences and tasks, plus medication definitions and recurring schedules.
-- **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
+- **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
+- **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.
+- **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend
 
