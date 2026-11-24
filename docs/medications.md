@@ -5,7 +5,7 @@ It starts with all care profiles selected; the Care profile dropdown filters the
 Each entry shows the medication name, person, dosage, schedule and course dates with their time zone,
 and the assigned caregiver. Loading, retry, and empty states are included.
 
-`GET /api/circles/:circleId/medications` currently has a browser mock only. It checks
+`GET /api/circles/:circleId/medications` has a browser mock and a staged PostgreSQL backend. The mock checks
 family membership before returning sample medications for Rose and Frank. Other
 families start empty. The shared types are in `client/src/api/types.ts`; schedule
 times are `HH:mm` clock times in the schedule's IANA time zone. These definitions
@@ -48,7 +48,7 @@ is blocked while saving. The medication list refreshes after success.
 
 Definitions now live in the existing localStorage-backed mock database and survive
 refresh. Older demo sessions receive the sample definitions without resetting their
-other data. This is still mock storage, not PostgreSQL.
+other data. This is the default mock storage; enabling the backend uses PostgreSQL instead.
 
 ## Edit and delete
 
@@ -69,7 +69,7 @@ are checked against the current family before any write.
 An outdated confirmation returns `409 edit_conflict` without deleting the newer definition.
 The confirmation states this explicitly. Repeated deletion returns 404. Successful
 writes refresh the family's care queries, so deleted mock doses disappear from Home.
-These operations still use the existing browser mock database.
+These operations use the existing browser mock database by default, or PostgreSQL when enabled.
 
 ## Scheduled doses
 
@@ -173,8 +173,8 @@ so refreshing its background list does not silently make an old form current.
 Failed browser writes return `503 storage_unavailable`, leaving the last saved
 database intact and showing a retryable error in the existing form or dose row.
 These protections apply to the browser mock, whose data is shared only within
-the same browser origin. Real multi-device storage still needs backend transactions
-and conditional version checks when medication endpoints are implemented.
+the same browser origin. The staged backend provides PostgreSQL transactions and
+conditional version checks for multi-device storage; activate it as described below.
 
 ### Doses and history
 
@@ -217,6 +217,62 @@ The display updates every minute while the app is open. A stable UTC date range
 covers the maximum 24-hour lead and grace periods across midnight and daylight
 saving changes. Dose writes refresh the shared occurrence queries on both pages.
 
-The real backend and reminder delivery while the app is closed remain to be
-implemented. Doses are currently materialized by mock API reads; these panels do
+Reminder delivery while the app is closed remains to be implemented. Doses are
+materialized by API reads (mock by default, PostgreSQL when enabled); these panels do
 not send browser notifications, emails, or background notifications.
+
+## PostgreSQL backend
+
+The medication backend is implemented in `nurture-api` and disabled by default.
+It uses the project's existing database and authentication, with no separate medication
+database. Frontend request/response shapes are the same as the browser mock; PostgreSQL
+definition/profile/caregiver IDs are numeric strings and occurrence IDs are stable dose IDs.
+
+| File | Responsibility |
+| --- | --- |
+| `nurture-api/src/db/migrations/1795478400000_create-medications.sql` | Definitions, dose history, versions, indexes, and family-scoped foreign keys |
+| `nurture-api/src/models/medication.model.js` | Transactions, CRUD, reconciliation, overdue backfill, and conditional writes |
+| `nurture-api/src/routes/medications.routes.js` | Definition and occurrence endpoints mounted under a family |
+| `nurture-api/src/validators/medications.validators.js` | Schedule, date range, ID, version, and body validation |
+| `nurture-api/src/services/medication-schedule.js` | Server-side timezone/DST-aware dose generation |
+
+Every operation locks the family row and checks current membership inside the same
+transaction. The membership lock is held through commit. Definition edits/deletes and
+dose updates check versions; status writes also use a conditional SQL update. Unique
+`(medication_id, scheduled_at)` keys and upserts prevent duplicate generated doses.
+Reads and writes share the lock, so an overdue read cannot restore an outdated pending
+status over another caregiver's completion. Failed operations roll back.
+
+Generation refreshes pending metadata, increments its version only when it changes,
+and removes obsolete pending times. Completed records retain their original details
+and taken timestamps. Overdue reads fill missing history in bounded windows and store
+coverage per definition version. Shortened courses and moved start dates remove obsolete
+pending history as well. Deleting a medication cascades to its occurrences. Assigned
+caregivers and care profiles must belong to the same family.
+
+To enable when the real API is ready:
+
+1. Configure the existing `nurture-api` PostgreSQL connection and run `npm run migrate:up`
+   from `nurture-api` (PostgreSQL 15 or later, matching the appointment migrations).
+2. Set `ENABLE_MEDICATIONS_API=true` in the backend environment and restart it. This
+   mounts the router behind the existing authentication middleware in `circles.routes.js`.
+3. Set `VITE_USE_MOCKS=false` for the client when the rest of the real authentication,
+   family, and dashboard endpoints are ready, then restart/rebuild the client. The
+   medication feature itself needs no alternative client implementation.
+
+No mock data is copied into PostgreSQL. Browser Web Locks and storage events are demo
+protections; real database transactions provide write safety. Cross-device live push
+and closed-app notification delivery are separate work, not part of this router.
+
+### Backend verification
+
+From `nurture-api`, run `npm run test:medications`. Scheduler, validation, and router
+authorization tests run without a database. For PostgreSQL integration, set
+`MEDICATION_TEST_DATABASE_URL` (or `TEST_DATABASE_URL`) to a separate local database
+whose name contains `test`. The test rejects the application `DATABASE_URL`, uses its
+own generated schema, and removes only that schema afterward. With no test connection
+configured, the integration case is explicitly skipped.
+
+The integration test covers migration up/down, CRUD, foreign-family access, caregiver
+removal, version conflicts between concurrent caregivers, idempotent dose writes,
+history preservation, never-viewed overdue doses, course edits, and deletion cascades.

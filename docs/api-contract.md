@@ -341,21 +341,22 @@ Accepts either the same fields as creation (preserving completion status) or `{ 
 
 Removes the appointment and returns `204`. Appointment writes require circle membership and return `400` for invalid input or `404` for unavailable records.
 
-#### Medication definitions (browser mock)
+#### Medication definitions
 
 The medication page currently implements `GET` and `POST /api/circles/:circleId/medications`,
-and `PATCH`/`DELETE /api/circles/:circleId/medications/:medicationId`. These use the existing
-browser mock database. The definition, schedule, version-checking, and validation rules
-are documented in [Medications](medications.md). No real medication router is mounted yet.
+and `PATCH`/`DELETE /api/circles/:circleId/medications/:medicationId`. Browser mocks are
+the default. The PostgreSQL router implements the same contract and is mounted behind
+authentication when `ENABLE_MEDICATIONS_API=true`. The definition, schedule, version-checking,
+validation, migration, and activation instructions are documented in [Medications](medications.md).
 
 #### `GET /api/circles/:circleId/medication-occurrences`
 
 Query: `{ from, to, status?, recipientId? }`. `from` and `to` are required timestamps
 filtering `scheduledAt`. `status` is `pending` or `completed`; omit for both.
 Returns individual scheduled doses, sorted by `scheduledAt` ascending. Medication
-and recurring schedule definitions are separate resources, currently implemented by the browser mock.
+and recurring schedule definitions are separate resources, implemented by both the mock and staged PostgreSQL API.
 
-The mock generates occurrences from saved medication schedules, preserving existing status
+Both implementations generate occurrences from saved medication schedules, preserving existing status
 and taken history. The requested window can span at most 366 days. See [Medications](medications.md)
 for time-zone, daylight-saving, and schedule-edit behavior.
 
@@ -365,22 +366,23 @@ for time-zone, daylight-saving, and schedule-edit behavior.
 | 400    | `validation_error`                                  |
 | 404    | `not_found`                                         |
 
-#### `GET /api/circles/:circleId/medication-occurrences/overdue` (browser mock)
+#### `GET /api/circles/:circleId/medication-occurrences/overdue`
 
 Query: `{ before, recipientId? }`. Returns `{ medicationOccurrences }` with pending
 doses scheduled strictly before the cutoff and past their individual overdue delay.
-The UI uses local midnight as the cutoff, keeping this list separate from today's totals.
+The UI uses next local midnight as the cutoff; the server caps it at the current time.
+Today's overdue doses are included along with earlier days, without counting earlier doses in today's totals.
 Current family membership is required; results follow the care-profile filter and sort
 oldest first. Missing schedule instances are generated from the course start, with one
 record per dose time. Taken records are preserved and no age cutoff is applied. See [Medications](medications.md)
 for reconciliation and materialization behavior.
 
-#### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` (browser mock)
+#### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId`
 
 Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { medicationOccurrence }`.
 The interface labels completed doses Taken. Requires current family membership; missing
 or inaccessible occurrences return 404 and invalid bodies return 400. Status updates refresh
-Home and Medications and are saved in the browser mock database.
+Home and Medications and are saved in the browser mock database or PostgreSQL when enabled.
 Stale dose versions return `409 edit_conflict`. A successful status transition increments
 the dose version; repeating its current status with the current version preserves its
 taken timestamp and version. Undoing a taken occurrence whose time was removed from
@@ -471,7 +473,7 @@ These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Tasks:** create/update/delete operations and recurring task schedules.
-- **Medication backend and background reminders:** connect medication definitions and dose tracking to the real API, and implement reminder delivery while the app is closed. In-app reminder panels are implemented; see [medications](medications.md).
+- **Medication activation and background reminders:** migrate and enable the implemented PostgreSQL medication API when the real app endpoints are ready, and implement reminder delivery while the app is closed. In-app reminder panels are implemented; see [medications](medications.md).
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend

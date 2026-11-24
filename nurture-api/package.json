@@ -9,7 +9,8 @@
     "migrate:up": "npm run migrate -- up",
     "migrate:down": "npm run migrate -- down",
     "db:reset": "node src/db/reset.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:medications": "node --test tests/medications/medications.unit.test.cjs tests/medications/medications.integration.test.cjs"
   },
   "keywords": [],
   "author": "",
