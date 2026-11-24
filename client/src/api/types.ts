@@ -72,6 +72,7 @@ export type MedicationSchedule = {
   timeZone: string
   daysOfWeek: number[] // Sunday = 0 through Saturday = 6
   startsOn: string // inclusive YYYY-MM-DD in timeZone
+  overdueAfterMinutes?: number // omitted in older definitions; defaults to 30
   end: { kind: 'never' } | { kind: 'afterDays'; days: number } | { kind: 'onDate'; date: string }
 }
 
@@ -97,6 +98,8 @@ export type MedicationOccurrence = {
   dosage: string // display text supplied by the care-management feature
   scheduledAt: string // UTC timestamp
   status: 'pending' | 'completed'
+  takenAt?: string | null // actual recording timestamp; never inferred from scheduledAt
+  overdueAfterMinutes?: number
 }
 
 export type CareTask = {

@@ -11,7 +11,13 @@ import { useRequiredSession } from '../auth/session.ts'
 import { TimeZoneSelect } from '../profiles/TimeZoneSelect.tsx'
 import { deviceTimeZone } from '../profiles/schemas.ts'
 import { medicationClockTime, medicationInputSchema } from './medication-input.ts'
-import { dateInZone, everyDay, medicationTimeZoneLabel, weekdays } from './medication-schedule.ts'
+import {
+  dateInZone,
+  defaultOverdueMinutes,
+  everyDay,
+  medicationTimeZoneLabel,
+  weekdays,
+} from './medication-schedule.ts'
 
 function initialTime(time?: string) {
   if (!time) return ''
@@ -79,6 +85,7 @@ export function MedicationEditor({
         timeZone: field('timeZone'),
         daysOfWeek: values.getAll('weekdays').map(Number),
         startsOn: field('startsOn'),
+        overdueAfterMinutes: Number(field('overdueAfterMinutes')),
         end:
           ending === 'never'
             ? { kind: 'never' }
@@ -280,6 +287,17 @@ export function MedicationEditor({
             name="timeZone"
             defaultValue={zone}
             hint="Dose times and course dates follow this time zone."
+          />
+          <TextField
+            label="Overdue after (minutes)"
+            name="overdueAfterMinutes"
+            type="number"
+            min={0}
+            max={1440}
+            step={1}
+            defaultValue={medication?.schedule.overdueAfterMinutes ?? defaultOverdueMinutes}
+            hint="A pending dose is flagged overdue this many minutes after its scheduled time."
+            required
           />
           <TextField
             label="Start date"

@@ -1,7 +1,7 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
 import { careApi } from '../../api/care.ts'
 import { setToken } from '../../api/token.ts'
@@ -9,6 +9,7 @@ import type { MedicationInput } from '../../api/types.ts'
 import { DEMO_ACCOUNT } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
 import { server } from '../../test/setup.ts'
+import { dashboardWindow } from '../home/dashboard.ts'
 
 async function logIn() {
   setToken((await authApi.login(DEMO_ACCOUNT)).token)
@@ -260,6 +261,7 @@ it('prefills the edit form and persists changes without resetting the schedule',
     assignedCaregiverId: 'u_daniel',
     schedule: {
       times: ['00:05', '15:30'],
+      overdueAfterMinutes: 45,
       timeZone: 'America/Chicago',
       daysOfWeek: [1, 5],
       startsOn: '2026-12-01',
@@ -273,6 +275,7 @@ it('prefills the edit form and persists changes without resetting the schedule',
   await user.click(within(card).getByRole('button', { name: 'Edit medication' }))
   const form = within(screen.getByRole('dialog', { name: 'Edit medication' }))
   expect(form.getByLabelText('Care profile')).toHaveValue('r_frank')
+  expect(form.getByLabelText('Overdue after (minutes)')).toHaveValue(45)
   expect(form.getByLabelText('Dose time 1')).toHaveValue('12:05')
   expect(form.getByLabelText('Dose 1 AM/PM')).toHaveValue('AM')
   expect(form.getByLabelText('Dose time 2')).toHaveValue('3:30')
@@ -324,4 +327,112 @@ it('rejects stale edits, duplicate deletion, and writes from outside the family'
   setToken(token)
   await expect(careApi.updateMedication('c_demo', 'med_frank', body)).rejects.toMatchObject({ status: 404 })
   await expect(careApi.deleteMedication('c_demo', 'med_frank')).rejects.toMatchObject({ status: 404 })
+})
+
+it('shares taken status between Medications and Home and preserves it after remount', async () => {
+  vi.setSystemTime(new Date(2026, 11, 1, 12))
+  try {
+    await logIn()
+    await careApi.createMedication('c_demo', {
+      recipientId: 'r_rose',
+      name: 'Parity sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-12-01',
+        end: { kind: 'never' },
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/app/medications')
+    const today = await screen.findByRole('region', { name: 'Today’s doses' })
+    const takeButton = await within(today).findByRole('button', { name: /^Mark taken: Parity sample/ })
+    expect(within(takeButton.closest('li')!).getByText('Overdue')).toBeInTheDocument()
+    await user.click(takeButton)
+    expect(await within(today).findByRole('button', { name: /^Mark pending: Parity sample/ })).toBeInTheDocument()
+    expect(await within(today).findByText(/^Taken on .+ at /)).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    let home = await screen.findByRole('region', { name: 'Today’s medications' })
+    expect(await within(home).findByRole('button', { name: /^Mark pending: Parity sample/ })).toBeInTheDocument()
+    const dates = dashboardWindow(new Date())
+    const { medicationOccurrences } = await careApi.medicationOccurrences('c_demo', {
+      from: dates.todayStart,
+      to: dates.tomorrowStart,
+    })
+    expect(
+      await screen.findByText(
+        `${medicationOccurrences.filter((dose) => dose.status === 'completed').length} / ${medicationOccurrences.length}`,
+      ),
+    ).toBeInTheDocument()
+    cleanup()
+    renderApp('/app')
+    home = await screen.findByRole('region', { name: 'Today’s medications' })
+    await user.click(await within(home).findByRole('button', { name: /^Mark pending: Parity sample/ }))
+    await user.click(screen.getByRole('link', { name: 'Medications' }))
+    expect(await screen.findByRole('button', { name: /^Mark taken: Parity sample/ })).toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('keeps a dose pending when recording it fails', async () => {
+  await logIn()
+  server.use(
+    http.patch('/api/circles/:circleId/medication-occurrences/:occurrenceId', () =>
+      HttpResponse.json({ error: { code: 'unavailable', message: 'Dose could not be saved.' } }, { status: 503 }),
+    ),
+  )
+  const user = userEvent.setup()
+  renderApp('/app/medications')
+  const today = await screen.findByRole('region', { name: 'Today’s doses' })
+  await user.click(await within(today).findByRole('button', { name: /^Mark taken: Sample medication B/ }))
+  expect(await within(today).findByRole('alert')).toHaveTextContent('Dose could not be saved.')
+  expect(within(today).getByRole('button', { name: /^Mark taken: Sample medication B/ })).toBeEnabled()
+})
+
+it('generates doses once, retains status on refetch, and protects status writes', async () => {
+  await logIn()
+  const { medication } = await careApi.createMedication('c_demo', {
+    recipientId: 'r_frank',
+    name: 'Generated sample',
+    dosage: '1 tablet',
+    assignedCaregiverId: null,
+    schedule: {
+      times: ['08:00', '20:00'],
+      timeZone: 'America/New_York',
+      daysOfWeek: [1, 3, 5],
+      startsOn: '2026-12-01',
+      end: { kind: 'onDate', date: '2026-12-04' },
+    },
+  })
+  const range = { from: '2026-12-01T00:00:00Z', to: '2026-12-06T00:00:00Z' }
+  const load = async () =>
+    (await careApi.medicationOccurrences('c_demo', range)).medicationOccurrences.filter(
+      (dose) => dose.medicationId === medication.id,
+    )
+  const doses = await load()
+  expect(doses.map((dose) => dose.scheduledAt)).toEqual([
+    '2026-12-02T13:00:00.000Z',
+    '2026-12-03T01:00:00.000Z',
+    '2026-12-04T13:00:00.000Z',
+    '2026-12-05T01:00:00.000Z',
+  ])
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed')
+  expect(await load()).toHaveLength(4)
+  const recorded = (await load())[0]
+  expect(recorded).toMatchObject({ id: doses[0].id, status: 'completed', takenAt: expect.any(String) })
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'completed')
+  expect((await load())[0].takenAt).toBe(recorded.takenAt)
+  await careApi.updateMedicationDose('c_demo', doses[0].id, 'pending')
+  expect((await load())[0]).toMatchObject({ status: 'pending', takenAt: null })
+  const { token } = await authApi.register({
+    name: 'Outsider',
+    email: 'dose-outsider@example.test',
+    password: 'password123',
+  })
+  setToken(token)
+  await expect(careApi.updateMedicationDose('c_demo', doses[0].id, 'pending')).rejects.toMatchObject({ status: 404 })
 })

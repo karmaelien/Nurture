@@ -10,8 +10,9 @@ import { useMedications } from '../care/queries.ts'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { MedicationEditor } from './MedicationEditor.tsx'
-import { scheduleCourse, scheduleSummary } from './medication-schedule.ts'
+import { defaultOverdueMinutes, scheduleCourse, scheduleSummary } from './medication-schedule.ts'
 import { zoneName } from '../profiles/time.ts'
+import { TodayMedicationDoses } from './TodayMedicationDoses.tsx'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -59,6 +60,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
           ))}
         </select>
       </label>
+      <TodayMedicationDoses circle={circle} recipientId={recipientId} />
       {detail.isError && (
         <div className="mb-5">
           <Alert tone="danger">
@@ -106,8 +108,9 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                       <dd>
                         {scheduleSummary(medication.schedule)}
                         <span className="block text-small text-muted">{scheduleCourse(medication.schedule)}</span>
+                        <span className="block text-small text-muted">{zoneName(medication.schedule.timeZone)}</span>
                         <span className="block text-small text-muted">
-                          {zoneName(medication.schedule.timeZone)}
+                          Overdue after {medication.schedule.overdueAfterMinutes ?? defaultOverdueMinutes} minutes
                         </span>
                       </dd>
                     </div>

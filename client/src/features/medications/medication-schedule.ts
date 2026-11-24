@@ -1,4 +1,4 @@
-import type { MedicationSchedule } from '../../api/types.ts'
+import type { MedicationOccurrence, MedicationSchedule } from '../../api/types.ts'
 import { zoneName } from '../profiles/time.ts'
 
 export function medicationTimeZoneLabel(zone: string) {
@@ -8,6 +8,15 @@ export function medicationTimeZoneLabel(zone: string) {
 
 export const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const everyDay = [0, 1, 2, 3, 4, 5, 6]
+export const defaultOverdueMinutes = 30
+
+export function isDoseOverdue(dose: MedicationOccurrence, now: number) {
+  return (
+    dose.status === 'pending' &&
+    Number.isFinite(Date.parse(dose.scheduledAt)) &&
+    now >= Date.parse(dose.scheduledAt) + (dose.overdueAfterMinutes ?? defaultOverdueMinutes) * 60_000
+  )
+}
 
 export function dateInZone(now: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {

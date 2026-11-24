@@ -120,6 +120,8 @@ type MedicationOccurrence = {
   dosage: string; // display text supplied by the care-management feature
   scheduledAt: string; // UTC timestamp
   status: "pending" | "completed";
+  takenAt?: string | null; // time marked taken; null after undo; absent on older records
+  overdueAfterMinutes?: number; // pending-dose display grace period; defaults to 30
 };
 
 type CareTask = {
@@ -337,18 +339,36 @@ Accepts either the same fields as creation (preserving completion status) or `{ 
 
 Removes the appointment and returns `204`. Appointment writes require circle membership and return `400` for invalid input or `404` for unavailable records.
 
+#### Medication definitions (browser mock)
+
+The medication page currently implements `GET` and `POST /api/circles/:circleId/medications`,
+and `PATCH`/`DELETE /api/circles/:circleId/medications/:medicationId`. These use the existing
+browser mock database. The definition, schedule, version-checking, and validation rules
+are documented in [Medications](medications.md). No real medication router is mounted yet.
+
 #### `GET /api/circles/:circleId/medication-occurrences`
 
 Query: `{ from, to, status?, recipientId? }`. `from` and `to` are required timestamps
 filtering `scheduledAt`. `status` is `pending` or `completed`; omit for both.
 Returns individual scheduled doses, sorted by `scheduledAt` ascending. Medication
-and recurring schedule definitions are separate, future resources.
+and recurring schedule definitions are separate resources, currently implemented by the browser mock.
+
+The mock generates occurrences from saved medication schedules, preserving existing status
+and taken history. The requested window can span at most 366 days. See [Medications](medications.md)
+for time-zone, daylight-saving, and schedule-edit behavior.
 
 | Status | Body                                                |
 | ------ | --------------------------------------------------- |
 | 200    | `{ medicationOccurrences: MedicationOccurrence[] }` |
 | 400    | `validation_error`                                  |
 | 404    | `not_found`                                         |
+
+#### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` (browser mock)
+
+Body: `{ status: 'pending' | 'completed' }`. Returns `200 { medicationOccurrence }`.
+The interface labels completed doses Taken. Requires current family membership; missing
+or inaccessible occurrences return 404 and invalid bodies return 400. Status updates refresh
+Home and Medications and are saved in the browser mock database.
 
 #### `GET /api/circles/:circleId/tasks`
 
@@ -431,7 +451,8 @@ No body. Deletes the expense. A missing or already-deleted expense returns `404`
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Other care-data mutations and schedules:** create/update/delete operations for medication occurrences and tasks, plus medication definitions and recurring schedules.
+- **Tasks:** create/update/delete operations and recurring task schedules.
+- **Medication backend and reminders:** connect medication definitions and dose tracking to the real API, and implement reminder delivery.
 - **Other resources:** documents, messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend

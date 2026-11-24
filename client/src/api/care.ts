@@ -74,6 +74,11 @@ export const careApi = {
     request<{ medicationOccurrences: MedicationOccurrence[] }>(
       resourcePath(circleId, 'medication-occurrences', filters),
     ),
+  updateMedicationDose: (circleId: string, occurrenceId: string, status: MedicationOccurrence['status']) =>
+    request<{ medicationOccurrence: MedicationOccurrence }>(
+      resourcePath(circleId, `medication-occurrences/${encodeURIComponent(occurrenceId)}`, {}),
+      { method: 'PATCH', body: { status } },
+    ),
   tasks: (circleId: string, filters: TaskFilters = {}) =>
     request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
   expenses: (circleId: string, filters: ExpenseFilters) =>

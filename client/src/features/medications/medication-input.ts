@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { isValidTimeZone } from '../profiles/schemas.ts'
-import { scheduleEndDate } from './medication-schedule.ts'
+import { defaultOverdueMinutes, scheduleEndDate } from './medication-schedule.ts'
 
 const calendarDate = z.string().refine((value) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '0001-01-01') return false
@@ -29,6 +29,7 @@ export const medicationInputSchema = z.strictObject({
         .refine((days) => new Set(days).size === days.length, 'Choose each weekday only once.')
         .transform((days) => [...days].sort((a, b) => a - b)),
       startsOn: calendarDate,
+      overdueAfterMinutes: z.number().int().min(0).max(1440).default(defaultOverdueMinutes),
       end: z.discriminatedUnion('kind', [
         z.strictObject({ kind: z.literal('never') }),
         z.strictObject({

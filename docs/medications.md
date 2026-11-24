@@ -70,6 +70,46 @@ The confirmation states this explicitly. Repeated deletion returns 404. Successf
 writes refresh the family's care queries, so deleted mock doses disappear from Home.
 These operations still use the existing browser mock database.
 
-Dose completion, recurring schedule generation, reminders, and
-the real backend are still to come. This page does not infer a medication's full
-schedule from historical doses or generate new occurrences.
+## Scheduled doses
+
+Each medication has **Overdue after (minutes)** in its form, defaulting to 30 minutes
+and allowing 0–1440. Pending displayed doses get a red Overdue badge at the scheduled
+instant plus this delay. Taken doses never show overdue. The badge updates each minute
+on both pages and is derived from the current time rather than saved as another status.
+
+Mark taken records `takenAt` at the time of the status write and displays it in the
+viewer's local time zone. Repeating the same taken write preserves its first timestamp;
+Mark pending clears it. Older taken records without a timestamp stay Taken without
+inventing a recorded time. The timestamp indicates when the dose was marked taken.
+
+Home's Today’s medications panel and Medications' Today’s doses section use the
+same occurrence endpoint and shared list component. Both support Mark taken and
+Mark pending. Home's completion count and all person-filtered dose queries refresh
+after a successful write; a failed write leaves the previous status visible with
+an error. The count and list follow the selected care profile.
+
+`GET /api/circles/:circleId/medication-occurrences` generates doses from saved
+definitions for the requested UTC `[from, to)` window, up to 366 days per request.
+Generation uses the medication's own time zone, selected weekdays, inclusive start,
+and inclusive course ending. Today on both pages means the viewer's local calendar
+day; dose times are displayed in the viewer's local time zone. The schedule cards
+continue to show their original time zone and clock times.
+
+Dose IDs are stable per medication and instant. Repeated loads reuse the saved
+record and its status rather than adding duplicates. Editing a schedule refreshes
+pending metadata and removes obsolete pending occurrences within the requested
+window. Taken records retain their original name, dosage, person, and time as history.
+Deleting the medication still removes its occurrences, as stated in the confirmation.
+
+During spring daylight saving, a nonexistent clock time moves forward by the gap
+(for example, 2:30 AM becomes 3:30 AM). A repeated fall-back clock time produces one
+dose at its first occurrence. Times that resolve to the same instant are deduplicated.
+
+`PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId` accepts exactly
+`{ status: 'pending' | 'completed' }` and returns `{ medicationOccurrence }`. The UI
+calls completed doses Taken. Every write checks current family membership and the
+record's recipient. Obsolete pending doses and missing records return 404. Status
+is persisted in the existing mock database and survives a fresh page load.
+
+Reminders and the real backend remain to be implemented. Doses are currently
+materialized by mock API reads; this is not a background notification service.

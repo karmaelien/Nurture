@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { expenseCategorySchema } from '../features/expenses/schemas.ts'
-import { readDb } from './db.ts'
+import { readDb, writeDb } from './db.ts'
+import { maxDoseRange, reconcileMedicationDoses } from '../features/medications/medication-occurrences.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 const notFound = () => error(404, 'not_found', 'This care circle or recipient is unavailable.')
@@ -86,6 +87,14 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       return HttpResponse.json({ appointments: appointments.sort(byDate((record) => record.startsAt)) })
     }
     if (resource === 'medication-occurrences') {
+      const from = query.get('from')!
+      const to = query.get('to')!
+      if (Date.parse(to) - Date.parse(from) > maxDoseRange) return invalid()
+      const definitions = db.care.medications.filter((medication) =>
+        circle.recipients.some((person) => person.id === medication.recipientId),
+      )
+      db.care.medicationOccurrences = reconcileMedicationDoses(db.care.medicationOccurrences, definitions, from, to)
+      writeDb(db)
       const medicationOccurrences = db.care.medicationOccurrences.filter(
         (record) =>
           included(record) &&

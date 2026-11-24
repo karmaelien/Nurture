@@ -15,6 +15,7 @@ import { useHomeAppointments } from './useHomeAppointments.ts'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
+import { MedicationDoseList } from '../medications/MedicationDoseList.tsx'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
@@ -155,25 +156,12 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         <Panel
           id="medications"
           title="Today’s medications"
+          to={circleLink('/app/medications', circle.id)}
           icon={<Pill />}
           query={medications}
           empty={!medications.data?.length}
         >
-          <ul className="divide-y divide-line">
-            {medications.data?.map((dose) => (
-              <li key={dose.id} className="py-4 first:pt-0 last:pb-0">
-                <p className="font-semibold">
-                  {formatTime(dose.scheduledAt)} · {name(dose.recipientId)}
-                </p>
-                <p className="text-muted">
-                  {dose.name} · {dose.dosage}
-                </p>
-                <span className="mt-2 inline-block rounded-control border border-line px-2 py-1">
-                  {dose.status === 'completed' ? 'Completed' : 'Pending'}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <MedicationDoseList circleId={circle.id} doses={medications.data ?? []} personName={name} />
         </Panel>
         <HomeAppointmentsPanel
           appointments={appointments}
