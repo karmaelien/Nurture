@@ -91,20 +91,22 @@ export function AppHeader() {
               <Wallet className="size-5" aria-hidden />
               Expenses
             </NavLink>
-            <Link
-              to={profilePaths.family(circle.id)}
-              aria-current={inFamily ? 'page' : undefined}
-              className={activeNavClass({ isActive: inFamily })}
-            >
-              <Users className="size-5" aria-hidden />
-              Family
-            </Link>
           </>
         )}
         <NavLink to={circleLink('/app/documents', circle?.id)} className={activeNavClass}>
           <Files className="size-5" aria-hidden />
           Documents
         </NavLink>
+        {circle && (
+          <Link
+            to={profilePaths.family(circle.id)}
+            aria-current={inFamily ? 'page' : undefined}
+            className={activeNavClass({ isActive: inFamily })}
+          >
+            <Users className="size-5" aria-hidden />
+            Family
+          </Link>
+        )}
       </nav>
     </header>
   )
