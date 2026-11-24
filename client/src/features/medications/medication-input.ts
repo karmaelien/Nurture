@@ -58,6 +58,8 @@ export const medicationInputSchema = z.strictObject({
   assignedCaregiverId: z.string().min(1).nullable(),
 })
 
+export const medicationUpdateSchema = medicationInputSchema.extend({ version: z.number().int().positive() })
+
 export function medicationClockTime(value: string, period: string) {
   const match = /^(\d{1,2})(?::([0-5]\d))?$/.exec(value.trim())
   if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || !['AM', 'PM'].includes(period)) return null

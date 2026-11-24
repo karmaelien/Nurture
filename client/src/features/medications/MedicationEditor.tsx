@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { careApi } from '../../api/care.ts'
-import { errorMessage } from '../../api/client.ts'
-import type { CircleDetail } from '../../api/types.ts'
+import { ApiError, errorMessage } from '../../api/client.ts'
+import type { CircleDetail, Medication } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { SelectField, TextField } from '../../components/ui/Field.tsx'
@@ -11,16 +11,25 @@ import { useRequiredSession } from '../auth/session.ts'
 import { TimeZoneSelect } from '../profiles/TimeZoneSelect.tsx'
 import { deviceTimeZone } from '../profiles/schemas.ts'
 import { medicationClockTime, medicationInputSchema } from './medication-input.ts'
-import { dateInZone, everyDay, weekdays } from './medication-schedule.ts'
+import { dateInZone, everyDay, medicationTimeZoneLabel, weekdays } from './medication-schedule.ts'
+
+function initialTime(time?: string) {
+  if (!time) return ''
+  return `${Number(time.slice(0, 2)) % 12 || 12}:${time.slice(3)}`
+}
 
 export function MedicationEditor({
   circle,
   recipientId,
+  medication,
+  deleting = false,
   onClose,
   onSaved,
 }: {
   circle: CircleDetail
   recipientId: string
+  medication?: Medication
+  deleting?: boolean
   onClose: () => void
   onSaved: () => void
 }) {
@@ -28,15 +37,18 @@ export function MedicationEditor({
   const cache = useQueryClient()
   const dialog = useRef<HTMLDialogElement>(null)
   const saving = useRef(false)
-  const nextTime = useRef(1)
-  const [times, setTimes] = useState([0])
-  const [doseCount, setDoseCount] = useState('1')
-  const [selectedDays, setSelectedDays] = useState<number[]>([...everyDay])
-  const [ending, setEnding] = useState('never')
+  const nextTime = useRef(medication?.schedule.times.length ?? 1)
+  const [times, setTimes] = useState(() =>
+    Array.from({ length: medication?.schedule.times.length ?? 1 }, (_, index) => index),
+  )
+  const [doseCount, setDoseCount] = useState(String(medication?.schedule.times.length ?? 1))
+  const [selectedDays, setSelectedDays] = useState<number[]>([...(medication?.schedule.daysOfWeek ?? everyDay)])
+  const [ending, setEnding] = useState<string>(medication?.schedule.end.kind ?? 'never')
+  const [confirmDelete, setConfirmDelete] = useState(deleting)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const heading = useId()
-  const zone = user.timeZone ?? deviceTimeZone()
+  const zone = medication?.schedule.timeZone ?? user.timeZone ?? deviceTimeZone()
   const [today] = useState(() => dateInZone(new Date(), zone))
   useEffect(() => {
     dialog.current?.showModal()
@@ -80,15 +92,28 @@ export function MedicationEditor({
       setError(parsed.error.issues[0].message)
       return
     }
+    await perform(() =>
+      medication
+        ? careApi.updateMedication(circle.id, medication.id, { ...parsed.data, version: medication.version })
+        : careApi.createMedication(circle.id, parsed.data),
+    )
+  }
+
+  // One guard covers saves and confirmed deletion, including batched double clicks.
+  async function perform(action: () => Promise<unknown>) {
+    if (saving.current) return
     saving.current = true
     setBusy(true)
     setError(undefined)
     try {
-      await careApi.createMedication(circle.id, parsed.data)
-      await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id, 'medications'] })
+      await action()
+      await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id] })
       onSaved()
       dialog.current?.close()
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id, 'medications'] })
+      }
       setError(errorMessage(cause))
     } finally {
       saving.current = false
@@ -111,13 +136,41 @@ export function MedicationEditor({
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 id={heading} className="font-display text-h2 font-semibold">
-          Add medication
+          {confirmDelete ? 'Delete medication' : medication ? 'Edit medication' : 'Add medication'}
         </h2>
         <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
           Close
         </Button>
       </div>
-      <form onSubmit={save}>
+      {confirmDelete && medication && (
+        <div className="grid gap-4">
+          <p>Delete {medication.name}? This removes the medication and its stored doses from this family.</p>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="danger"
+              loading={busy}
+              onClick={() => void perform(() => careApi.deleteMedication(circle.id, medication.id))}
+            >
+              Confirm delete
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                if (deleting) dialog.current?.close()
+                else {
+                  setError(undefined)
+                  setConfirmDelete(false)
+                }
+              }}
+            >
+              Keep medication
+            </Button>
+          </div>
+        </div>
+      )}
+      <form onSubmit={save} hidden={confirmDelete}>
         {error && (
           <div className="mb-4">
             <Alert tone="danger">{error}</Alert>
@@ -127,7 +180,7 @@ export function MedicationEditor({
           <SelectField
             label="Care profile"
             name="recipientId"
-            defaultValue={recipientId || circle.recipients[0]?.id}
+            defaultValue={medication?.recipientId || recipientId || circle.recipients[0]?.id}
             required
           >
             {circle.recipients.map((person) => (
@@ -136,8 +189,15 @@ export function MedicationEditor({
               </option>
             ))}
           </SelectField>
-          <TextField label="Medication name" name="name" maxLength={120} required />
-          <TextField label="Dosage" name="dosage" maxLength={120} placeholder="e.g. 1 tablet" required />
+          <TextField label="Medication name" name="name" defaultValue={medication?.name} maxLength={120} required />
+          <TextField
+            label="Dosage"
+            name="dosage"
+            defaultValue={medication?.dosage}
+            maxLength={120}
+            placeholder="e.g. 1 tablet"
+            required
+          />
           <fieldset className="grid gap-3">
             <legend className="mb-2 font-semibold">Days</legend>
             <label className="inline-flex items-center gap-2">
@@ -194,8 +254,19 @@ export function MedicationEditor({
             <legend className="mb-2 font-semibold">Dose times</legend>
             {times.map((id, index) => (
               <div key={id} className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-start gap-2">
-                <TextField label={`Dose time ${index + 1}`} name="time" placeholder="9:30" required />
-                <SelectField label="AM/PM" aria-label={`Dose ${index + 1} AM/PM`} name="period" defaultValue="AM">
+                <TextField
+                  label={`Dose time ${index + 1}`}
+                  name="time"
+                  defaultValue={initialTime(medication?.schedule.times[id])}
+                  placeholder="9:30"
+                  required
+                />
+                <SelectField
+                  label="AM/PM"
+                  aria-label={`Dose ${index + 1} AM/PM`}
+                  name="period"
+                  defaultValue={Number(medication?.schedule.times[id]?.slice(0, 2) ?? 0) >= 12 ? 'PM' : 'AM'}
+                >
                   <option value="AM">AM</option>
                   <option value="PM">PM</option>
                 </SelectField>
@@ -203,12 +274,20 @@ export function MedicationEditor({
             ))}
           </fieldset>
           <TimeZoneSelect
+            uniqueLabels
+            labelForZone={medicationTimeZoneLabel}
             initialZone={zone}
             name="timeZone"
             defaultValue={zone}
             hint="Dose times and course dates follow this time zone."
           />
-          <TextField label="Start date" name="startsOn" type="date" defaultValue={today} required />
+          <TextField
+            label="Start date"
+            name="startsOn"
+            type="date"
+            defaultValue={medication?.schedule.startsOn ?? today}
+            required
+          />
           <SelectField label="Ends" value={ending} onChange={(event) => setEnding(event.target.value)}>
             <option value="never">No end date</option>
             <option value="afterDays">After a number of days</option>
@@ -218,6 +297,7 @@ export function MedicationEditor({
             <TextField
               label="Number of days"
               name="days"
+              defaultValue={medication?.schedule.end.kind === 'afterDays' ? medication.schedule.end.days : ''}
               type="number"
               min={1}
               max={36500}
@@ -227,10 +307,26 @@ export function MedicationEditor({
             />
           )}
           {ending === 'onDate' && (
-            <TextField label="End date" name="endsOn" type="date" hint="Includes this date." required />
+            <TextField
+              label="End date"
+              name="endsOn"
+              defaultValue={medication?.schedule.end.kind === 'onDate' ? medication.schedule.end.date : ''}
+              type="date"
+              hint="Includes this date."
+              required
+            />
           )}
-          <SelectField label="Caregiver" name="assignedCaregiverId" defaultValue="" optional>
+          <SelectField
+            label="Caregiver"
+            name="assignedCaregiverId"
+            defaultValue={medication?.assignedCaregiverId ?? ''}
+            optional
+          >
             <option value="">Unassigned</option>
+            {medication?.assignedCaregiverId &&
+              !circle.members.some((member) => member.user.id === medication.assignedCaregiverId) && (
+                <option value={medication.assignedCaregiverId}>Current caregiver (unavailable)</option>
+              )}
             {circle.members.map((member) => (
               <option key={member.user.id} value={member.user.id}>
                 {member.user.name}
@@ -244,6 +340,18 @@ export function MedicationEditor({
             <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
               Cancel
             </Button>
+            {medication && (
+              <Button
+                variant="danger"
+                disabled={busy}
+                onClick={() => {
+                  setError(undefined)
+                  setConfirmDelete(true)
+                }}
+              >
+                Delete medication
+              </Button>
+            )}
           </div>
         </fieldset>
       </form>

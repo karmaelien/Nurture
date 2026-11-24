@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import { errorMessage } from '../../api/client.ts'
-import type { CircleSummary } from '../../api/types.ts'
+import type { CircleSummary, Medication } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { useRequiredSession } from '../auth/session.ts'
@@ -11,11 +11,12 @@ import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { MedicationEditor } from './MedicationEditor.tsx'
 import { scheduleCourse, scheduleSummary } from './medication-schedule.ts'
+import { zoneName } from '../profiles/time.ts'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [recipientId, setRecipientId] = useState('')
-  const [adding, setAdding] = useState(false)
+  const [editor, setEditor] = useState<{ medication?: Medication; deleting?: boolean } | null>(null)
   const medications = useMedications(circle.id)
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
@@ -27,16 +28,20 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
   return (
     <>
       <div className="mb-5 flex justify-end">
-        <Button disabled={!detail.data || !circle.recipients.length} onClick={() => setAdding(true)}>
+        <Button disabled={!detail.data || !circle.recipients.length} onClick={() => setEditor({})}>
           Add medication
         </Button>
       </div>
-      {adding && detail.data && (
+      {editor && detail.data && (
         <MedicationEditor
           circle={detail.data.circle}
           recipientId={recipientId}
-          onClose={() => setAdding(false)}
-          onSaved={() => setRecipientId('')}
+          medication={editor.medication}
+          deleting={editor.deleting}
+          onClose={() => setEditor(null)}
+          onSaved={() => {
+            if (!editor.medication) setRecipientId('')
+          }}
         />
       )}
       <label className="mb-6 grid max-w-sm gap-2">
@@ -79,7 +84,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
         ) : visible.length === 0 ? (
           <p className="text-muted">No medications for {recipientId ? 'this care profile' : 'this family'}.</p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="grid gap-5">
             {visible.map((medication) => {
               const person = circle.recipients.find((item) => item.id === medication.recipientId)
               const caregiver =
@@ -88,7 +93,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                   : (detail.data?.circle.members.find((member) => member.user.id === medication.assignedCaregiverId)
                       ?.user.name ?? (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
               return (
-                <li key={medication.id} className="py-5 first:pt-0 last:pb-0">
+                <li key={medication.id} className="rounded-panel border border-line-strong bg-wash/30 p-5 sm:p-6">
                   <h2 className="font-display text-h3 font-semibold">{medication.name}</h2>
                   <p className="mt-1">{person?.name ?? 'Care profile unavailable'}</p>
                   <dl className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -102,7 +107,7 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                         {scheduleSummary(medication.schedule)}
                         <span className="block text-small text-muted">{scheduleCourse(medication.schedule)}</span>
                         <span className="block text-small text-muted">
-                          {medication.schedule.timeZone.replaceAll('_', ' ')}
+                          {zoneName(medication.schedule.timeZone)}
                         </span>
                       </dd>
                     </div>
@@ -111,6 +116,18 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                       <dd>{caregiver}</dd>
                     </div>
                   </dl>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button variant="outline" disabled={!detail.data} onClick={() => setEditor({ medication })}>
+                      Edit medication
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={!detail.data}
+                      onClick={() => setEditor({ medication, deleting: true })}
+                    >
+                      Delete medication
+                    </Button>
+                  </div>
                 </li>
               )
             })}

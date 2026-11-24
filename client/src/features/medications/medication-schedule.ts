@@ -1,4 +1,10 @@
 import type { MedicationSchedule } from '../../api/types.ts'
+import { zoneName } from '../profiles/time.ts'
+
+export function medicationTimeZoneLabel(zone: string) {
+  if (zone === 'UTC') return 'Coordinated Universal Time (UTC)'
+  return zoneName(zone)
+}
 
 export const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 export const everyDay = [0, 1, 2, 3, 4, 5, 6]

@@ -46,6 +46,7 @@ export function seedCareData(now = new Date()) {
   const medications: Medication[] = [
     {
       id: 'med_rose',
+      version: 1,
       recipientId: 'r_rose',
       name: 'Sample medication A',
       dosage: '1 tablet',
@@ -60,6 +61,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 'med_frank',
+      version: 1,
       recipientId: 'r_frank',
       name: 'Sample medication B',
       dosage: '1 tablet',

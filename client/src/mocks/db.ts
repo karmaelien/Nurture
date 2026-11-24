@@ -82,6 +82,7 @@ export function readDb(): Db {
       // Older demo sessions lack medication definitions; preserve their existing care data.
       db.care.medications ??= seedCareData().medications
       for (const medication of db.care.medications) {
+        medication.version ??= 1
         // Upgrade earlier daily-only definitions without resetting saved medications or other care data.
         medication.schedule.daysOfWeek ??= [...everyDay]
         medication.schedule.startsOn ??= dateInZone(new Date(), medication.schedule.timeZone)

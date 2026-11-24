@@ -78,6 +78,7 @@ export type MedicationSchedule = {
 // A medication's recurring schedule is separate from the status of each individual dose.
 export type Medication = {
   id: string
+  version: number
   recipientId: string
   name: string
   dosage: string
@@ -85,7 +86,8 @@ export type Medication = {
   assignedCaregiverId: string | null
 }
 
-export type MedicationInput = Omit<Medication, 'id'>
+export type MedicationInput = Omit<Medication, 'id' | 'version'>
+export type MedicationUpdate = MedicationInput & { version: number }
 
 export type MedicationOccurrence = {
   id: string // unique to this occurrence

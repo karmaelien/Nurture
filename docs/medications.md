@@ -50,6 +50,26 @@ Definitions now live in the existing localStorage-backed mock database and survi
 refresh. Older demo sessions receive the sample definitions without resetting their
 other data. This is still mock storage, not PostgreSQL.
 
-Editing, dose completion, recurring schedule generation, reminders, and
+## Edit and delete
+
+Each entry has Edit medication and Delete medication actions. Editing reuses the
+same dialog, prefilled with all saved fields, including AM/PM times, selected days,
+course ending, time zone, and caregiver. Close, Escape, Cancel, and click-away
+dismiss it without saving. The delete action opens a confirmation with Keep medication
+and Confirm delete. A failed save or deletion leaves the dialog open with an error.
+
+`PATCH /api/circles/:circleId/medications/:medicationId` accepts the full definition
+plus its `version`. Existing medications begin at version 1; each edit increments it.
+A stale version returns `409 edit_conflict`, preserving the newer definition. The
+editor refreshes the list and asks the user to close and reopen to review it.
+Missing or out-of-family medication IDs return 404, and profile/caregiver assignments
+are checked against the current family before any write.
+
+`DELETE` at the same path removes the definition and its stored dose occurrences.
+The confirmation states this explicitly. Repeated deletion returns 404. Successful
+writes refresh the family's care queries, so deleted mock doses disappear from Home.
+These operations still use the existing browser mock database.
+
+Dose completion, recurring schedule generation, reminders, and
 the real backend are still to come. This page does not infer a medication's full
 schedule from historical doses or generate new occurrences.

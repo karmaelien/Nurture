@@ -12,6 +12,7 @@ import type {
   MedicationOccurrence,
   Medication,
   MedicationInput,
+  MedicationUpdate,
   MedicationOccurrenceFilters,
   TaskFilters,
 } from './types.ts'
@@ -62,6 +63,13 @@ export const careApi = {
   medications: (circleId: string) => request<{ medications: Medication[] }>(resourcePath(circleId, 'medications', {})),
   createMedication: (circleId: string, body: MedicationInput) =>
     request<{ medication: Medication }>(resourcePath(circleId, 'medications', {}), { method: 'POST', body }),
+  updateMedication: (circleId: string, medicationId: string, body: MedicationUpdate) =>
+    request<{ medication: Medication }>(resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}`, {}), {
+      method: 'PATCH',
+      body,
+    }),
+  deleteMedication: (circleId: string, medicationId: string) =>
+    request<void>(resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}`, {}), { method: 'DELETE' }),
   medicationOccurrences: (circleId: string, filters: MedicationOccurrenceFilters) =>
     request<{ medicationOccurrences: MedicationOccurrence[] }>(
       resourcePath(circleId, 'medication-occurrences', filters),

@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, it } from 'vitest'
@@ -63,8 +63,18 @@ it('adds a medication with multiple daily times and persists its definition', as
   await logIn()
   const user = userEvent.setup()
   renderApp('/app/medications')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
   const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
+  const zoneOptions = within(form.getByLabelText('Time zone')).getAllByRole('option')
+  const zoneLabels = zoneOptions.map((option) => option.textContent)
+  expect(new Set(zoneLabels).size).toBe(zoneLabels.length)
+  const offsets = zoneLabels.map((label) => {
+    const match = /^\(UTC([+-])(\d{2}):(\d{2})\)/.exec(label!)!
+    return (Number(match[2]) * 60 + Number(match[3])) * (match[1] === '-' ? -1 : 1)
+  })
+  expect(offsets).toEqual([...offsets].sort((a, b) => a - b))
+  expect(zoneLabels.some((label) => label?.endsWith('Eastern Time'))).toBe(true)
   await user.selectOptions(form.getByLabelText('Care profile'), 'r_frank')
   await user.type(form.getByLabelText('Medication name'), 'Test medication')
   await user.type(form.getByLabelText('Dosage'), '1 tablet')
@@ -90,6 +100,7 @@ it('rejects duplicate times and lets the user dismiss the form by clicking outsi
   await logIn()
   const user = userEvent.setup()
   renderApp('/app/medications')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
   const dialog = screen.getByRole('dialog', { name: 'Add medication' })
   const form = within(dialog)
@@ -136,6 +147,7 @@ it('saves a weekly course with twice-per-day times and a fixed duration', async 
   await logIn()
   const user = userEvent.setup()
   renderApp('/app/medications')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
   const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Medication name'), 'Weekly sample')
@@ -167,6 +179,7 @@ it('matches the dose count to the time fields and preserves the first entered ti
   await logIn()
   const user = userEvent.setup()
   renderApp('/app/medications')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
   const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Dose time 1'), '7:30')
@@ -212,6 +225,7 @@ it('requires selected weekdays and saves a course ending on an inclusive date', 
   await logIn()
   const user = userEvent.setup()
   renderApp('/app/medications')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
   const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Medication name'), 'Weekday sample')
@@ -235,4 +249,79 @@ it('requires selected weekdays and saves a course ending on an inclusive date', 
     startsOn: '2026-12-01',
     end: { kind: 'onDate', date: '2026-12-31' },
   })
+})
+
+it('prefills the edit form and persists changes without resetting the schedule', async () => {
+  await logIn()
+  const { medication } = await careApi.createMedication('c_demo', {
+    recipientId: 'r_frank',
+    name: 'Editable sample',
+    dosage: '1 tablet',
+    assignedCaregiverId: 'u_daniel',
+    schedule: {
+      times: ['00:05', '15:30'],
+      timeZone: 'America/Chicago',
+      daysOfWeek: [1, 5],
+      startsOn: '2026-12-01',
+      end: { kind: 'afterDays', days: 10 },
+    },
+  })
+  const user = userEvent.setup()
+  renderApp('/app/medications')
+  const card = (await screen.findByRole('heading', { name: 'Editable sample' })).closest('li')!
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Edit medication' })).toBeEnabled())
+  await user.click(within(card).getByRole('button', { name: 'Edit medication' }))
+  const form = within(screen.getByRole('dialog', { name: 'Edit medication' }))
+  expect(form.getByLabelText('Care profile')).toHaveValue('r_frank')
+  expect(form.getByLabelText('Dose time 1')).toHaveValue('12:05')
+  expect(form.getByLabelText('Dose 1 AM/PM')).toHaveValue('AM')
+  expect(form.getByLabelText('Dose time 2')).toHaveValue('3:30')
+  expect(form.getByLabelText('Dose 2 AM/PM')).toHaveValue('PM')
+  expect(form.getByLabelText('Monday')).toBeChecked()
+  expect(form.getByLabelText('Tuesday')).not.toBeChecked()
+  expect(form.getByLabelText('Ends')).toHaveValue('afterDays')
+  expect(form.getByLabelText('Number of days')).toHaveValue(10)
+  expect(form.getByLabelText('Time zone')).toHaveValue('America/Chicago')
+  expect(form.getByLabelText('Caregiver (optional)')).toHaveValue('u_daniel')
+  await user.clear(form.getByLabelText('Dosage'))
+  await user.type(form.getByLabelText('Dosage'), '2 tablets')
+  await user.click(form.getByRole('button', { name: 'Save medication' }))
+  expect(await screen.findByText('2 tablets')).toBeInTheDocument()
+  const saved = (await careApi.medications('c_demo')).medications.find((item) => item.id === medication.id)
+  expect(saved).toMatchObject({ dosage: '2 tablets', schedule: medication.schedule, version: 2 })
+})
+
+it('requires confirmation before deleting a medication and its stored doses', async () => {
+  await logIn()
+  const user = userEvent.setup()
+  renderApp('/app/medications')
+  const card = (await screen.findByRole('heading', { name: 'Sample medication A' })).closest('li')!
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Delete medication' })).toBeEnabled())
+  await user.click(within(card).getByRole('button', { name: 'Delete medication' }))
+  let dialog = within(screen.getByRole('dialog', { name: 'Delete medication' }))
+  await user.click(dialog.getByRole('button', { name: 'Keep medication' }))
+  expect(screen.getByRole('heading', { name: 'Sample medication A' })).toBeInTheDocument()
+  await waitFor(() => expect(within(card).getByRole('button', { name: 'Delete medication' })).toBeEnabled())
+  await user.click(within(card).getByRole('button', { name: 'Delete medication' }))
+  dialog = within(screen.getByRole('dialog', { name: 'Delete medication' }))
+  await user.click(dialog.getByRole('button', { name: 'Confirm delete' }))
+  await waitFor(() => expect(screen.queryByRole('heading', { name: 'Sample medication A' })).not.toBeInTheDocument())
+  expect((await careApi.medications('c_demo')).medications.some((item) => item.id === 'med_rose')).toBe(false)
+  const { readDb } = await import('../../mocks/db.ts')
+  expect(readDb().care.medicationOccurrences.some((dose) => dose.medicationId === 'med_rose')).toBe(false)
+})
+
+it('rejects stale edits, duplicate deletion, and writes from outside the family', async () => {
+  await logIn()
+  const medication = (await careApi.medications('c_demo')).medications[0]
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, dosage: 'Updated dosage' })
+  await expect(careApi.updateMedication('c_demo', id, body)).rejects.toMatchObject({ status: 409 })
+  await careApi.deleteMedication('c_demo', id)
+  await expect(careApi.deleteMedication('c_demo', id)).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.updateMedication('c_demo', id, body)).rejects.toMatchObject({ status: 404 })
+  const { token } = await authApi.register({ name: 'Other', email: 'other-med@example.test', password: 'password123' })
+  setToken(token)
+  await expect(careApi.updateMedication('c_demo', 'med_frank', body)).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.deleteMedication('c_demo', 'med_frank')).rejects.toMatchObject({ status: 404 })
 })
