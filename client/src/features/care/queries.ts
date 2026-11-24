@@ -5,6 +5,7 @@ import { useRequiredSession } from '../auth/session.ts'
 
 // Scope cached care data to the signed-in user as well as the circle and every filter.
 export const careKeys = {
+  medications: (userId: string, circleId: string | null) => ['care', userId, circleId, 'medications'] as const,
   appointments: (userId: string, circleId: string | null, filters: AppointmentFilters) =>
     ['care', userId, circleId, 'appointments', filters] as const,
   medicationOccurrences: (userId: string, circleId: string | null, filters: MedicationOccurrenceFilters) =>
@@ -23,6 +24,16 @@ export function useAppointments(circleId: string | null, filters: AppointmentFil
     queryKey: careKeys.appointments(user.id, circleId, filters),
     queryFn: circleId ? () => careApi.appointments(circleId, filters) : skipToken,
     select: (data) => data.appointments,
+    retry: false,
+  })
+}
+
+export function useMedications(circleId: string | null) {
+  const { user } = useRequiredSession()
+  return useQuery({
+    queryKey: careKeys.medications(user.id, circleId),
+    queryFn: circleId ? () => careApi.medications(circleId) : skipToken,
+    select: (data) => data.medications,
     retry: false,
   })
 }

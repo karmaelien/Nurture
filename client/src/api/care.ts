@@ -10,6 +10,7 @@ import type {
   Expense,
   ExpenseFilters,
   MedicationOccurrence,
+  Medication,
   MedicationOccurrenceFilters,
   TaskFilters,
 } from './types.ts'
@@ -57,6 +58,7 @@ export const careApi = {
         body: { status },
       },
     ),
+  medications: (circleId: string) => request<{ medications: Medication[] }>(resourcePath(circleId, 'medications', {})),
   medicationOccurrences: (circleId: string, filters: MedicationOccurrenceFilters) =>
     request<{ medicationOccurrences: MedicationOccurrence[] }>(
       resourcePath(circleId, 'medication-occurrences', filters),

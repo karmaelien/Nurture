@@ -67,6 +67,16 @@ export type Appointment = {
   assignedCaregiverId: string | null // null means unassigned
 }
 
+// A medication's daily schedule is separate from the status of each individual dose.
+export type Medication = {
+  id: string
+  recipientId: string
+  name: string
+  dosage: string
+  schedule: { times: string[]; timeZone: string } // HH:mm in this time zone, every day
+  assignedCaregiverId: string | null
+}
+
 export type MedicationOccurrence = {
   id: string // unique to this occurrence
   medicationId: string
