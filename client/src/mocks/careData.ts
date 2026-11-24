@@ -1,4 +1,5 @@
-import type { Appointment, CareTask, Expense, MedicationOccurrence } from '../api/types.ts'
+import type { Appointment, CareTask, Expense, Medication, MedicationOccurrence } from '../api/types.ts'
+import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
 
 // Created once with the mock database. Calendar arithmetic uses the browser's local time zone.
 export function seedCareData(now = new Date()) {
@@ -40,6 +41,36 @@ export function seedCareData(now = new Date()) {
       endsAt: at(5, 12),
       location: null,
       assignedCaregiverId: null,
+    },
+  ]
+  const medications: Medication[] = [
+    {
+      id: 'med_rose',
+      recipientId: 'r_rose',
+      name: 'Sample medication A',
+      dosage: '1 tablet',
+      schedule: {
+        times: ['08:00', '20:00'],
+        timeZone: 'America/New_York',
+        daysOfWeek: everyDay,
+        startsOn: dateInZone(now, 'America/New_York'),
+        end: { kind: 'never' },
+      },
+      assignedCaregiverId: 'u_demo',
+    },
+    {
+      id: 'med_frank',
+      recipientId: 'r_frank',
+      name: 'Sample medication B',
+      dosage: '1 tablet',
+      schedule: {
+        times: ['12:00'],
+        timeZone: 'America/New_York',
+        daysOfWeek: everyDay,
+        startsOn: dateInZone(now, 'America/New_York'),
+        end: { kind: 'never' },
+      },
+      assignedCaregiverId: 'u_daniel',
     },
   ]
   const medicationOccurrences: MedicationOccurrence[] = [
@@ -156,5 +187,5 @@ export function seedCareData(now = new Date()) {
       incurredOn: incurredOn(4),
     },
   ]
-  return { appointments, medicationOccurrences, tasks, expenses }
+  return { appointments, medications, medicationOccurrences, tasks, expenses }
 }

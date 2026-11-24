@@ -9,18 +9,13 @@ import { useRequiredSession } from '../auth/session.ts'
 import { useMedications } from '../care/queries.ts'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
-
-// These are clock times in the schedule's zone, not UTC instants to convert to the viewer's zone.
-const clockTime = (time: string) =>
-  new Date(`2000-01-01T${time}:00Z`).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  })
+import { MedicationEditor } from './MedicationEditor.tsx'
+import { scheduleCourse, scheduleSummary } from './medication-schedule.ts'
 
 function MedicationList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [recipientId, setRecipientId] = useState('')
+  const [adding, setAdding] = useState(false)
   const medications = useMedications(circle.id)
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
@@ -31,6 +26,19 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
 
   return (
     <>
+      <div className="mb-5 flex justify-end">
+        <Button disabled={!detail.data || !circle.recipients.length} onClick={() => setAdding(true)}>
+          Add medication
+        </Button>
+      </div>
+      {adding && detail.data && (
+        <MedicationEditor
+          circle={detail.data.circle}
+          recipientId={recipientId}
+          onClose={() => setAdding(false)}
+          onSaved={() => setRecipientId('')}
+        />
+      )}
       <label className="mb-6 grid max-w-sm gap-2">
         Care profile
         <select
@@ -91,7 +99,8 @@ function MedicationList({ circle }: { circle: CircleSummary }) {
                     <div>
                       <dt className="text-small text-muted">Schedule</dt>
                       <dd>
-                        Daily at {medication.schedule.times.map(clockTime).join(' and ')}
+                        {scheduleSummary(medication.schedule)}
+                        <span className="block text-small text-muted">{scheduleCourse(medication.schedule)}</span>
                         <span className="block text-small text-muted">
                           {medication.schedule.timeZone.replaceAll('_', ' ')}
                         </span>

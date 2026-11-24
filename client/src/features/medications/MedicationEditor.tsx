@@ -1,0 +1,252 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { careApi } from '../../api/care.ts'
+import { errorMessage } from '../../api/client.ts'
+import type { CircleDetail } from '../../api/types.ts'
+import { Alert } from '../../components/ui/Alert.tsx'
+import { Button } from '../../components/ui/Button.tsx'
+import { SelectField, TextField } from '../../components/ui/Field.tsx'
+import { closeOnBackdropClick } from '../appointments/dialog.ts'
+import { useRequiredSession } from '../auth/session.ts'
+import { TimeZoneSelect } from '../profiles/TimeZoneSelect.tsx'
+import { deviceTimeZone } from '../profiles/schemas.ts'
+import { medicationClockTime, medicationInputSchema } from './medication-input.ts'
+import { dateInZone, everyDay, weekdays } from './medication-schedule.ts'
+
+export function MedicationEditor({
+  circle,
+  recipientId,
+  onClose,
+  onSaved,
+}: {
+  circle: CircleDetail
+  recipientId: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { user } = useRequiredSession()
+  const cache = useQueryClient()
+  const dialog = useRef<HTMLDialogElement>(null)
+  const saving = useRef(false)
+  const nextTime = useRef(1)
+  const [times, setTimes] = useState([0])
+  const [doseCount, setDoseCount] = useState('1')
+  const [selectedDays, setSelectedDays] = useState<number[]>([...everyDay])
+  const [ending, setEnding] = useState('never')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const heading = useId()
+  const zone = user.timeZone ?? deviceTimeZone()
+  const [today] = useState(() => dateInZone(new Date(), zone))
+  useEffect(() => {
+    dialog.current?.showModal()
+  }, [])
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (saving.current) return
+    const values = new FormData(event.currentTarget)
+    const field = (name: string) => String(values.get(name) ?? '').trim()
+    const count = Number(field('doseCount'))
+    if (!Number.isInteger(count) || count < 1 || count > 24 || count !== times.length) {
+      setError('Enter a whole number of doses from 1 to 24.')
+      return
+    }
+    const periods = values.getAll('period').map(String)
+    const doseTimes = values.getAll('time').map((time, index) => medicationClockTime(String(time), periods[index]))
+    if (doseTimes.some((time) => time === null)) {
+      setError('Enter each dose time as 1:00 to 12:59 and choose AM or PM.')
+      return
+    }
+    const parsed = medicationInputSchema.safeParse({
+      recipientId: field('recipientId'),
+      name: field('name'),
+      dosage: field('dosage'),
+      schedule: {
+        times: doseTimes,
+        timeZone: field('timeZone'),
+        daysOfWeek: values.getAll('weekdays').map(Number),
+        startsOn: field('startsOn'),
+        end:
+          ending === 'never'
+            ? { kind: 'never' }
+            : ending === 'afterDays'
+              ? { kind: 'afterDays', days: Number(field('days')) }
+              : { kind: 'onDate', date: field('endsOn') },
+      },
+      assignedCaregiverId: field('assignedCaregiverId') || null,
+    })
+    if (!parsed.success) {
+      setError(parsed.error.issues[0].message)
+      return
+    }
+    saving.current = true
+    setBusy(true)
+    setError(undefined)
+    try {
+      await careApi.createMedication(circle.id, parsed.data)
+      await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id, 'medications'] })
+      onSaved()
+      dialog.current?.close()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      saving.current = false
+      setBusy(false)
+    }
+  }
+
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby={heading}
+      onClose={onClose}
+      onCancel={(event) => {
+        if (saving.current) event.preventDefault()
+      }}
+      onClick={(event) => {
+        if (!saving.current) closeOnBackdropClick(event)
+      }}
+      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
+    >
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 id={heading} className="font-display text-h2 font-semibold">
+          Add medication
+        </h2>
+        <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
+          Close
+        </Button>
+      </div>
+      <form onSubmit={save}>
+        {error && (
+          <div className="mb-4">
+            <Alert tone="danger">{error}</Alert>
+          </div>
+        )}
+        <fieldset disabled={busy} className="grid gap-4">
+          <SelectField
+            label="Care profile"
+            name="recipientId"
+            defaultValue={recipientId || circle.recipients[0]?.id}
+            required
+          >
+            {circle.recipients.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </SelectField>
+          <TextField label="Medication name" name="name" maxLength={120} required />
+          <TextField label="Dosage" name="dosage" maxLength={120} placeholder="e.g. 1 tablet" required />
+          <fieldset className="grid gap-3">
+            <legend className="mb-2 font-semibold">Days</legend>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={selectedDays.length === 7}
+                ref={(element) => {
+                  if (element) element.indeterminate = selectedDays.length > 0 && selectedDays.length < 7
+                }}
+                onChange={(event) => setSelectedDays(event.target.checked ? [...everyDay] : [])}
+              />
+              Select all
+            </label>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {weekdays.map((day, index) => (
+                <label key={day} className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="weekdays"
+                    value={index}
+                    checked={selectedDays.includes(index)}
+                    onChange={(event) =>
+                      setSelectedDays((previous) =>
+                        event.target.checked ? [...previous, index] : previous.filter((value) => value !== index),
+                      )
+                    }
+                  />
+                  {day}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <TextField
+            label="Doses per day"
+            name="doseCount"
+            type="number"
+            min={1}
+            max={24}
+            step={1}
+            required
+            value={doseCount}
+            hint="On each scheduled day. Choose a time for each dose below."
+            onChange={(event) => {
+              const value = event.target.value
+              setDoseCount(value)
+              const count = Number(value)
+              if (!Number.isInteger(count) || count < 1 || count > 24) return
+              const next = times.slice(0, count)
+              while (next.length < count) next.push(nextTime.current++)
+              setTimes(next)
+            }}
+          />
+          <fieldset className="grid gap-3">
+            <legend className="mb-2 font-semibold">Dose times</legend>
+            {times.map((id, index) => (
+              <div key={id} className="grid grid-cols-[minmax(0,1fr)_5.5rem] items-start gap-2">
+                <TextField label={`Dose time ${index + 1}`} name="time" placeholder="9:30" required />
+                <SelectField label="AM/PM" aria-label={`Dose ${index + 1} AM/PM`} name="period" defaultValue="AM">
+                  <option value="AM">AM</option>
+                  <option value="PM">PM</option>
+                </SelectField>
+              </div>
+            ))}
+          </fieldset>
+          <TimeZoneSelect
+            initialZone={zone}
+            name="timeZone"
+            defaultValue={zone}
+            hint="Dose times and course dates follow this time zone."
+          />
+          <TextField label="Start date" name="startsOn" type="date" defaultValue={today} required />
+          <SelectField label="Ends" value={ending} onChange={(event) => setEnding(event.target.value)}>
+            <option value="never">No end date</option>
+            <option value="afterDays">After a number of days</option>
+            <option value="onDate">On a date</option>
+          </SelectField>
+          {ending === 'afterDays' && (
+            <TextField
+              label="Number of days"
+              name="days"
+              type="number"
+              min={1}
+              max={36500}
+              step={1}
+              hint="Calendar days, including the start date."
+              required
+            />
+          )}
+          {ending === 'onDate' && (
+            <TextField label="End date" name="endsOn" type="date" hint="Includes this date." required />
+          )}
+          <SelectField label="Caregiver" name="assignedCaregiverId" defaultValue="" optional>
+            <option value="">Unassigned</option>
+            {circle.members.map((member) => (
+              <option key={member.user.id} value={member.user.id}>
+                {member.user.name}
+              </option>
+            ))}
+          </SelectField>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" loading={busy}>
+              Save medication
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
+              Cancel
+            </Button>
+          </div>
+        </fieldset>
+      </form>
+    </dialog>
+  )
+}

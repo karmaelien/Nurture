@@ -1,4 +1,5 @@
 import { seedCareData } from './careData.ts'
+import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
 import type { CircleDetail, Member, User } from '../api/types.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
@@ -76,7 +77,18 @@ function seed(): Db {
 export function readDb(): Db {
   try {
     const raw = localStorage.getItem(DB_KEY)
-    if (raw) return JSON.parse(raw) as Db
+    if (raw) {
+      const db = JSON.parse(raw) as Db
+      // Older demo sessions lack medication definitions; preserve their existing care data.
+      db.care.medications ??= seedCareData().medications
+      for (const medication of db.care.medications) {
+        // Upgrade earlier daily-only definitions without resetting saved medications or other care data.
+        medication.schedule.daysOfWeek ??= [...everyDay]
+        medication.schedule.startsOn ??= dateInZone(new Date(), medication.schedule.timeZone)
+        medication.schedule.end ??= { kind: 'never' }
+      }
+      return db
+    }
   } catch {
     // Fall through to a fresh seed.
   }

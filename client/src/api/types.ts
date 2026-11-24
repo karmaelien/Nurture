@@ -67,15 +67,25 @@ export type Appointment = {
   assignedCaregiverId: string | null // null means unassigned
 }
 
-// A medication's daily schedule is separate from the status of each individual dose.
+export type MedicationSchedule = {
+  times: string[] // HH:mm in timeZone on each selected weekday
+  timeZone: string
+  daysOfWeek: number[] // Sunday = 0 through Saturday = 6
+  startsOn: string // inclusive YYYY-MM-DD in timeZone
+  end: { kind: 'never' } | { kind: 'afterDays'; days: number } | { kind: 'onDate'; date: string }
+}
+
+// A medication's recurring schedule is separate from the status of each individual dose.
 export type Medication = {
   id: string
   recipientId: string
   name: string
   dosage: string
-  schedule: { times: string[]; timeZone: string } // HH:mm in this time zone, every day
+  schedule: MedicationSchedule
   assignedCaregiverId: string | null
 }
+
+export type MedicationInput = Omit<Medication, 'id'>
 
 export type MedicationOccurrence = {
   id: string // unique to this occurrence
