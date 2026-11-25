@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCareSelection } from '../care/selection.ts'
 import type { CircleSummary } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
@@ -10,7 +10,7 @@ import { useMinute } from '../profiles/time.ts'
 import { MedicationDoseList } from './MedicationDoseList.tsx'
 
 const localDate = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 function DosesForDate({ circle, recipientId, date }: { circle: CircleSummary; recipientId: string; date: string }) {
   // Local midnights keep the selected calendar date correct across time zones and DST.
@@ -54,12 +54,14 @@ function DosesForDate({ circle, recipientId, date }: { circle: CircleSummary; re
 export function MedicationDoses({ circle, recipientId }: { circle: CircleSummary; recipientId: string }) {
   const today = localDate(useMinute())
   // A null selection follows today across midnight; explicitly chosen history stays on its date.
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const { selectedDate, setSelectedDate } = useCareSelection(circle)
   const date = selectedDate ?? today
-  const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(Date.parse(`${date}T00:00:00`)) && date <= today
+  const parsedDate = new Date(`${date}T00:00:00`)
+  const valid =
+    /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(parsedDate.getTime()) && localDate(parsedDate) === date
   return (
-    <section aria-label="Doses" className="mb-6 rounded-panel border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-h3 font-semibold">Doses</h2>
+    <section aria-label="Medication Schedule" className="mb-4 rounded-panel border border-line bg-surface p-5 sm:p-6">
+      <h2 className="font-display text-h3 font-semibold">Medication Schedule</h2>
       <p className="mt-2 mb-4 text-small text-muted">
         Doses for the selected care profiles · Times shown in your local time zone.
       </p>
@@ -69,9 +71,8 @@ export function MedicationDoses({ circle, recipientId }: { circle: CircleSummary
             label="Dose date"
             type="date"
             value={date}
-            max={today}
             onChange={(event) => setSelectedDate(event.target.value)}
-            error={date && !valid ? 'Choose today or an earlier date.' : undefined}
+            error={date && !valid ? 'Choose a valid date.' : undefined}
           />
         </div>
         <Button variant="secondary" onClick={() => setSelectedDate(null)}>

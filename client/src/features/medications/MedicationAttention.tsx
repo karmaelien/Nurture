@@ -24,40 +24,45 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
   ]
   if (!doses.length && !overdue.historyPending && !overdue.isError && !reminders.isError) return null
   return (
-    <section aria-label="Attention needed" className="mb-6 rounded-panel border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-h3 font-semibold">Attention needed</h2>
-      <p className="mt-2 mb-4 text-small text-muted">
-        Overdue doses first, then dose reminders · Times shown in your local time zone.
-      </p>
-      {[overdue, reminders].map(
-        (query, index) =>
-          query.isError && (
-            <div key={index} className="mb-4">
-              <Alert tone="danger">
-                {errorMessage(query.error)}{' '}
-                <Button variant="secondary" onClick={() => void query.refetch()}>
-                  {index === 0 ? 'Retry overdue doses' : 'Retry reminders'}
-                </Button>
-              </Alert>
-            </div>
-          ),
-      )}
-      {doses.length > 0 && (
-        <MedicationDoseList
-          circleId={circle.id}
-          doses={doses}
-          totalOverdueCount={overdue.totalOverdueCount}
-          overdueCountIsPartial={overdue.historyPending}
-          showDate
-          personName={(id) => circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'}
+    <section aria-label="Attention Needed" className="mb-4 rounded-panel border border-line bg-surface p-5 sm:p-6">
+      <h2 className="font-display text-h3 font-semibold">Attention Needed</h2>
+      <div className="mt-3 max-h-64 overflow-y-auto pr-2">
+        <p className="mb-3 text-small text-muted">
+          Missed doses first, then dose reminders · Times shown in your local time zone.
+        </p>
+        {[overdue, reminders].map(
+          (query, index) =>
+            query.isError && (
+              <div key={index} className="mb-4">
+                <Alert tone="danger">
+                  {errorMessage(query.error)}{' '}
+                  <Button variant="secondary" onClick={() => void query.refetch()}>
+                    {index === 0 ? 'Retry missed doses' : 'Retry reminders'}
+                  </Button>
+                </Alert>
+              </div>
+            ),
+        )}
+        {doses.length > 0 && (
+          <MedicationDoseList
+            circleId={circle.id}
+            doses={doses}
+            totalOverdueCount={overdue.totalOverdueCount}
+            overdueCountIsPartial={overdue.historyPending}
+            showDate
+            scrollable={false}
+            personName={(id) =>
+              circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'
+            }
+          />
+        )}
+        <OverdueDoseControls
+          historyPending={overdue.historyPending}
+          hasNextPage={overdue.hasNextPage}
+          busy={overdue.isFetchingNextPage}
+          onMore={() => void overdue.fetchNextPage()}
         />
-      )}
-      <OverdueDoseControls
-        historyPending={overdue.historyPending}
-        hasNextPage={overdue.hasNextPage}
-        busy={overdue.isFetchingNextPage}
-        onMore={() => void overdue.fetchNextPage()}
-      />
+      </div>
     </section>
   )
 }

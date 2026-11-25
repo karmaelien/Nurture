@@ -116,6 +116,7 @@ type MedicationOccurrence = {
   id: string; // unique to this occurrence
   version: number; // required when changing status; stale versions return 409
   medicationId: string;
+  medicationStoppedAt?: string | null; // range response metadata; suppresses reminders
   recipientId: string;
   name: string;
   dosage: string; // display text supplied by the care-management feature
@@ -385,6 +386,12 @@ the default. The PostgreSQL router implements the same contract and is mounted b
 authentication when `ENABLE_MEDICATIONS_API=true`. The definition, schedule, version-checking,
 validation, migration, and activation instructions are documented in [Medications](medications.md).
 
+Creation initializes a private `effective_from` timestamp from the database clock
+(the mock stores the equivalent boundary). A backdated Start date never creates
+doses before the medication was added, including earlier times on its creation day.
+Range reads and overdue backfill both enforce the boundary, and subsequent revisions
+preserve it. Legacy records with no known boundary keep their existing history.
+
 #### `GET /api/circles/:circleId/medication-occurrences`
 
 Query: `{ from, to, status?, recipientId? }`. `from` and `to` are required timestamps
@@ -410,7 +417,8 @@ doses scheduled strictly before the cutoff and past their individual overdue del
 The UI uses next local midnight as the cutoff; the server caps it at the current time.
 Today's overdue doses are included along with earlier days, without counting earlier doses in today's totals.
 Current family membership is required; results follow the care-profile filter and sort
-oldest first. Missing schedule instances are generated from the course start, with one
+oldest first. Missing schedule instances are generated from tracked effective intervals,
+never before creation for new medications, with one
 record per dose time. Taken records are preserved and no age cutoff is applied. See [Medications](medications.md)
 for reconciliation and materialization behavior.
 
@@ -437,7 +445,20 @@ the dose version; repeating its current status with the current version preserve
 taken timestamp and version. Historical taken doses can be marked pending while
 preserving their original details. Undoing a future taken occurrence whose time was
 removed from the schedule returns `409 schedule_conflict` and preserves that record.
-Medication deletion requires a JSON `{ version: number }` body and rejects stale
+`POST /api/circles/:circleId/medications/:medicationId/stop` accepts `{ version: number }`
+and returns `200 { medication }`, including `stoppedAt` (UTC) and an incremented version.
+It preserves past pending/taken doses and archived definitions, removes future pending doses,
+suppresses reminders, and prevents any dose generation at or after the stop instant.
+Unviewed past history still backfills. Existing future taken records remain; undoing one
+returns `409 schedule_conflict`. Past missed doses remain overdue and can be marked taken.
+Stopped medications remain listed; edits return `409 edit_conflict`. The Restart medication
+action prefills a new course and submits it through `POST /medications` after the user
+chooses new course dates. The new ID leaves stopped history and the intervening dates unchanged.
+Repeating stop with its current version keeps the original timestamp/version. Stale stop
+requests return `409 edit_conflict`. Range occurrence responses include `medicationStoppedAt`
+for stopped medications so reminder displays can suppress them without changing saved dose details.
+
+Permanent medication deletion requires a JSON `{ version: number }` body and rejects stale
 confirmation versions with `409 edit_conflict`. It permanently deletes pending doses,
 taken dose history, and archived medication definitions along with the medication.
 The delete confirmation explicitly includes taken history. Failed browser persistence returns

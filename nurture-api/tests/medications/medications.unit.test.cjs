@@ -185,6 +185,117 @@ test('router requires authentication and current database membership before vali
     .expect(400);
 });
 
+test('creation time bounds backdated schedules to the exact millisecond, including after edits', () => {
+  const creation = '2026-03-08T12:00:00.500Z';
+  const created = { ...definition, effective_from: new Date(creation) };
+  const from = '2026-03-01T00:00:00Z',
+    to = '2026-03-10T00:00:00Z';
+  assert.deepEqual(
+    generateEffectiveDoses(created, from, to).map((dose) => dose.scheduledAt),
+    ['2026-03-09T12:00:00.000Z'],
+  );
+  assert.equal(medicationHistoryBounds(created, to).lower, Date.parse(creation));
+  assert.deepEqual(generateEffectiveDoses(created, from, creation), []);
+  const editTime = '2026-03-09T14:00:00.000Z';
+  const edited = {
+    ...created,
+    version: 2,
+    effective_from: new Date(editTime),
+    schedule: { ...created.schedule, times: ['09:00'] },
+  };
+  const revisions = [{ definition: created, from: creation, to: editTime }];
+  assert.deepEqual(
+    generateEffectiveDoses(edited, from, to, revisions).map((dose) => dose.scheduledAt),
+    ['2026-03-09T12:00:00.000Z'],
+  );
+  assert.equal(medicationHistoryBounds(edited, to, revisions).lower, Date.parse(creation));
+});
+
+test('creating a medication sets the generation boundary using the database clock', async () => {
+  let inserted = false;
+  const db = {
+    transaction: (action) =>
+      action({
+        query: async (sql) => {
+          if (sql.includes('FROM circle_members')) return { rows: [{}] };
+          assert.match(sql, /INSERT INTO medications\([^)]*effective_from\)/);
+          assert.match(sql, /date_trunc\('milliseconds', clock_timestamp\(\)\)/);
+          inserted = true;
+          return { rows: [definition] };
+        },
+      }),
+  };
+  const model = require('../../src/models/medication.model')(db);
+  assert.deepEqual(await model.run('1', '1', (operations) => operations.create(details)), definition);
+  assert.ok(inserted);
+});
+
+test('stopped courses generate only pre-stop history across archived schedules', () => {
+  const stoppedAt = '2026-03-08T12:00:00.000Z';
+  const stopped = { ...definition, version: 3, stoppedAt: new Date(stoppedAt) };
+  const revisions = [{ definition, from: null, to: '2026-03-08T00:00:00.000Z' }];
+  const doses = generateEffectiveDoses(stopped, '2026-03-07T00:00:00Z', '2026-03-10T00:00:00Z', revisions);
+  assert.deepEqual(
+    doses.map((dose) => dose.scheduledAt),
+    ['2026-03-07T13:00:00.000Z'],
+  );
+  assert.equal(
+    medicationHistoryBounds(stopped, '2026-03-10T00:00:00Z', revisions).finish,
+    Date.parse(stoppedAt),
+  );
+});
+
+test('stop route commits the stop, retires future pending doses, and rejects stale repeats and edits', async () => {
+  const stoppedAt = new Date('2026-03-08T14:00:00.123Z');
+  let current = { ...definition };
+  let removed = false;
+  const future = {
+    id: 'future-dose',
+    recipientId: definition.recipientId,
+    scheduledAt: new Date('2026-03-09T12:00:00Z'),
+  };
+  const db = {
+    transaction: (action) =>
+      action({
+        query: async (sql, values = []) => {
+          if (sql.includes('FROM circle_members')) return { rows: [{}] };
+          if (sql.startsWith('UPDATE medications SET stopped_at')) {
+            current = { ...current, version: current.version + 1, stoppedAt };
+            return { rows: [current] };
+          }
+          if (sql.includes('FROM medications')) return { rows: [current] };
+          if (sql.startsWith('DELETE FROM medication_occurrences')) {
+            assert.deepEqual(values[1], ['future-dose']);
+            removed = true;
+            return { rows: [], rowCount: 1 };
+          }
+          if (sql.includes('FROM medication_occurrences')) return { rows: removed ? [] : [future] };
+          throw new Error(`Unexpected query: ${sql}`);
+        },
+      }),
+  };
+  const app = express();
+  app.use(express.json());
+  app.use((req, res, next) => {
+    req.user = { id: '1' };
+    next();
+  });
+  app.use('/api/circles/:circleId', createMedicationRouter({ db }));
+  app.use(errorHandler);
+  const path = '/api/circles/1/medications/1';
+  const stopped = await request(app).post(`${path}/stop`).send({ version: 1 }).expect(200);
+  assert.equal(stopped.body.medication.stoppedAt, stoppedAt.toISOString());
+  assert.equal(stopped.body.medication.version, 2);
+  assert.ok(removed);
+  await request(app).post(`${path}/stop`).send({ version: 1 }).expect(409);
+  const repeat = await request(app).post(`${path}/stop`).send({ version: 2 }).expect(200);
+  assert.deepEqual(repeat.body, stopped.body);
+  await request(app)
+    .patch(path)
+    .send({ ...details, version: 2 })
+    .expect(409);
+});
+
 test('dose status routes save taken and pending, reject stale actions, and recheck access', async () => {
   const scheduled = generateMedicationDoses(definition, '2026-03-07T00:00:00Z', '2026-03-08T00:00:00Z')[0];
   let dose = { ...scheduled, scheduledAt: new Date(scheduled.scheduledAt), takenAt: null };

@@ -15,12 +15,12 @@ export function OverdueDoseControls({
     <>
       {historyPending && (
         <p role="status" className="mt-3 text-small text-muted">
-          Loading older overdue doses…
+          Loading older missed doses…
         </p>
       )}
       {hasNextPage && (
         <Button className="mt-4" variant="secondary" loading={busy} onClick={onMore}>
-          Show more overdue doses
+          Show more missed doses
         </Button>
       )}
     </>

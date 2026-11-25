@@ -1,3 +1,4 @@
+import { createTrackedMedication } from '../../test/medication-fixtures.ts'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { HttpResponse } from 'msw'
 import { expect, it, vi } from 'vitest'
@@ -15,7 +16,7 @@ import { server } from '../../test/setup.ts'
 async function fixture(options: boolean | Partial<MedicationSchedule> = {}) {
   const startsOn = options === true ? '2099-11-23' : '2026-11-23'
   setToken((await authApi.login(DEMO_ACCOUNT)).token)
-  const { medication } = await careApi.createMedication('c_demo', {
+  const { medication } = await createTrackedMedication('c_demo', {
     recipientId: 'r_rose',
     name: 'Concurrent sample',
     dosage: '1 tablet',
@@ -169,7 +170,7 @@ it('refreshes another tab’s changes on storage events and on returning to the 
 it('shows a failed save in the dose list without displaying a taken state', async () => {
   await fixture()
   renderApp('/app/medications')
-  const doses = await screen.findByRole('region', { name: 'Doses' })
+  const doses = await screen.findByRole('region', { name: 'Medication Schedule' })
   fireEvent.change(within(doses).getByLabelText('Dose date'), { target: { value: '2026-11-23' } })
   const button = await within(doses).findByRole('button', { name: /^Mark taken: Concurrent sample/ })
   const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
@@ -278,12 +279,12 @@ it('shows the full overdue count and loads another page when requested', async (
   for (const other of (await careApi.medications('c_demo')).medications)
     if (other.id !== medication.id) await careApi.deleteMedication('c_demo', other.id, other.version)
   renderApp('/app/medications')
-  const attention = await screen.findByRole('region', { name: 'Attention needed' })
-  expect(await within(attention).findByText('168 overdue doses')).toBeInTheDocument()
+  const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+  expect(await within(attention).findByText('168 missed doses')).toBeInTheDocument()
   expect(within(attention).getAllByRole('listitem')).toHaveLength(100)
-  fireEvent.click(within(attention).getByRole('button', { name: 'Show more overdue doses' }))
+  fireEvent.click(within(attention).getByRole('button', { name: 'Show more missed doses' }))
   await waitFor(() => expect(within(attention).getAllByRole('listitem')).toHaveLength(168))
-  expect(within(attention).queryByRole('button', { name: 'Show more overdue doses' })).not.toBeInTheDocument()
+  expect(within(attention).queryByRole('button', { name: 'Show more missed doses' })).not.toBeInTheDocument()
 })
 
 it('keeps a valid undone historical dose visible after its definition was edited and backfilled', async () => {
@@ -329,10 +330,10 @@ it('uses the latest overdue page count and backfill state when loading more fini
     }),
   )
   renderApp('/app/medications')
-  const attention = await screen.findByRole('region', { name: 'Attention needed' })
-  expect(await within(attention).findByText('At least 1 overdue dose')).toBeInTheDocument()
-  fireEvent.click(within(attention).getByRole('button', { name: 'Show more overdue doses' }))
-  expect(await within(attention).findByText('2 overdue doses')).toBeInTheDocument()
-  expect(within(attention).queryByText('Loading older overdue doses…')).not.toBeInTheDocument()
+  const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+  expect(await within(attention).findByText('At least 1 missed dose')).toBeInTheDocument()
+  fireEvent.click(within(attention).getByRole('button', { name: 'Show more missed doses' }))
+  expect(await within(attention).findByText('2 missed doses')).toBeInTheDocument()
+  expect(within(attention).queryByText('Loading older missed doses…')).not.toBeInTheDocument()
   expect(within(attention).getAllByRole('listitem')).toHaveLength(2)
 })

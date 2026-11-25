@@ -105,6 +105,7 @@ export function MedicationDoseList({
   showDate = false,
   totalOverdueCount,
   overdueCountIsPartial = false,
+  scrollable = true,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
@@ -112,19 +113,24 @@ export function MedicationDoseList({
   showDate?: boolean
   totalOverdueCount?: number
   overdueCountIsPartial?: boolean
+  scrollable?: boolean
 }) {
   const now = useMinute().getTime()
+  const priority = (dose: MedicationOccurrence) => (dose.status === 'completed' ? 2 : isDoseOverdue(dose, now) ? 0 : 1)
+  const orderedDoses = [...doses].sort(
+    (a, b) => priority(a) - priority(b) || Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt),
+  )
   const overdueCount = totalOverdueCount ?? doses.filter((dose) => isDoseOverdue(dose, now)).length
   return (
     <>
       {overdueCount > 0 && (
         <p role="status" className="mb-3 font-semibold text-danger">
           {overdueCountIsPartial ? 'At least ' : ''}
-          {overdueCount} overdue {overdueCount === 1 ? 'dose' : 'doses'}
+          {overdueCount} missed {overdueCount === 1 ? 'dose' : 'doses'}
         </p>
       )}
-      <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
-        {doses.map((dose) => (
+      <ul className={scrollable ? 'max-h-64 divide-y divide-line overflow-y-auto pr-2' : 'divide-y divide-line'}>
+        {orderedDoses.map((dose) => (
           <Dose
             key={dose.id}
             circleId={circleId}

@@ -17,6 +17,7 @@ export function isDoseReminderActive(dose: MedicationOccurrence, now: number) {
     lead !== null &&
     lead !== undefined &&
     dose.status === 'pending' &&
+    !dose.medicationStoppedAt &&
     now >= Date.parse(dose.scheduledAt) - lead * 60_000 &&
     !isDoseOverdue(dose, now)
   )
@@ -35,9 +36,9 @@ export function overdueDoseLabel(scheduledAt: string, now: number) {
   // Compare local calendar dates, so crossing midnight counts even on a 23/25-hour DST day.
   const calendarDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
   const days = Math.round((calendarDay(today) - calendarDay(scheduled)) / 86_400_000)
-  if (days === 1) return 'Overdue from yesterday'
-  if (days > 1) return `Overdue from ${days} days ago`
-  return 'Overdue'
+  if (days === 1) return 'Missed yesterday'
+  if (days > 1) return `Missed ${days} days ago`
+  return 'Missed'
 }
 
 export function isDoseOverdue(dose: MedicationOccurrence, now: number) {
@@ -75,29 +76,31 @@ const readableDate = (date: string) =>
 
 export function scheduleSummary(schedule: MedicationSchedule) {
   const days =
-    schedule.daysOfWeek.length === 7
-      ? 'Daily'
-      : schedule.daysOfWeek.length === 1
-        ? `Every ${weekdays[schedule.daysOfWeek[0]]}`
-        : schedule.daysOfWeek.map((day) => weekdays[day].slice(0, 3)).join(', ')
+    schedule.daysOfWeek.length === 7 ? 'Daily' : schedule.daysOfWeek.map((day) => weekdays[day].slice(0, 3)).join(', ')
   // Clock times already belong to the schedule's zone; do not convert them again.
   const times = schedule.times
     .map((time) =>
       new Date(`2000-01-01T${time}:00Z`).toLocaleTimeString(undefined, {
         hour: 'numeric',
-        minute: '2-digit',
+        minute: time.endsWith(':00') ? undefined : '2-digit',
         timeZone: 'UTC',
       }),
     )
-    .join(' and ')
-  return `${days} at ${times}`
+    .join(', ')
+  return `${days} · ${times}`
 }
 
-export function scheduleCourse(schedule: MedicationSchedule) {
-  const start = `Starts ${readableDate(schedule.startsOn)}`
-  const end = scheduleEndDate(schedule)
-  if (!end) return `${start} · No end date`
-  const duration =
-    schedule.end.kind === 'afterDays' ? `For ${schedule.end.days} ${schedule.end.days === 1 ? 'day' : 'days'} · ` : ''
-  return `${start} · ${duration}Through ${readableDate(end)}`
+export function scheduleCourse(schedule: MedicationSchedule, stoppedAt?: string | null) {
+  const plannedEnd = scheduleEndDate(schedule)
+  const stoppedOn = stoppedAt ? dateInZone(new Date(stoppedAt), schedule.timeZone) : null
+  if (stoppedOn && stoppedOn < schedule.startsOn) return `Stopped ${readableDate(stoppedOn)} · Not started`
+  const end = stoppedOn && (!plannedEnd || stoppedOn < plannedEnd) ? stoppedOn : plannedEnd
+  if (!end) return `${readableDate(schedule.startsOn)}–ongoing`
+  const start = new Date(`${schedule.startsOn}T00:00:00Z`).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: schedule.startsOn.slice(0, 4) === end.slice(0, 4) ? undefined : 'numeric',
+    timeZone: 'UTC',
+  })
+  return `${start}–${readableDate(end)}`
 }

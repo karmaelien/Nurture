@@ -68,6 +68,14 @@ export const careApi = {
       method: 'PATCH',
       body,
     }),
+  stopMedication: (circleId: string, medicationId: string, version: number) =>
+    request<{ medication: Medication }>(
+      resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}/stop`, {}),
+      {
+        method: 'POST',
+        body: { version },
+      },
+    ),
   deleteMedication: (circleId: string, medicationId: string, version: number) =>
     request<void>(resourcePath(circleId, `medications/${encodeURIComponent(medicationId)}`, {}), {
       method: 'DELETE',

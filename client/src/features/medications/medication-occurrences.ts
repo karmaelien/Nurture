@@ -9,7 +9,10 @@ export type MedicationRevision = { definition: Medication; from: string | null; 
 export type MedicationRevisions = Record<string, MedicationRevision[]>
 
 export function medicationSegments(medication: Medication, revisions: MedicationRevision[] = []) {
-  return [...revisions, { definition: medication, from: revisions.at(-1)?.to ?? null, to: null }]
+  return [
+    ...revisions,
+    { definition: medication, from: revisions.at(-1)?.to ?? medication.effectiveFrom ?? null, to: null },
+  ]
 }
 
 /** Generate each part of history using the definition that was effective at that time. */
@@ -21,7 +24,11 @@ export function generateEffectiveDoses(
 ) {
   return medicationSegments(medication, revisions).flatMap((segment) => {
     const lower = Math.max(Date.parse(from), segment.from ? Date.parse(segment.from) : -Infinity)
-    const upper = Math.min(Date.parse(to), segment.to ? Date.parse(segment.to) : Infinity)
+    const upper = Math.min(
+      Date.parse(to),
+      segment.to ? Date.parse(segment.to) : Infinity,
+      medication.stoppedAt ? Date.parse(medication.stoppedAt) : Infinity,
+    )
     return upper > lower
       ? generateMedicationDoses(segment.definition, new Date(lower).toISOString(), new Date(upper).toISOString())
       : []
@@ -41,6 +48,7 @@ export function medicationHistoryBounds(medication: Medication, before: string, 
   )
   const finish = Math.min(
     Date.parse(before),
+    medication.stoppedAt ? Date.parse(medication.stoppedAt) : Infinity,
     Math.max(
       ...segments.map((segment) => {
         const end = scheduleEndDate(segment.definition.schedule)
@@ -149,7 +157,10 @@ export function reconcileMedicationDoses(
     generateEffectiveDoses(medication, from, to, revisions[medication.id]),
   )
   const frozenBefore = new Map(
-    medications.map((medication) => [medication.id, Date.parse(revisions[medication.id]?.at(-1)?.to ?? '')]),
+    medications.map((medication) => [
+      medication.id,
+      Date.parse(medication.stoppedAt ?? revisions[medication.id]?.at(-1)?.to ?? ''),
+    ]),
   )
   const expected = new Set(generated.map(key))
   const medicationIds = new Set(medications.map((medication) => medication.id))
@@ -188,7 +199,7 @@ export function synchronizeFutureDoses(stored: MedicationOccurrence[], medicatio
       Date.parse(dose.scheduledAt) < Date.parse(effectiveAt)
     )
       return true
-    const expected = generateMedicationDoses(
+    const expected = generateEffectiveDoses(
       medication,
       dose.scheduledAt,
       new Date(Date.parse(dose.scheduledAt) + 1).toISOString(),

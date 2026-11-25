@@ -43,6 +43,15 @@ module.exports = function createMedicationRouter({ db = require('../config/db') 
       ),
     });
   });
+  router.post('/medications/:medicationId/stop', async (req, res) => {
+    if (!schemas.validId(req.params.medicationId))
+      throw httpError(404, 'not_found', 'This medication is unavailable.');
+    res.json({
+      medication: await run(req, (model) =>
+        model.stop(req.params.medicationId, parse(schemas.versionSchema, req.body).version),
+      ),
+    });
+  });
   router.delete('/medications/:medicationId', async (req, res) => {
     if (!schemas.validId(req.params.medicationId))
       throw httpError(404, 'not_found', 'This medication is unavailable.');

@@ -12,6 +12,14 @@ import { isDoseOverdue } from '../features/medications/medication-schedule.ts'
 import { medicationInputSchema, medicationUpdateSchema } from '../features/medications/medication-input.ts'
 import { readDb, writeDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
+import type { Medication } from '../api/types.ts'
+
+// Generation boundaries are server-owned, not editable definition fields.
+function publicMedication(medication: Medication) {
+  const value = { ...medication }
+  delete value.effectiveFrom
+  return value
+}
 
 function scope(request: Request, circleId: unknown) {
   const db = readDb()
@@ -92,7 +100,12 @@ export const medicationHandlers = [
           (!parsed.data.recipientId || dose.recipientId === parsed.data.recipientId) &&
           Date.parse(dose.scheduledAt) < cutoff &&
           (dose.definitionVersion === definitions.get(dose.medicationId)?.version ||
-            Date.parse(dose.scheduledAt) < Date.parse(db.medicationRevisions?.[dose.medicationId]?.at(-1)?.to ?? '')) &&
+            Date.parse(dose.scheduledAt) <
+              Date.parse(
+                definitions.get(dose.medicationId)?.stoppedAt ??
+                  db.medicationRevisions?.[dose.medicationId]?.at(-1)?.to ??
+                  '',
+              )) &&
           isDoseOverdue(dose, now),
       )
       .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) || a.id.localeCompare(b.id))
@@ -135,7 +148,7 @@ export const medicationHandlers = [
     if (!medication) return error(404, 'not_found', 'This medication is unavailable.')
     const end = new Date(Date.parse(dose.scheduledAt) + 1).toISOString()
     const revisions = db.medicationRevisions?.[medication.id] ?? []
-    const historical = Date.parse(dose.scheduledAt) < Date.parse(revisions.at(-1)?.to ?? '')
+    const historical = Date.parse(dose.scheduledAt) < Date.parse(medication.stoppedAt ?? revisions.at(-1)?.to ?? '')
     const expected = generateEffectiveDoses(medication, dose.scheduledAt, end, revisions)[0]
     // Taken history may outlive a removed schedule time. Refuse undo rather than silently deleting it.
     if (
@@ -184,9 +197,9 @@ export const medicationHandlers = [
     if (context.failure) return context.failure
     const { db, circle } = context
     return HttpResponse.json({
-      medications: db.care.medications.filter((medication) =>
-        circle.recipients.some((person) => person.id === medication.recipientId),
-      ),
+      medications: db.care.medications
+        .filter((medication) => circle.recipients.some((person) => person.id === medication.recipientId))
+        .map(publicMedication),
     })
   }),
   http.post(path, async ({ request, params }) => {
@@ -204,10 +217,15 @@ export const medicationHandlers = [
     ) {
       return error(404, 'not_found', 'This care profile or caregiver is unavailable.')
     }
-    const medication = { ...parsed.data, id: `med_${crypto.randomUUID()}`, version: 1 }
+    const medication = {
+      ...parsed.data,
+      id: `med_${crypto.randomUUID()}`,
+      version: 1,
+      effectiveFrom: new Date().toISOString(),
+    }
     db.care.medications.push(medication)
     writeDb(db)
-    return HttpResponse.json({ medication }, { status: 201 })
+    return HttpResponse.json({ medication: publicMedication(medication) }, { status: 201 })
   }),
   http.patch(`${path}/:medicationId`, async ({ request, params }) => {
     const body = await request.json().catch(() => null)
@@ -218,6 +236,12 @@ export const medicationHandlers = [
       (item) => item.id === params.medicationId && circle.recipients.some((person) => person.id === item.recipientId),
     )
     if (!medication) return error(404, 'not_found', 'This medication is unavailable.')
+    if (medication.stoppedAt)
+      return error(
+        409,
+        'edit_conflict',
+        'This medication was stopped. Its history has been kept; add a new medication to start another course.',
+      )
     const parsed = medicationUpdateSchema.safeParse(body)
     if (!parsed.success) return error(400, 'validation_error', parsed.error.issues[0].message)
     const { version, ...details } = parsed.data
@@ -236,13 +260,49 @@ export const medicationHandlers = [
       )
     db.medicationRevisions ??= {}
     const revisions = (db.medicationRevisions[medication.id] ??= [])
-    const effectiveAt = new Date(Math.max(Date.now(), Date.parse(revisions.at(-1)?.to ?? '') || 0)).toISOString()
-    revisions.push({ definition: structuredClone(medication), from: revisions.at(-1)?.to ?? null, to: effectiveAt })
+    const effectiveAt = new Date(
+      Math.max(Date.now(), Date.parse(revisions.at(-1)?.to ?? medication.effectiveFrom ?? '') || 0),
+    ).toISOString()
+    revisions.push({
+      definition: structuredClone(medication),
+      from: revisions.at(-1)?.to ?? medication.effectiveFrom ?? null,
+      to: effectiveAt,
+    })
     // Coverage remains valid: earlier ranges keep the definition that originally governed them.
-    Object.assign(medication, details, { version: version + 1 })
+    Object.assign(medication, details, { version: version + 1, effectiveFrom: effectiveAt })
     db.care.medicationOccurrences = synchronizeFutureDoses(db.care.medicationOccurrences, medication, effectiveAt)
     writeDb(db)
-    return HttpResponse.json({ medication })
+    return HttpResponse.json({ medication: publicMedication(medication) })
+  }),
+  http.post(`${path}/:medicationId/stop`, async ({ request, params }) => {
+    const body = await request.json().catch(() => null)
+    const context = scope(request, params.circleId)
+    if (context.failure) return context.failure
+    const { db, circle } = context
+    const medication = db.care.medications.find(
+      (item) => item.id === params.medicationId && circle.recipients.some((person) => person.id === item.recipientId),
+    )
+    if (!medication) return error(404, 'not_found', 'This medication is unavailable.')
+    const parsed = z.strictObject({ version: z.number().int().positive() }).safeParse(body)
+    if (!parsed.success) return error(400, 'validation_error', 'Provide the medication version being stopped.')
+    if (medication.version !== parsed.data.version)
+      return error(409, 'edit_conflict', 'This medication changed. Close and reopen it before stopping it.')
+    if (!medication.stoppedAt) {
+      medication.stoppedAt = new Date(
+        Math.max(
+          Date.now(),
+          Date.parse(db.medicationRevisions?.[medication.id]?.at(-1)?.to ?? medication.effectiveFrom ?? '') || 0,
+        ),
+      ).toISOString()
+      medication.version += 1
+      db.care.medicationOccurrences = synchronizeFutureDoses(
+        db.care.medicationOccurrences,
+        medication,
+        medication.stoppedAt,
+      )
+      writeDb(db)
+    }
+    return HttpResponse.json({ medication: publicMedication(medication) })
   }),
   http.delete(`${path}/:medicationId`, async ({ request, params }) => {
     const parsed = z

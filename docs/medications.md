@@ -1,7 +1,7 @@
 # Medications
 
 The page at `/app/medications` shows medications for the selected family.
-It starts with all care profiles selected; the Care profile dropdown filters the list.
+The Showing dropdown defaults to Everyone on a new session and filters the list.
 Each entry shows the medication name, person, dosage, schedule and course dates with their time zone,
 and the assigned caregiver. Loading, retry, and empty states are included.
 
@@ -46,13 +46,24 @@ checks current family membership and the profile/caregiver assignments, and retu
 the schedule accepts 1–24 unique times and a valid IANA time zone. A second submit
 is blocked while saving. The medication list refreshes after success.
 
+New medications begin tracking at their creation instant. A past Start date describes
+the course but does not create missed doses before the medication was added, including
+earlier times on the same day. PostgreSQL sets `effective_from` from its own clock during
+INSERT; the mock stores the equivalent private `effectiveFrom` timestamp. Both regular
+date queries and missed-dose backfill respect this boundary. Archived revisions preserve
+it through later edits, so neither an edit nor a restart invents pre-creation history.
+A newly added course that already ended generates no doses. Existing legacy records
+without a known boundary retain their stored history; this change does not guess their
+creation date or erase doses already recorded.
+
 Definitions now live in the existing localStorage-backed mock database and survive
 refresh. Older demo sessions receive the sample definitions without resetting their
 other data. This is the default mock storage; enabling the backend uses PostgreSQL instead.
 
-## Edit and delete
+## Edit, stop, and delete permanently
 
-Each entry has Edit medication and Delete medication actions. Editing reuses the
+Active entries have Edit medication, Stop medication, and Delete permanently actions. Stopped entries
+remain visible with their stop timestamp and the permanent deletion action. Editing reuses the
 same dialog, prefilled with all saved fields, including AM/PM times, selected days,
 course ending, time zone, and caregiver. Close, Escape, Cancel, and click-away
 dismiss it without saving. The delete action opens a confirmation with Keep medication
@@ -71,19 +82,77 @@ The confirmation states this explicitly. Repeated deletion returns 404. Successf
 writes refresh the family's care queries, so deleted mock doses disappear from Home.
 These operations use the existing browser mock database by default, or PostgreSQL when enabled.
 
-### Deletion policy
+### Stopping and deletion policy
 
-Deleting a medication permanently removes its definition, all pending doses, all
+**Stop medication** is the normal way to end a course. Its confirmation explains that
+past pending (missed) and taken doses are kept. `POST /api/circles/:circleId/medications/:medicationId/stop`
+accepts `{ version }` and returns `{ medication }` with a server-owned `stoppedAt` timestamp
+and an incremented version. Stale stops, edits, and delete confirmations return `409 edit_conflict`.
+A repeat stop with the current version leaves the original stop timestamp and version unchanged.
+Stopped courses cannot be edited or resumed in place. **Restart medication** opens
+a new-course form with the previous name, dosage, days, dose times, time zone,
+caregiver, and reminder settings prefilled. The user must choose a new start date
+and, for a fixed-date course, a new end date. Duration-based courses keep their
+number of days. Nothing is saved until Start new course is confirmed; Cancel,
+Escape, Close, and click-away dismiss it. It uses the existing medication creation
+endpoint, assigning a new medication ID and leaving the stopped course and its
+doses untouched. Only the new course's selected dates generate new doses.
+
+Stopping removes pending doses scheduled at or after that exact instant, including doses
+that were already materialized, and prevents future generation. Past doses remain viewable
+and their completion can still be corrected. Never-viewed past doses are generated on demand
+using the existing historical schedule. Existing taken records are kept even when recorded
+early for a future scheduled time; undoing those future records returns `409 schedule_conflict`.
+Reminders are suppressed for stopped medications; past missed doses remain in missed lists.
+Stopping does not reset history coverage or remove archived schedule revisions.
+Stopped cards show a date range ending on the stop date in the medication's time zone,
+or the planned end date if earlier. A course stopped before its start is shown as
+Not started with the stop date; it does not show an inverted range or ongoing status.
+
+**Delete permanently** is a separate, confirmed action for removing an entry and its history.
+It permanently removes its definition, all pending doses, all
 taken dose history, and its archived definition revisions. The confirmation dialog
 states that taken history is included. The browser mock removes these records and
 its coverage entry; PostgreSQL foreign-key cascades remove the occurrences and
 revisions. Schedule edits preserve past doses, while deletion removes them.
 
+## Shared Home and Medications controls
+
+Both pages render `MedicationPanel`, including Add medication, Attention Needed,
+date-selected Medication Schedule/history, and the medication list with Edit, Stop, Restart, and
+Delete permanently actions. They use the same editor and confirmations, including
+click-away dismissal. Both pages use the shared Showing selector with an Everyone option and preserve
+the selected profile after adding or restarting a medication. Home's selection still
+controls its other dashboard sections without adding a duplicate selector. Home's
+summary count continues to describe today's doses when a historical date is viewed.
+Changes invalidate the same cached family data and appear on either page.
+The selected profile and schedule date persist when navigating between these pages.
+This in-memory selection is scoped to the signed-in user and family; another family
+starts with Everyone and today's date. Today clears the saved date so both pages
+follow the current day across midnight. Home shows a caregiver-loading failure only
+once, using its shared retry action.
+
+Medication Schedule accepts past, present, and future calendar dates on both pages.
+Future selections show the planned doses and survive navigation between pages;
+Today restores the current day. Medication dialog headings use title case.
+
+Attention Needed scrolls within a capped body, including its loading and paging controls.
+Dose lists and the medication list also have capped heights and internal scrolling.
+Home's medication card spans the full content width, matching the standalone page.
+Its other dashboard columns flow independently.
+
+The medication UI uses **Missed** consistently. Existing API paths and field names
+containing `overdue` remain unchanged.
+
 ## Scheduled doses
 
-Each medication has **Overdue after (minutes)** in its form, defaulting to 30 minutes
-and allowing 0–1440. Pending displayed doses get a red Overdue badge at the scheduled
-instant plus this delay. Taken doses never show overdue. The badge updates each minute
+Dose lists show missed doses first, then other untaken doses, then taken doses.
+Within each group, doses are ordered by scheduled time, earliest first. The shared
+list applies this order on both Home and Medications and updates as statuses change.
+
+Each medication has **Missed after (minutes)** in its form, defaulting to 30 minutes
+and allowing 0–1440. Pending displayed doses get a red Missed badge at the scheduled
+instant plus this delay. Taken doses never show missed. The badge updates each minute
 on both pages and is derived from the current time rather than saved as another status.
 
 Mark taken records `takenAt` at the time of the status write and displays it in the
@@ -91,22 +160,22 @@ viewer's local time zone. Repeating the same taken write preserves its first tim
 Mark pending clears it. Older taken records without a timestamp stay Taken without
 inventing a recorded time. The timestamp indicates when the dose was marked taken.
 
-Home's Today’s medications panel and Medications' Doses section use the
+Home and Medications share the Medication Schedule section and use the
 same occurrence endpoint and shared list component. Both support Mark taken and
 Mark pending. Home's completion count and all person-filtered dose queries refresh
 after a successful write; a failed write leaves the previous status visible with
 an error. The count and list follow the selected care profile.
 
-### Overdue doses
+### Missed doses
 
-Home shows **Overdue doses** and Medications includes them in **Attention needed**
+Both pages combine missed doses and reminders in **Attention Needed**
 for all pending doses that have passed
 their grace period, including today's doses and doses from earlier days. Each row shows
-the full scheduled date and time, plus a red tag such as Overdue from yesterday
-or Overdue from 2 days ago. These labels count local calendar days. This section follows Home's Showing filter or
-Medications' Care profile filter. Today's overdue doses also remain in today's
+the full scheduled date and time, plus a red tag such as Missed yesterday
+or Missed 2 days ago. These labels count local calendar days. This section follows Home's Showing filter or
+Medications' Showing filter. Today's missed doses also remain in today's
 list and count once in today's totals; earlier doses do not affect those totals.
-Marking an old dose taken removes it from the overdue section and retains its taken
+Marking an old dose taken removes it from the missed section and retains its taken
 record and timestamp in storage. Old pending records have no arbitrary age cutoff.
 
 `GET /api/circles/:circleId/medication-occurrences/overdue?before=...&recipientId=...`
@@ -115,9 +184,11 @@ sorted oldest first, with up to 100 rows per page. `before` is required;
 `recipientId` and `cursor` are optional. The endpoint verifies current family membership, updates
 old pending metadata from the current definition, and removes pending records whose
 times were removed by a schedule edit. Taken history is preserved. Missing instances
-are generated from each medication's start date through the cutoff even when those
+are generated only within the medication's tracked effective intervals, starting no
+earlier than its creation time for new records, through the cutoff (or its
+stop instant, whichever comes first), even when those
 days were never viewed. Each scheduled time is a separate dose: two untaken times
-produce two overdue rows, and each dose list shows a red overdue-dose count.
+produce two missed rows, and each dose list shows a red missed-dose count.
 
 History generation has a total budget of 31 calendar days per request, divided among
 the selected medication definitions. It records actual completed coverage per medication
@@ -127,18 +198,18 @@ definition. Repeated polling reuses that coverage and the
 stable dose IDs, preserving taken statuses without duplicating rows. Schedule edits
 preserve coverage; edits do not restart the scan from the course start.
 
-The overdue query refetches every second while history is still loading, then every minute,
+The missed query refetches every second while history is still loading, then every minute,
 allowing any pending dose to become
-overdue when its grace period expires. Its cutoff is the next local midnight,
+missed when its grace period expires. Its cutoff is the next local midnight,
 capped by the endpoint at the current time, so future doses are excluded.
 A failed request shows a retry
 action. The regular date-range endpoint still materializes requested doses; background
 generation while the application is closed remains part of backend integration;
 reopening the application catches up the missed schedule instances.
 
-Both pages display **Loading older overdue doses…** while backfill continues and
-prefix the currently known overdue count with **At least**. Once complete, the count
-covers all overdue rows, including rows beyond the displayed page. **Show more overdue
+Both pages display **Loading older missed doses…** while backfill continues and
+prefix the currently known missed count with **At least**. Once complete, the count
+covers all missed rows, including rows beyond the displayed page. **Show more missed
 doses** loads another 100 rows without discarding earlier rows. No arbitrary date cutoff
 is introduced, and requests release the database lock between history batches.
 
@@ -164,7 +235,7 @@ the original person. Existing retained record IDs are preserved.
 
 Each previous definition is archived with its effective interval. If a past date was
 never viewed, backfill uses the definition that governed that date, not today's edited
-schedule. Changing dose times, weekdays, timezone, or course dates cannot invent new
+schedule, and never generates a date before tracking began. Changing dose times, weekdays, timezone, or course dates cannot invent new
 missed doses before the edit. Name, dosage, caregiver, reminder, and grace-period edits
 also leave past dose snapshots and completed backfill coverage unchanged.
 
@@ -211,15 +282,15 @@ conditional version checks for multi-device storage; activate it as described be
 
 ### Doses and history
 
-Medications combines today's doses and history in one **Doses** section, defaulting
-to today. Choose a date up to today with **Dose date**, or use **Today** to return
+Both pages combine today's doses, history, and upcoming doses in **Medication Schedule**, defaulting
+to today. Choose any valid calendar date with **Dose date**, or use **Today** to return
 to the current day. The default and Today button follow the new day at midnight;
 an explicitly selected date stays selected. The page's Care profile filter applies.
 The section shows a taken/total count for the selected date.
 Each row shows the scheduled local date and time, medication and dosage, and
-Taken, Pending, or the appropriate overdue status. Taken doses include their
+Taken, Pending, or the appropriate missed status. Taken doses include their
 recorded timestamp when available. Mark taken and Mark pending use the same saved
-occurrences as Home, today's doses, reminders, and overdue doses, refreshing all
+occurrences as Home, today's doses, reminders, and missed doses, refreshing all
 views after a successful write.
 
 The selected date is bounded by the viewer's local midnights, including daylight
@@ -236,13 +307,12 @@ existing definitions without this setting remain disabled. Use 0 for a reminder
 at the scheduled dose time. The schedule and generated occurrences store this as
 nullable `reminderBeforeMinutes`.
 
-Home shows a **Dose reminders** panel; Medications combines reminders and overdue
-doses in **Attention needed**, with overdue doses first and reminders below in one
+Both pages combine reminders and missed doses in **Attention Needed**, with missed doses first and reminders below in one
 scrollable list. This panel is hidden when neither needs attention, and each
 failed request has its own retry action. Reminders begin at the selected lead
 time. Rows show Due in N min or Due now and support Mark
-taken. A reminder clears when taken or when the dose becomes overdue, at which
-point the existing overdue displays apply. Both pages follow their selected care
+taken. A reminder clears when taken or when the dose becomes missed, at which
+point the existing missed displays apply. Both pages follow their selected care
 profile. Reminders include doses scheduled after midnight and prior-day doses
 still within their grace period, without changing today's dose totals.
 
@@ -264,8 +334,9 @@ definition/profile/caregiver IDs are numeric strings and occurrence IDs are stab
 | File | Responsibility |
 | --- | --- |
 | `nurture-api/src/db/migrations/1795478400000_create-medications.sql` | Definitions, dose history, versions, indexes, and family-scoped foreign keys |
+| `nurture-api/src/db/migrations/1795651200000_stop-medications.sql` | Nullable stop timestamp; existing courses stay active |
 | `nurture-api/src/db/migrations/1795564800000_medication-revisions.sql` | Effective-time definition snapshots for prospective edits |
-| `nurture-api/src/models/medication.model.js` | Transactions, CRUD, reconciliation, overdue backfill, and conditional writes |
+| `nurture-api/src/models/medication.model.js` | Transactions, CRUD, reconciliation, missed backfill, and conditional writes |
 | `nurture-api/src/routes/medications.routes.js` | Definition and occurrence endpoints mounted under a family |
 | `nurture-api/src/validators/medications.validators.js` | Schedule, date range, ID, version, and body validation |
 | `nurture-api/src/services/medication-schedule.js` | Server-side timezone/DST-aware dose generation |
@@ -281,7 +352,7 @@ Access is rechecked for each medication and before returning the collected resul
 Definition edits/deletes and dose updates check versions; status writes also use a
 conditional SQL update. Unique
 `(medication_id, recipient_id, scheduled_at)` keys and upserts prevent duplicate generated doses.
-Generation and writes share the medication lock, so an overdue read cannot restore
+Generation and writes share the medication lock, so an missed read cannot restore
 an outdated pending status over another caregiver's completion. Failed medication
 operations roll back their transaction; earlier successfully generated batches remain
 saved. Counts/lists combine the per-medication results rather than holding a single
@@ -290,7 +361,7 @@ exclusive family lock for a globally simultaneous snapshot.
 Generation refreshes only future pending metadata and increments its version only
 when it changes. Past pending and completed records retain their original details.
 The update transaction archives the previous definition and retires obsolete future
-rows. Overdue reads fill missing history using the archived effective intervals and
+rows. Missed reads fill missing history using the archived effective intervals and
 continue from existing coverage after edits. Shortened courses and moved start dates
 do not erase past missed doses. Deleting a medication cascades to its occurrences and
 definition snapshots. Assigned
@@ -309,7 +380,7 @@ To enable when the real API is ready:
 No mock data is copied into PostgreSQL. Browser Web Locks and storage events are demo
 protections; real database transactions provide write safety. Cross-device live push
 and closed-app notification delivery are separate work, not part of this router.
-Medication definitions, date-filtered doses, and overdue queries refresh on returning
+Medication definitions, date-filtered doses, and missed queries refresh on returning
 to the app and every minute in both real and mock modes. Real-API refresh does not
 depend on the mock storage listener.
 
@@ -324,4 +395,4 @@ configured, the integration case is explicitly skipped.
 
 The integration test covers migration up/down, CRUD, foreign-family access, caregiver
 removal, version conflicts between concurrent caregivers, idempotent dose writes,
-history preservation, never-viewed overdue doses, course edits, and deletion cascades.
+history preservation, never-viewed missed doses, course edits, stopping, and permanent deletion cascades.

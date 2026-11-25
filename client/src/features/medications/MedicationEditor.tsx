@@ -30,15 +30,17 @@ export function MedicationEditor({
   recipientId,
   medication,
   deleting = false,
+  stopping = false,
+  restarting = false,
   onClose,
-  onSaved,
 }: {
   circle: CircleDetail
   recipientId: string
   medication?: Medication
   deleting?: boolean
+  stopping?: boolean
+  restarting?: boolean
   onClose: () => void
-  onSaved: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -102,7 +104,7 @@ export function MedicationEditor({
       return
     }
     await perform(() =>
-      medication
+      medication && !restarting
         ? careApi.updateMedication(circle.id, medication.id, { ...parsed.data, version: medication.version })
         : careApi.createMedication(circle.id, parsed.data),
     )
@@ -117,7 +119,6 @@ export function MedicationEditor({
     try {
       await action()
       await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id] })
-      onSaved()
       dialog.current?.close()
     } catch (cause) {
       if (cause instanceof ApiError && [404, 409].includes(cause.status)) {
@@ -145,13 +146,41 @@ export function MedicationEditor({
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 id={heading} className="font-display text-h2 font-semibold">
-          {confirmDelete ? 'Delete medication' : medication ? 'Edit medication' : 'Add medication'}
+          {restarting
+            ? 'Restart Medication'
+            : stopping
+              ? 'Stop Medication'
+              : confirmDelete
+                ? 'Delete Permanently'
+                : medication
+                  ? 'Edit Medication'
+                  : 'Add Medication'}
         </h2>
         <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
           Close
         </Button>
       </div>
-      {confirmDelete && medication && (
+      {stopping && medication && (
+        <div className="grid gap-4">
+          <p>
+            Stop {medication.name}? Past taken and missed doses stay in your history. Future pending doses and reminders
+            stop.
+          </p>
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              loading={busy}
+              onClick={() => void perform(() => careApi.stopMedication(circle.id, medication.id, medication.version))}
+            >
+              Confirm stop
+            </Button>
+            <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
+              Keep medication
+            </Button>
+          </div>
+        </div>
+      )}
+      {!stopping && confirmDelete && medication && (
         <div className="grid gap-4">
           <p>
             Delete {medication.name}? This permanently removes the medication and all its doses, including taken dose
@@ -182,8 +211,13 @@ export function MedicationEditor({
           </div>
         </div>
       )}
-      <form onSubmit={save} hidden={confirmDelete}>
-        {medication && (
+      <form onSubmit={save} hidden={confirmDelete || stopping}>
+        {restarting && (
+          <p className="mb-4 text-small text-muted">
+            Choose the start date for the new course and review its schedule. The stopped course keeps its dose history.
+          </p>
+        )}
+        {medication && !restarting && (
           <p className="mb-4 text-small text-muted">
             Changes apply from now on. Past doses keep their original details and status.
           </p>
@@ -310,21 +344,21 @@ export function MedicationEditor({
             optional
           />
           <TextField
-            label="Overdue after (minutes)"
+            label="Missed after (minutes)"
             name="overdueAfterMinutes"
             type="number"
             min={0}
             max={1440}
             step={1}
             defaultValue={medication?.schedule.overdueAfterMinutes ?? defaultOverdueMinutes}
-            hint="A pending dose is flagged overdue this many minutes after its scheduled time."
+            hint="A pending dose is flagged missed this many minutes after its scheduled time."
             required
           />
           <TextField
             label="Start date"
             name="startsOn"
             type="date"
-            defaultValue={medication?.schedule.startsOn ?? today}
+            defaultValue={restarting ? '' : (medication?.schedule.startsOn ?? today)}
             required
           />
           <SelectField label="Ends" value={ending} onChange={(event) => setEnding(event.target.value)}>
@@ -349,7 +383,9 @@ export function MedicationEditor({
             <TextField
               label="End date"
               name="endsOn"
-              defaultValue={medication?.schedule.end.kind === 'onDate' ? medication.schedule.end.date : ''}
+              defaultValue={
+                !restarting && medication?.schedule.end.kind === 'onDate' ? medication.schedule.end.date : ''
+              }
               type="date"
               hint="Includes this date."
               required
@@ -374,12 +410,12 @@ export function MedicationEditor({
           </SelectField>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" loading={busy}>
-              Save medication
+              {restarting ? 'Start new course' : 'Save medication'}
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
               Cancel
             </Button>
-            {medication && (
+            {medication && !restarting && (
               <Button
                 variant="danger"
                 disabled={busy}
@@ -388,7 +424,7 @@ export function MedicationEditor({
                   setConfirmDelete(true)
                 }}
               >
-                Delete medication
+                Delete permanently
               </Button>
             )}
           </div>

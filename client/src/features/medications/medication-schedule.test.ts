@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { medicationInputSchema } from './medication-input.ts'
-import { dateInZone, everyDay, overdueDoseLabel, scheduleEndDate } from './medication-schedule.ts'
+import { dateInZone, everyDay, overdueDoseLabel, scheduleEndDate, scheduleCourse } from './medication-schedule.ts'
 import type { MedicationInput } from '../../api/types.ts'
 
 const medication: MedicationInput = {
@@ -17,11 +17,23 @@ const medication: MedicationInput = {
   },
 }
 
+it('ends stopped course ranges in the medication time zone without extending an earlier planned end', () => {
+  const schedule = { ...medication.schedule, startsOn: '2026-11-01' }
+  expect(scheduleCourse(schedule, '2026-12-01T02:00:00Z')).toBe('Nov 1–Nov 30, 2026')
+  expect(scheduleCourse({ ...schedule, end: { kind: 'onDate', date: '2026-11-15' } }, '2026-12-01T02:00:00Z')).toBe(
+    'Nov 1–Nov 15, 2026',
+  )
+  expect(scheduleCourse({ ...schedule, startsOn: '2026-12-05' }, '2026-12-01T02:00:00Z')).toBe(
+    'Stopped Nov 30, 2026 · Not started',
+  )
+  expect(scheduleCourse(schedule)).toBe('Nov 1, 2026–ongoing')
+})
+
 it('labels older overdue doses by local calendar day', () => {
   const late = new Date(2026, 2, 8, 23, 59).toISOString()
-  expect(overdueDoseLabel(late, new Date(2026, 2, 9, 0, 1).getTime())).toBe('Overdue from yesterday')
-  expect(overdueDoseLabel(late, new Date(2026, 2, 10, 0, 1).getTime())).toBe('Overdue from 2 days ago')
-  expect(overdueDoseLabel(late, new Date(2026, 2, 8, 23, 59).getTime())).toBe('Overdue')
+  expect(overdueDoseLabel(late, new Date(2026, 2, 9, 0, 1).getTime())).toBe('Missed yesterday')
+  expect(overdueDoseLabel(late, new Date(2026, 2, 10, 0, 1).getTime())).toBe('Missed 2 days ago')
+  expect(overdueDoseLabel(late, new Date(2026, 2, 8, 23, 59).getTime())).toBe('Missed')
 })
 
 it('counts inclusive course days across daylight saving and leap days', () => {

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { mocksEnabled } from '../mocks/enabled.ts'
 import { DB_KEY } from '../mocks/storage.ts'
+import { CareSelectionProvider } from '../features/care/CareSelectionProvider.tsx'
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -37,5 +38,9 @@ export function Providers({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', visible)
     }
   }, [queryClient])
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CareSelectionProvider>{children}</CareSelectionProvider>
+    </QueryClientProvider>
+  )
 }

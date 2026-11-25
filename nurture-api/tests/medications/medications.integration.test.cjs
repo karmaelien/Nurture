@@ -121,7 +121,23 @@ test(
           .send(details)
           .expect(201)
       ).body;
-      assert.deepEqual(medication, { id: medication.id, version: 1, ...details });
+      assert.deepEqual(medication, { id: medication.id, version: 1, stoppedAt: null, ...details });
+      const createdBoundary = (
+        await db.query('SELECT effective_from FROM medications WHERE id=$1', [medication.id])
+      ).rows[0].effective_from;
+      assert.ok(createdBoundary instanceof Date);
+      assert.deepEqual(await load(), []);
+      assert.deepEqual(
+        (await overdue()).filter((dose) => dose.medicationId === medication.id),
+        [],
+      );
+      // The remaining CRUD/history scenarios model a course already tracked in 2020.
+      const trackFrom = (id, from) =>
+        db.query(
+          'UPDATE medications SET effective_from=$2, history_through=NULL, history_version=NULL WHERE id=$1',
+          [id, from],
+        );
+      await trackFrom(medication.id, '2019-12-31T00:00:00Z');
       const item = `${route}/medications/${medication.id}`;
       let doses = await load();
       assert.equal(doses.length, 4);
@@ -270,6 +286,7 @@ test(
           .expect(201)
       ).body.medication;
       backfillItem = `${route}/medications/${backfill.id}`;
+      await trackFrom(backfill.id, '2019-12-31T00:00:00Z');
       const firstBacklog = (await overdue()).filter((dose) => dose.medicationId === backfill.id);
       assert.equal(firstBacklog.length, 3);
       assert.deepEqual(
@@ -390,6 +407,18 @@ test(
           })
           .expect(201)
       ).body.medication;
+      const newlyAdded = (
+        await auth(request(app).get(`${route}/medication-occurrences/overdue`))
+          .query({ before: '2030-01-01T00:00:00Z' })
+          .expect(200)
+      ).body;
+      assert.deepEqual(
+        newlyAdded.medicationOccurrences.filter((dose) => dose.medicationId === huge.id),
+        [],
+      );
+      assert.equal(newlyAdded.historyPending, false);
+      // Explicitly simulate genuinely tracked old history to exercise bounded paging.
+      await trackFrom(huge.id, '0099-12-30T00:00:00Z');
       const firstPage = (
         await auth(request(app).get(`${route}/medication-occurrences/overdue`))
           .query({ before: '2030-01-01T00:00:00Z' })
@@ -425,6 +454,67 @@ test(
         .set('x-test-user', caregiver)
         .send({ status: 'pending', version: latest.version })
         .expect(404);
+      // Stopping keeps historical rows, retires future pending rows, and never regenerates them.
+      const course = (
+        await auth(request(app).post(`${route}/medications`))
+          .send({
+            ...details,
+            name: 'Stopped course',
+            schedule: { ...schedule, end: { kind: 'never' } },
+          })
+          .expect(201)
+      ).body.medication;
+      const courseRoute = `${route}/medications/${course.id}`;
+      await trackFrom(course.id, '2019-12-31T00:00:00Z');
+      const loadCourse = async (from, to) =>
+        (
+          await auth(request(app).get(`${route}/medication-occurrences`))
+            .query({ from, to })
+            .expect(200)
+        ).body.medicationOccurrences.filter((dose) => dose.medicationId === course.id);
+      const pastRows = await loadCourse('2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z');
+      const futureRows = await loadCourse('2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z');
+      const early = (
+        await auth(request(app).patch(`${route}/medication-occurrences/${futureRows[0].id}`))
+          .send({ status: 'completed', version: futureRows[0].version })
+          .expect(200)
+      ).body.medicationOccurrence;
+      const stoppedCourse = (
+        await auth(request(app).post(`${courseRoute}/stop`))
+          .send({ version: course.version })
+          .expect(200)
+      ).body.medication;
+      assert.ok(stoppedCourse.stoppedAt);
+      assert.equal(stoppedCourse.version, course.version + 1);
+      assert.deepEqual(
+        (await loadCourse('2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z')).map(
+          ({ medicationStoppedAt, ...dose }) => dose,
+        ),
+        pastRows,
+      );
+      const remainingFuture = await loadCourse('2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z');
+      assert.equal(remainingFuture.length, 1);
+      assert.equal(remainingFuture[0].id, early.id);
+      await auth(request(app).patch(`${route}/medication-occurrences/${early.id}`))
+        .send({ status: 'pending', version: early.version })
+        .expect(409);
+      await auth(request(app).patch(`${route}/medication-occurrences/${pastRows[0].id}`))
+        .send({ status: 'completed', version: pastRows[0].version })
+        .expect(200);
+      await auth(request(app).post(`${courseRoute}/stop`))
+        .send({ version: course.version })
+        .expect(409);
+      const repeatedStop = (
+        await auth(request(app).post(`${courseRoute}/stop`))
+          .send({ version: stoppedCourse.version })
+          .expect(200)
+      ).body.medication;
+      assert.equal(repeatedStop.stoppedAt, stoppedCourse.stoppedAt);
+      assert.equal(repeatedStop.version, stoppedCourse.version);
+      await auth(request(app).patch(courseRoute))
+        .send({ ...details, version: stoppedCourse.version })
+        .expect(409);
+      await auth(request(app).delete(courseRoute)).send({ version: stoppedCourse.version }).expect(204);
       const beforeDelete = (
         await db.query('SELECT status FROM medication_occurrences WHERE medication_id=$1', [medication.id])
       ).rows;
@@ -458,6 +548,11 @@ test(
         path.join(migrationDir, '1795564800000_medication-revisions.sql'),
         'utf8',
       );
+      const stopMigration = fs.readFileSync(
+        path.join(migrationDir, '1795651200000_stop-medications.sql'),
+        'utf8',
+      );
+      await db.query(stopMigration.split('-- Down Migration')[1]);
       await db.query(revisionMigration.split('-- Down Migration')[1]);
       await db.query(migration.split('-- Down Migration')[1]);
       assert.equal(

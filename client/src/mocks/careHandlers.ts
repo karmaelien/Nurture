@@ -108,7 +108,10 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
           inRange(record.scheduledAt, query.get('from'), query.get('to')),
       )
       return HttpResponse.json({
-        medicationOccurrences: medicationOccurrences.sort(byDate((record) => record.scheduledAt)),
+        medicationOccurrences: medicationOccurrences.sort(byDate((record) => record.scheduledAt)).map((dose) => {
+          const stoppedAt = definitions.find((medication) => medication.id === dose.medicationId)?.stoppedAt
+          return stoppedAt ? { ...dose, medicationStoppedAt: stoppedAt } : dose
+        }),
       })
     }
     if (resource === 'tasks') {

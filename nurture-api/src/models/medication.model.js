@@ -9,7 +9,7 @@ const notFound = () =>
   httpError(404, 'not_found', 'This medication, dose, care profile, or care circle is unavailable.');
 const conflict = (message) => httpError(409, 'edit_conflict', message);
 const medicationColumns = `id::text, recipient_id::text AS "recipientId", version, name, dosage, schedule,
-  assigned_caregiver_id::text AS "assignedCaregiverId"`;
+  assigned_caregiver_id::text AS "assignedCaregiverId", stopped_at AS "stoppedAt"`;
 const doseColumns = `id, medication_id::text AS "medicationId", recipient_id::text AS "recipientId", version,
   name, dosage, scheduled_at AS "scheduledAt", status, taken_at AS "takenAt",
   overdue_after_minutes AS "overdueAfterMinutes", reminder_before_minutes AS "reminderBeforeMinutes"`;
@@ -88,7 +88,7 @@ module.exports = function medicationModel(db) {
 
         async function reconcile(definition, from, to) {
           const revisions = await revisionsFor(definition.id);
-          const frozenBefore = revisions.at(-1)?.to ?? null;
+          const frozenBefore = definition.stoppedAt ?? revisions.at(-1)?.to ?? null;
           const expected = generateEffectiveDoses(definition, from, to, revisions);
           // Only pending occurrences can follow schedule edits. Completed rows are snapshots.
           await tx.query(
@@ -179,8 +179,8 @@ module.exports = function medicationModel(db) {
           },
           async create(body) {
             return one(
-              `INSERT INTO medications(circle_id, recipient_id, name, dosage, schedule, assigned_caregiver_id)
-            VALUES ($1,$2,$3,$4,$5,$6) RETURNING ${medicationColumns}`,
+              `INSERT INTO medications(circle_id, recipient_id, name, dosage, schedule, assigned_caregiver_id, effective_from)
+            VALUES ($1,$2,$3,$4,$5,$6,date_trunc('milliseconds', clock_timestamp())) RETURNING ${medicationColumns}`,
               [
                 circleId,
                 body.recipientId,
@@ -193,6 +193,10 @@ module.exports = function medicationModel(db) {
           },
           async update(id, body) {
             const previous = await medication(id, true);
+            if (previous.stoppedAt)
+              throw conflict(
+                'This medication was stopped. Its history has been kept; add a new medication to start another course.',
+              );
             if (previous.version !== body.version)
               throw conflict(
                 'This medication changed while you were editing. Close and reopen it to review the latest version.',
@@ -231,6 +235,32 @@ module.exports = function medicationModel(db) {
             await synchronizeFuture(value, effectiveAt);
             return value;
           },
+          async stop(id, version) {
+            const previous = await medication(id, true);
+            if (previous.version !== version)
+              throw conflict('This medication changed. Close and reopen it before stopping it.');
+            if (previous.stoppedAt)
+              return Object.fromEntries(
+                [
+                  'id',
+                  'recipientId',
+                  'version',
+                  'name',
+                  'dosage',
+                  'schedule',
+                  'assignedCaregiverId',
+                  'stoppedAt',
+                ].map((key) => [key, previous[key]]),
+              );
+            const value = await one(
+              `UPDATE medications SET stopped_at = GREATEST(date_trunc('milliseconds', clock_timestamp()), effective_from), version = version + 1
+               WHERE circle_id = $1 AND id = $2 AND version = $3 RETURNING ${medicationColumns}`,
+              [circleId, id, version],
+            );
+            if (!value) throw conflict('This medication changed. Close and reopen it before stopping it.');
+            await synchronizeFuture(value, value.stoppedAt);
+            return value;
+          },
           async remove(id, version) {
             await medication(id, true);
             const result = await tx.query(
@@ -247,7 +277,7 @@ module.exports = function medicationModel(db) {
             const definition = await medication(query.medicationId, true, true);
             if (!definition) return [];
             await reconcile(definition, query.from, query.to);
-            return (
+            const rows = (
               await tx.query(
                 `SELECT ${doseColumns} FROM medication_occurrences WHERE circle_id = $1
             AND medication_id = $6
@@ -263,6 +293,9 @@ module.exports = function medicationModel(db) {
                 ],
               )
             ).rows;
+            return definition.stoppedAt
+              ? rows.map((dose) => ({ ...dose, medicationStoppedAt: definition.stoppedAt }))
+              : rows;
           },
           async overdue(query) {
             await hasRecipient(query.recipientId);
@@ -313,7 +346,7 @@ module.exports = function medicationModel(db) {
               AND scheduled_at + overdue_after_minutes * INTERVAL '1 minute' <= $3
               AND ($4::int IS NULL OR recipient_id = $4)
               AND EXISTS (SELECT 1 FROM medications m WHERE m.id = medication_occurrences.medication_id
-                AND (m.version = medication_occurrences.definition_version OR medication_occurrences.scheduled_at < m.effective_from))`;
+                AND (m.version = medication_occurrences.definition_version OR medication_occurrences.scheduled_at < COALESCE(m.stopped_at, m.effective_from)))`;
             const values = [circleId, new Date(cutoff), now, query.recipientId ?? null];
             const total = await one(
               `SELECT count(*)::int AS count FROM medication_occurrences WHERE ${where.replace('$7', '$5')}`,
@@ -355,8 +388,8 @@ module.exports = function medicationModel(db) {
               );
             const from = dose.scheduledAt.toISOString();
             const to = new Date(dose.scheduledAt.getTime() + 1).toISOString();
-            const historical =
-              definition.effective_from && dose.scheduledAt.getTime() < definition.effective_from.getTime();
+            const frozenBefore = definition.stoppedAt ?? definition.effective_from;
+            const historical = frozenBefore && dose.scheduledAt.getTime() < frozenBefore.getTime();
             const expected = generateEffectiveDoses(
               definition,
               from,
@@ -433,6 +466,7 @@ module.exports = function medicationModel(db) {
         create: (body) => run((model) => model.create(body)),
         update: (id, body) => run((model) => model.update(id, body)),
         remove: (id, version) => run((model) => model.remove(id, version)),
+        stop: (id, version) => run((model) => model.stop(id, version)),
         changeStatus: (id, body) => run((model) => model.changeStatus(id, body)),
         async occurrences(query) {
           const ids = await run((model) => model.eligible(query.recipientId));

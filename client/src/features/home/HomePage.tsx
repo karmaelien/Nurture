@@ -3,7 +3,7 @@ import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
@@ -15,12 +15,11 @@ import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
 import { useHomeAppointments } from './useHomeAppointments.ts'
 import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
-import { MedicationDoseList } from '../medications/MedicationDoseList.tsx'
-import { OverdueDoses } from '../medications/OverdueDoses.tsx'
-import { MedicationReminders } from '../medications/MedicationReminders.tsx'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { MedicationPanel } from '../medications/MedicationPanel.tsx'
 import { useMinute } from '../profiles/time.ts'
 
-const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
   medication: 'Medication',
   appointment: 'Appointments',
@@ -40,7 +39,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
-  const [recipientId, setRecipientId] = useState('')
+  const { recipientId, setRecipientId } = useCareSelection(circle)
   const now = useMinute()
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
@@ -95,22 +94,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         <p className="text-muted">
           {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
-        <label className="grid gap-2">
-          Showing
-          <select
-            aria-label="Showing"
-            className={selectClass}
-            value={recipientId}
-            onChange={(event) => setRecipientId(event.target.value)}
-          >
-            <option value="">Everyone</option>
-            {circle.recipients.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
       </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Outstanding tasks · next 7 days + overdue" value={count(tasks)} />
@@ -135,71 +119,85 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         </div>
       )}
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <Panel id="tasks" title="Tasks to take care of" icon={<ListChecks />} query={tasks} empty={!tasks.data?.length}>
-          <ul className="divide-y divide-line">
-            {tasks.data?.map((task) => (
-              <li key={task.id} className="py-4 first:pt-0 last:pb-0">
-                <p className="font-semibold">{task.title}</p>
-                <p className="text-muted">
-                  {name(task.recipientId)} · {assigned(task.assignedCaregiverId)}
-                </p>
-                <p className="mt-2">
-                  {task.dueAt
-                    ? `${Date.parse(task.dueAt) < now.getTime() ? 'Overdue · ' : ''}${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}`
-                    : 'No due date'}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        <div className="min-w-0">
-          <MedicationReminders circle={circle} recipientId={recipient} />
-          <OverdueDoses circle={circle} recipientId={recipient} />
+        <div className="grid content-start gap-5">
           <Panel
-            id="medications"
-            title="Today’s medications"
-            to={circleLink('/app/medications', circle.id)}
-            icon={<Pill />}
-            query={medications}
-            empty={!medications.data?.length}
+            id="tasks"
+            title="Tasks to take care of"
+            icon={<ListChecks />}
+            query={tasks}
+            empty={!tasks.data?.length}
           >
-            <MedicationDoseList circleId={circle.id} doses={medications.data ?? []} personName={name} />
+            <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto pr-2">
+              {tasks.data?.map((task) => (
+                <li key={task.id} className="py-4 first:pt-0 last:pb-0">
+                  <p className="font-semibold">{task.title}</p>
+                  <p className="text-muted">
+                    {name(task.recipientId)} · {assigned(task.assignedCaregiverId)}
+                  </p>
+                  <p className="mt-2">
+                    {task.dueAt
+                      ? `${Date.parse(task.dueAt) < now.getTime() ? 'Overdue · ' : ''}${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}`
+                      : 'No due date'}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+          <HomeAppointmentsPanel
+            appointments={appointments}
+            circle={circle}
+            recipientId={recipient}
+            now={now.getTime()}
+            caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+          />
+        </div>
+        <div className="grid content-start gap-5">
+          <Panel
+            id="expenses"
+            title="Care spending"
+            icon={<Wallet />}
+            query={expenses}
+            empty={!expenses.data?.length}
+            action={
+              <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
+                View all expenses
+              </Link>
+            }
+          >
+            <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
+            <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
+            {categories.map(({ label, amount }) => (
+              <div key={label} className="mb-4">
+                <div className="flex justify-between gap-3">
+                  <span>{label}</span>
+                  <span className="tabular-nums">{formatMoney(amount)}</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-wash" aria-hidden>
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${(amount / total) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+            <p className="mt-6 text-muted">{expenses.data?.length} recorded expenses · USD</p>
           </Panel>
         </div>
-        <HomeAppointmentsPanel
-          appointments={appointments}
+      </div>
+      <div className="mt-5">
+        <MedicationPanel
+          id="medications"
           circle={circle}
-          recipientId={recipient}
-          now={now.getTime()}
-          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
-        />
-        <Panel
-          id="expenses"
-          title="Care spending"
-          icon={<Wallet />}
-          query={expenses}
-          empty={!expenses.data?.length}
-          action={
-            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
-              View all expenses
+          showCaregiverError={false}
+          showProfileFilter={false}
+          heading={
+            <Link
+              to={circleLink('/app/medications', circle.id)}
+              aria-label="View medications"
+              className="flex items-center gap-2 rounded-control hover:text-primary"
+            >
+              <h2 className="font-display text-h3 font-semibold">Medications</h2>
+              <Pill className="size-5 text-primary" aria-hidden />
             </Link>
           }
-        >
-          <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
-          <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
-          {categories.map(({ label, amount }) => (
-            <div key={label} className="mb-4">
-              <div className="flex justify-between gap-3">
-                <span>{label}</span>
-                <span className="tabular-nums">{formatMoney(amount)}</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-wash" aria-hidden>
-                <div className="h-full rounded-full bg-primary" style={{ width: `${(amount / total) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-          <p className="mt-6 text-muted">{expenses.data?.length} recorded expenses · USD</p>
-        </Panel>
+        />
       </div>
     </>
   )

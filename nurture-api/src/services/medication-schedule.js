@@ -87,12 +87,25 @@ function generateMedicationDoses(medication, from, to) {
   return [...doses.values()];
 }
 function medicationSegments(medication, revisions = []) {
-  return [...revisions, { definition: medication, from: revisions.at(-1)?.to ?? null, to: null }];
+  return [
+    ...revisions,
+    {
+      definition: medication,
+      from:
+        revisions.at(-1)?.to ??
+        (medication.effective_from ? new Date(medication.effective_from).toISOString() : null),
+      to: null,
+    },
+  ];
 }
 function generateEffectiveDoses(medication, from, to, revisions = []) {
   return medicationSegments(medication, revisions).flatMap((segment) => {
     const lower = Math.max(Date.parse(from), segment.from ? Date.parse(segment.from) : -Infinity);
-    const upper = Math.min(Date.parse(to), segment.to ? Date.parse(segment.to) : Infinity);
+    const upper = Math.min(
+      Date.parse(to),
+      segment.to ? Date.parse(segment.to) : Infinity,
+      medication.stoppedAt ? new Date(medication.stoppedAt).getTime() : Infinity,
+    );
     return upper > lower
       ? generateMedicationDoses(
           segment.definition,
@@ -115,6 +128,7 @@ function medicationHistoryBounds(medication, before, revisions = []) {
   );
   const finish = Math.min(
     Date.parse(before),
+    medication.stoppedAt ? new Date(medication.stoppedAt).getTime() : Infinity,
     Math.max(
       ...segments.map((segment) => {
         const end = scheduleEndDate(segment.definition.schedule);

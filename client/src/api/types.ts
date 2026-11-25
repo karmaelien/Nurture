@@ -81,6 +81,8 @@ export type MedicationSchedule = {
 export type Medication = {
   id: string
   version: number
+  effectiveFrom?: string | null // internal mock boundary; excluded from API responses and input
+  stoppedAt?: string | null // stopping preserves history and ends future scheduling
   recipientId: string
   name: string
   dosage: string
@@ -88,7 +90,7 @@ export type Medication = {
   assignedCaregiverId: string | null
 }
 
-export type MedicationInput = Omit<Medication, 'id' | 'version'>
+export type MedicationInput = Omit<Medication, 'id' | 'version' | 'stoppedAt' | 'effectiveFrom'>
 export type MedicationUpdate = MedicationInput & { version: number }
 
 export type MedicationOccurrence = {
@@ -96,6 +98,7 @@ export type MedicationOccurrence = {
   version: number // conditional status writes reject stale copies
   definitionVersion?: number // mock reconciliation coverage; the server keeps this internally
   medicationId: string
+  medicationStoppedAt?: string | null // response metadata; suppress reminders without changing history
   recipientId: string
   name: string
   dosage: string // display text supplied by the care-management feature
