@@ -2,10 +2,11 @@ import { http } from './http.ts'
 import { HttpResponse } from 'msw'
 import { z } from 'zod'
 import {
-  generateMedicationDoses,
+  generateEffectiveDoses,
   materializeMedicationHistory,
   reconcileMedicationDoses,
   historyBatchRange,
+  synchronizeFutureDoses,
 } from '../features/medications/medication-occurrences.ts'
 import { isDoseOverdue } from '../features/medications/medication-schedule.ts'
 import { medicationInputSchema, medicationUpdateSchema } from '../features/medications/medication-input.ts'
@@ -59,7 +60,12 @@ export const medicationHandlers = [
     db.medicationHistory ??= {}
     let historyPending = false
     const selected = [...definitions.values()].filter(
-      (medication) => !parsed.data.recipientId || medication.recipientId === parsed.data.recipientId,
+      (medication) =>
+        !parsed.data.recipientId ||
+        medication.recipientId === parsed.data.recipientId ||
+        db.medicationRevisions?.[medication.id]?.some(
+          (revision) => revision.definition.recipientId === parsed.data.recipientId,
+        ),
     )
     const budget = Math.floor(historyBatchRange / Math.max(1, selected.length))
     for (const medication of selected) {
@@ -69,6 +75,7 @@ export const medicationHandlers = [
         new Date(cutoff).toISOString(),
         db.medicationHistory[medication.id],
         budget,
+        db.medicationRevisions?.[medication.id],
       )
       db.care.medicationOccurrences = generated.doses
       db.medicationHistory[medication.id] = generated.coverage
@@ -84,7 +91,8 @@ export const medicationHandlers = [
           belongs(dose.recipientId) &&
           (!parsed.data.recipientId || dose.recipientId === parsed.data.recipientId) &&
           Date.parse(dose.scheduledAt) < cutoff &&
-          dose.definitionVersion === definitions.get(dose.medicationId)?.version &&
+          (dose.definitionVersion === definitions.get(dose.medicationId)?.version ||
+            Date.parse(dose.scheduledAt) < Date.parse(db.medicationRevisions?.[dose.medicationId]?.at(-1)?.to ?? '')) &&
           isDoseOverdue(dose, now),
       )
       .sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) || a.id.localeCompare(b.id))
@@ -126,11 +134,14 @@ export const medicationHandlers = [
     )
     if (!medication) return error(404, 'not_found', 'This medication is unavailable.')
     const end = new Date(Date.parse(dose.scheduledAt) + 1).toISOString()
-    const expected = generateMedicationDoses(medication, dose.scheduledAt, end)[0]
+    const revisions = db.medicationRevisions?.[medication.id] ?? []
+    const historical = Date.parse(dose.scheduledAt) < Date.parse(revisions.at(-1)?.to ?? '')
+    const expected = generateEffectiveDoses(medication, dose.scheduledAt, end, revisions)[0]
     // Taken history may outlive a removed schedule time. Refuse undo rather than silently deleting it.
     if (
       dose.status === 'completed' &&
       parsed.data.status === 'pending' &&
+      !historical &&
       (!expected || expected.recipientId !== dose.recipientId)
     )
       return error(
@@ -143,6 +154,7 @@ export const medicationHandlers = [
       [medication],
       dose.scheduledAt,
       end,
+      db.medicationRevisions,
     )
     const current = db.care.medicationOccurrences.find((item) => item.id === dose.id)
     if (!current) return error(404, 'not_found', 'This dose is no longer in the current schedule. Refresh the list.')
@@ -152,7 +164,7 @@ export const medicationHandlers = [
         'edit_conflict',
         'This dose changed with its medication schedule. Refresh the list and review it before trying again.',
       )
-    if (current.status === 'completed' && parsed.data.status === 'pending' && expected) {
+    if (!historical && current.status === 'completed' && parsed.data.status === 'pending' && expected) {
       Object.assign(current, expected, {
         id: current.id,
         version: current.version,
@@ -222,7 +234,13 @@ export const medicationHandlers = [
         'edit_conflict',
         'This medication changed while you were editing. Close and reopen it to review the latest version.',
       )
+    db.medicationRevisions ??= {}
+    const revisions = (db.medicationRevisions[medication.id] ??= [])
+    const effectiveAt = new Date(Math.max(Date.now(), Date.parse(revisions.at(-1)?.to ?? '') || 0)).toISOString()
+    revisions.push({ definition: structuredClone(medication), from: revisions.at(-1)?.to ?? null, to: effectiveAt })
+    // Coverage remains valid: earlier ranges keep the definition that originally governed them.
     Object.assign(medication, details, { version: version + 1 })
+    db.care.medicationOccurrences = synchronizeFutureDoses(db.care.medicationOccurrences, medication, effectiveAt)
     writeDb(db)
     return HttpResponse.json({ medication })
   }),
@@ -246,6 +264,7 @@ export const medicationHandlers = [
       )
     const [medication] = db.care.medications.splice(index, 1)
     if (db.medicationHistory) delete db.medicationHistory[medication.id]
+    if (db.medicationRevisions) delete db.medicationRevisions[medication.id]
     db.care.medicationOccurrences = db.care.medicationOccurrences.filter((dose) => dose.medicationId !== medication.id)
     writeDb(db)
     return new HttpResponse(null, { status: 204 })

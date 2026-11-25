@@ -10,7 +10,7 @@ function parse(schema, value) {
 }
 
 // Mount at /api/circles/:circleId AFTER authentication; all membership checks and
-// database operations then happen together in the model's PostgreSQL transaction.
+// each medication operation then checks access inside its own PostgreSQL transaction.
 module.exports = function createMedicationRouter({ db = require('../config/db') } = {}) {
   const router = express.Router({ mergeParams: true });
   const model = medicationModel(db);

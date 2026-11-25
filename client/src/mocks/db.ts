@@ -2,6 +2,7 @@ import { seedCareData } from './careData.ts'
 import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
 import type { CircleDetail, Member, User } from '../api/types.ts'
 import { DB_KEY, MockStorageError } from './storage.ts'
+import type { MedicationRevisions } from '../features/medications/medication-occurrences.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -11,6 +12,7 @@ type DbUser = User & { password: string }
 export type Db = {
   changeId?: string
   medicationHistory?: Record<string, { version: number; through: string }>
+  medicationRevisions?: MedicationRevisions
   users: DbUser[]
   circles: CircleDetail[]
   care: ReturnType<typeof seedCareData>

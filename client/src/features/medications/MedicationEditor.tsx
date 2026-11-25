@@ -153,7 +153,10 @@ export function MedicationEditor({
       </div>
       {confirmDelete && medication && (
         <div className="grid gap-4">
-          <p>Delete {medication.name}? This removes the medication and its stored doses from this family.</p>
+          <p>
+            Delete {medication.name}? This permanently removes the medication and all its doses, including taken dose
+            history.
+          </p>
           {error && <Alert tone="danger">{error}</Alert>}
           <div className="flex flex-wrap gap-2">
             <Button
@@ -180,6 +183,11 @@ export function MedicationEditor({
         </div>
       )}
       <form onSubmit={save} hidden={confirmDelete}>
+        {medication && (
+          <p className="mb-4 text-small text-muted">
+            Changes apply from now on. Past doses keep their original details and status.
+          </p>
+        )}
         {error && (
           <div className="mb-4">
             <Alert tone="danger">{error}</Alert>

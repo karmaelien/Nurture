@@ -173,10 +173,10 @@ test(
       assert.deepEqual(edits.map((value) => value.status).sort(), [200, 409]);
       let current = edits.find((value) => value.status === 200).body.medication;
       await auth(request(app).delete(item)).send({ version: 1 }).expect(409);
-      // A stale dose version also fails when a schedule edit changes pending metadata.
+      // Historical doses retain their original version/details after an unrelated medication edit.
       await auth(request(app).patch(`${route}/medication-occurrences/${doses[2].id}`))
         .send({ status: 'completed', version: doses[2].version })
-        .expect(409);
+        .expect(200);
       doses = await load();
       const stableVersions = doses.map((dose) => dose.version);
       assert.deepEqual(
@@ -193,23 +193,27 @@ test(
         .query({ ...filters, recipientId: foreignRecipient })
         .expect(404);
 
-      // Removed schedule times retain completed snapshots and reject an undo that would erase them.
+      // A schedule edit changes only future doses; historical pending/taken rows stay intact.
+      const historicalBefore = await load();
       current = (
         await auth(request(app).patch(item))
           .send({ ...details, version: current.version, schedule: { ...schedule, times: ['09:00'] } })
           .expect(200)
       ).body.medication;
-      const failedUndo = await auth(request(app).patch(doseRoute))
-        .send({ status: 'pending', version: latest.version })
-        .expect(409);
-      assert.equal(failedUndo.body.error.code, 'schedule_conflict');
+      assert.deepEqual(await load(), historicalBefore);
+      const undoneHistory = (
+        await auth(request(app).patch(doseRoute))
+          .send({ status: 'pending', version: latest.version })
+          .expect(200)
+      ).body.medicationOccurrence;
+      assert.equal(undoneHistory.dosage, details.dosage);
       assert.deepEqual(
         (await load()).find((dose) => dose.id === latest.id),
-        latest,
+        undoneHistory,
       );
 
-      // Backfill never-viewed days, then remove obsolete pending rows after shortening/moving a course.
-      const backfill = (
+      // Backfill never-viewed days; later course edits must not erase those past missed doses.
+      let backfill = (
         await auth(request(app).post(`${route}/medications`))
           .send({
             ...details,
@@ -219,7 +223,53 @@ test(
           })
           .expect(201)
       ).body.medication;
-      const backfillItem = `${route}/medications/${backfill.id}`;
+      let backfillItem = `${route}/medications/${backfill.id}`;
+      // A generation request blocked on one medication must not block an edit to another.
+      const blocker = await db.connect();
+      let waiting;
+      try {
+        await blocker.query('BEGIN');
+        await blocker.query('SELECT id FROM medications WHERE id=$1 FOR UPDATE', [medication.id]);
+        waiting = auth(request(app).get(`${route}/medication-occurrences`))
+          .query(filters)
+          .then((response) => response);
+        const deadline = Date.now() + 3000;
+        let blocked = false;
+        while (!blocked && Date.now() < deadline) {
+          blocked =
+            (
+              await admin.query(
+                "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%effective_from%FOR UPDATE%'",
+              )
+            ).rowCount > 0;
+          if (!blocked) await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.equal(blocked, true, 'The read should be waiting for the explicitly blocked medication.');
+        await auth(request(app).get(`${route}/medications`))
+          .timeout({ response: 1500, deadline: 2500 })
+          .expect(200);
+        // Deletion of another medication can complete while this read waits.
+        await auth(request(app).delete(backfillItem))
+          .send({ version: backfill.version })
+          .timeout({ response: 1500, deadline: 2500 })
+          .expect(204);
+      } finally {
+        await blocker.query('ROLLBACK');
+        blocker.release();
+        if (waiting) assert.equal((await waiting).status, 200);
+      }
+      // Recreate the backfill fixture after the independent-delete assertion.
+      backfill = (
+        await auth(request(app).post(`${route}/medications`))
+          .send({
+            ...details,
+            name: 'Backfill',
+            assignedCaregiverId: null,
+            schedule: { ...schedule, times: ['08:00'], end: { kind: 'onDate', date: '2020-01-03' } },
+          })
+          .expect(201)
+      ).body.medication;
+      backfillItem = `${route}/medications/${backfill.id}`;
       const firstBacklog = (await overdue()).filter((dose) => dose.medicationId === backfill.id);
       assert.equal(firstBacklog.length, 3);
       assert.deepEqual(
@@ -237,7 +287,10 @@ test(
           })
           .expect(200)
       ).body.medication;
-      assert.equal((await overdue()).filter((dose) => dose.medicationId === backfill.id).length, 1);
+      assert.deepEqual(
+        (await overdue()).filter((dose) => dose.medicationId === backfill.id),
+        firstBacklog,
+      );
       changed = (
         await auth(request(app).patch(backfillItem))
           .send({
@@ -255,29 +308,42 @@ test(
           .expect(200)
       ).body.medication;
       const moved = (await overdue()).filter((dose) => dose.medicationId === backfill.id);
-      assert.equal(moved.length, 1);
-      assert.equal(moved[0].scheduledAt, '2020-01-03T08:00:00.000Z');
+      assert.deepEqual(moved, firstBacklog);
 
       // A removed/restored time must not recreate a stale tab's ID/version combination.
+      const futureDetails = {
+        ...details,
+        schedule: { ...schedule, startsOn: '2099-01-01', end: { kind: 'onDate', date: '2099-01-02' } },
+      };
+      const loadFuture = async () =>
+        (
+          await auth(request(app).get(`${route}/medication-occurrences`))
+            .query({ from: '2099-01-01T00:00:00Z', to: '2099-01-03T00:00:00Z' })
+            .expect(200)
+        ).body.medicationOccurrences;
       let restored = (
         await auth(request(app).post(`${route}/medications`))
-          .send(details)
+          .send(futureDetails)
           .expect(201)
       ).body.medication;
       const restoredRoute = `${route}/medications/${restored.id}`;
-      const originalDose = (await load()).find((dose) => dose.medicationId === restored.id);
+      const originalDose = (await loadFuture()).find((dose) => dose.medicationId === restored.id);
       restored = (
         await auth(request(app).patch(restoredRoute))
-          .send({ ...details, version: restored.version, schedule: { ...schedule, times: ['09:00'] } })
+          .send({
+            ...futureDetails,
+            version: restored.version,
+            schedule: { ...futureDetails.schedule, times: ['09:00'] },
+          })
           .expect(200)
       ).body.medication;
-      await load();
+      await loadFuture();
       restored = (
         await auth(request(app).patch(restoredRoute))
-          .send({ ...details, version: restored.version, dosage: '2 tablets' })
+          .send({ ...futureDetails, version: restored.version, dosage: '2 tablets' })
           .expect(200)
       ).body.medication;
-      const newDose = (await load()).find(
+      const newDose = (await loadFuture()).find(
         (dose) => dose.medicationId === restored.id && dose.scheduledAt === originalDose.scheduledAt,
       );
       assert.notEqual(newDose.id, originalDose.id);
@@ -291,10 +357,10 @@ test(
       ).body.medicationOccurrence;
       restored = (
         await auth(request(app).patch(restoredRoute))
-          .send({ ...details, version: restored.version, recipientId: secondRecipient })
+          .send({ ...futureDetails, version: restored.version, recipientId: secondRecipient })
           .expect(200)
       ).body.medication;
-      const movedRows = (await load()).filter((dose) => dose.medicationId === restored.id);
+      const movedRows = (await loadFuture()).filter((dose) => dose.medicationId === restored.id);
       assert.deepEqual(
         movedRows.find((dose) => dose.id === oldPersonTaken.id),
         oldPersonTaken,
@@ -359,7 +425,28 @@ test(
         .set('x-test-user', caregiver)
         .send({ status: 'pending', version: latest.version })
         .expect(404);
+      const beforeDelete = (
+        await db.query('SELECT status FROM medication_occurrences WHERE medication_id=$1', [medication.id])
+      ).rows;
+      assert.ok(beforeDelete.some((row) => row.status === 'completed'));
+      assert.ok(beforeDelete.some((row) => row.status === 'pending'));
       await auth(request(app).delete(item)).send({ version: current.version }).expect(204);
+      assert.equal(
+        (
+          await db.query('SELECT count(*)::int AS count FROM medication_occurrences WHERE medication_id=$1', [
+            medication.id,
+          ])
+        ).rows[0].count,
+        0,
+      );
+      assert.equal(
+        (
+          await db.query('SELECT count(*)::int AS count FROM medication_revisions WHERE medication_id=$1', [
+            medication.id,
+          ])
+        ).rows[0].count,
+        0,
+      );
       assert.ok(!(await load()).some((dose) => dose.medicationId === medication.id));
       await auth(request(app).delete(item)).send({ version: current.version }).expect(404);
       await auth(request(app).delete(backfillItem)).send({ version: changed.version }).expect(204);
@@ -367,6 +454,11 @@ test(
         path.join(migrationDir, '1795478400000_create-medications.sql'),
         'utf8',
       );
+      const revisionMigration = fs.readFileSync(
+        path.join(migrationDir, '1795564800000_medication-revisions.sql'),
+        'utf8',
+      );
+      await db.query(revisionMigration.split('-- Down Migration')[1]);
       await db.query(migration.split('-- Down Migration')[1]);
       assert.equal(
         (await db.query("SELECT to_regclass('medications') AS table_name")).rows[0].table_name,

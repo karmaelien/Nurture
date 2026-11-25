@@ -93,7 +93,13 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       const definitions = db.care.medications.filter((medication) =>
         circle.recipients.some((person) => person.id === medication.recipientId),
       )
-      db.care.medicationOccurrences = reconcileMedicationDoses(db.care.medicationOccurrences, definitions, from, to)
+      db.care.medicationOccurrences = reconcileMedicationDoses(
+        db.care.medicationOccurrences,
+        definitions,
+        from,
+        to,
+        db.medicationRevisions,
+      )
       writeDb(db, false)
       const medicationOccurrences = db.care.medicationOccurrences.filter(
         (record) =>

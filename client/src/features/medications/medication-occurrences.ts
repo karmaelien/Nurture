@@ -5,6 +5,54 @@ const day = 86_400_000
 export const maxDoseRange = 366 * day
 export const historyBatchRange = 31 * day
 const formatters = new Map<string, Intl.DateTimeFormat>()
+export type MedicationRevision = { definition: Medication; from: string | null; to: string }
+export type MedicationRevisions = Record<string, MedicationRevision[]>
+
+export function medicationSegments(medication: Medication, revisions: MedicationRevision[] = []) {
+  return [...revisions, { definition: medication, from: revisions.at(-1)?.to ?? null, to: null }]
+}
+
+/** Generate each part of history using the definition that was effective at that time. */
+export function generateEffectiveDoses(
+  medication: Medication,
+  from: string,
+  to: string,
+  revisions: MedicationRevision[] = [],
+) {
+  return medicationSegments(medication, revisions).flatMap((segment) => {
+    const lower = Math.max(Date.parse(from), segment.from ? Date.parse(segment.from) : -Infinity)
+    const upper = Math.min(Date.parse(to), segment.to ? Date.parse(segment.to) : Infinity)
+    return upper > lower
+      ? generateMedicationDoses(segment.definition, new Date(lower).toISOString(), new Date(upper).toISOString())
+      : []
+  })
+}
+
+export function medicationHistoryBounds(medication: Medication, before: string, revisions: MedicationRevision[] = []) {
+  const segments = medicationSegments(medication, revisions)
+  const lower = Math.min(
+    ...segments.map((segment) =>
+      Math.max(
+        Date.parse('0001-01-01T00:00:00Z'),
+        Date.parse(`${segment.definition.schedule.startsOn}T00:00:00Z`) - 36 * 3_600_000,
+        segment.from ? Date.parse(segment.from) : -Infinity,
+      ),
+    ),
+  )
+  const finish = Math.min(
+    Date.parse(before),
+    Math.max(
+      ...segments.map((segment) => {
+        const end = scheduleEndDate(segment.definition.schedule)
+        return Math.min(
+          end ? Date.parse(`${end}T00:00:00Z`) + 36 * 3_600_000 : Infinity,
+          segment.to ? Date.parse(segment.to) : Infinity,
+        )
+      }),
+    ),
+  )
+  return { lower, finish }
+}
 
 function localMinute(instant: number, timeZone: string) {
   let formatter = formatters.get(timeZone)
@@ -94,14 +142,21 @@ export function reconcileMedicationDoses(
   medications: Medication[],
   from: string,
   to: string,
+  revisions: MedicationRevisions = {},
 ) {
   const key = (dose: MedicationOccurrence) => `${dose.medicationId}:${dose.recipientId}:${Date.parse(dose.scheduledAt)}`
-  const generated = medications.flatMap((medication) => generateMedicationDoses(medication, from, to))
+  const generated = medications.flatMap((medication) =>
+    generateEffectiveDoses(medication, from, to, revisions[medication.id]),
+  )
+  const frozenBefore = new Map(
+    medications.map((medication) => [medication.id, Date.parse(revisions[medication.id]?.at(-1)?.to ?? '')]),
+  )
   const expected = new Set(generated.map(key))
   const medicationIds = new Set(medications.map((medication) => medication.id))
   const result = stored.filter(
     (dose) =>
       dose.status === 'completed' ||
+      Date.parse(dose.scheduledAt) < frozenBefore.get(dose.medicationId)! ||
       !medicationIds.has(dose.medicationId) ||
       Date.parse(dose.scheduledAt) < Date.parse(from) ||
       Date.parse(dose.scheduledAt) >= Date.parse(to) ||
@@ -111,7 +166,8 @@ export function reconcileMedicationDoses(
   for (const dose of generated) {
     const record = existing.get(key(dose))
     if (!record) result.push(dose)
-    else if (record.status === 'pending') refreshPendingDose(record, dose)
+    else if (record.status === 'pending' && !(Date.parse(record.scheduledAt) < frozenBefore.get(record.medicationId)!))
+      refreshPendingDose(record, dose)
   }
   return result
 }
@@ -123,6 +179,26 @@ export function refreshPendingDose(record: MedicationOccurrence, expected: Medic
   Object.assign(record, expected, { id: record.id, version: record.version + (changed ? 1 : 0) })
 }
 
+/** Retire obsolete materialized future rows at edit time, before they can age into history. */
+export function synchronizeFutureDoses(stored: MedicationOccurrence[], medication: Medication, effectiveAt: string) {
+  return stored.filter((dose) => {
+    if (
+      dose.medicationId !== medication.id ||
+      dose.status === 'completed' ||
+      Date.parse(dose.scheduledAt) < Date.parse(effectiveAt)
+    )
+      return true
+    const expected = generateMedicationDoses(
+      medication,
+      dose.scheduledAt,
+      new Date(Date.parse(dose.scheduledAt) + 1).toISOString(),
+    )[0]
+    if (!expected || expected.recipientId !== dose.recipientId) return false
+    refreshPendingDose(dose, expected)
+    return true
+  })
+}
+
 /** Fill unvisited course dates in bounded windows; stable IDs preserve taken records.
  * Coverage avoids regenerating the same history on each one-minute refresh.
  */
@@ -132,26 +208,28 @@ export function materializeMedicationHistory(
   before: string,
   coverage?: { version: number; through: string },
   budget = historyBatchRange,
+  revisions: MedicationRevision[] = [],
 ) {
-  const end = scheduleEndDate(medication.schedule)
   const cutoff = Date.parse(before)
-  const finish = end ? Math.min(cutoff, Date.parse(`${end}T00:00:00Z`) + 36 * 3_600_000) : cutoff
-  const lower = Math.max(
-    Date.parse('0001-01-01T00:00:00Z'),
-    Date.parse(`${medication.schedule.startsOn}T00:00:00Z`) - 36 * 3_600_000,
-  )
-  let cursor = coverage?.version === medication.version ? Math.max(lower, Date.parse(coverage.through)) : lower
+  const { lower, finish } = medicationHistoryBounds(medication, before, revisions)
+  let cursor = coverage ? Math.max(lower, Date.parse(coverage.through)) : lower
   const initial = cursor
   let doses = stored
   while (cursor < finish && cursor - initial < budget) {
     const upper = Math.min(finish, cursor + maxDoseRange, initial + budget)
-    doses = reconcileMedicationDoses(doses, [medication], new Date(cursor).toISOString(), new Date(upper).toISOString())
+    doses = reconcileMedicationDoses(
+      doses,
+      [medication],
+      new Date(cursor).toISOString(),
+      new Date(upper).toISOString(),
+      { [medication.id]: revisions },
+    )
     cursor = upper
   }
   const pending = cursor < finish
   const through = pending
     ? new Date(cursor).toISOString()
-    : coverage?.version === medication.version && Date.parse(coverage.through) > cutoff
+    : coverage && Date.parse(coverage.through) > cutoff
       ? coverage.through
       : before
   return { doses, coverage: { version: medication.version, through }, pending, consumed: Math.max(0, cursor - initial) }

@@ -62,13 +62,14 @@ export function useOverdueMedicationDoses(circleId: string, before: string, reci
     retry: false,
     refetchOnWindowFocus: true,
     // Continue bounded history work while keeping each request and displayed page small.
-    refetchInterval: (query) => (query.state.data?.pages.some((page) => page.historyPending) ? 1000 : 60_000),
+    refetchInterval: (query) => (query.state.data?.pages.at(-1)?.historyPending ? 1000 : 60_000),
   })
   return {
     ...query,
     data: query.data?.pages.flatMap((page) => page.medicationOccurrences),
-    historyPending: query.data?.pages.some((page) => page.historyPending) ?? false,
-    totalOverdueCount: query.data?.pages[0]?.totalOverdueCount,
+    // Each page can finish another history batch; its summary supersedes older pages.
+    historyPending: query.data?.pages.at(-1)?.historyPending ?? false,
+    totalOverdueCount: query.data?.pages.at(-1)?.totalOverdueCount,
   }
 }
 

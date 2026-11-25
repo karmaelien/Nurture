@@ -71,6 +71,14 @@ The confirmation states this explicitly. Repeated deletion returns 404. Successf
 writes refresh the family's care queries, so deleted mock doses disappear from Home.
 These operations use the existing browser mock database by default, or PostgreSQL when enabled.
 
+### Deletion policy
+
+Deleting a medication permanently removes its definition, all pending doses, all
+taken dose history, and its archived definition revisions. The confirmation dialog
+states that taken history is included. The browser mock removes these records and
+its coverage entry; PostgreSQL foreign-key cascades remove the occurrences and
+revisions. Schedule edits preserve past doses, while deletion removes them.
+
 ## Scheduled doses
 
 Each medication has **Overdue after (minutes)** in its form, defaulting to 30 minutes
@@ -114,10 +122,10 @@ produce two overdue rows, and each dose list shows a red overdue-dose count.
 History generation has a total budget of 31 calendar days per request, divided among
 the selected medication definitions. It records actual completed coverage per medication
 version in the same database. `historyPending` remains true until the requested history
-has been covered. Pending snapshots from older definition versions are excluded until
-reconciled. Repeated polling reuses that coverage and the
+has been covered. Historical pending snapshots remain visible under their original
+definition. Repeated polling reuses that coverage and the
 stable dose IDs, preserving taken statuses without duplicating rows. Schedule edits
-invalidate coverage so the pending history follows the updated definition.
+preserve coverage; edits do not restart the scan from the course start.
 
 The overdue query refetches every second while history is still loading, then every minute,
 allowing any pending dose to become
@@ -142,15 +150,23 @@ day; dose times are displayed in the viewer's local time zone. The schedule card
 continue to show their original time zone and clock times.
 
 Dose identity includes the medication, care profile, and scheduled instant. Repeated loads reuse the saved
-record and its status rather than adding duplicates. Editing a schedule refreshes
-pending metadata and removes obsolete pending occurrences within the requested
-window. Taken records retain their original name, dosage, person, and time as history.
+record and its status rather than adding duplicates. Every edit has an effective UTC
+timestamp. Past doses keep their original name, dosage, person, time, grace period,
+and taken/pending status. Only future untaken doses follow the new definition.
+Previously materialized obsolete future rows are retired immediately at edit time,
+so they cannot later age into historical missed doses. Taken records are retained.
 Deleting the medication still removes its occurrences, as stated in the confirmation.
 Newly created occurrence IDs also include the definition version. Removing and later
 restoring a time creates a different ID, so an old tab cannot submit an action against
 a newly created dose just because both began at status version 1. Moving a medication
-to another profile creates that person's own pending dose while retaining the original
-person's completed snapshot at the same instant. Existing record IDs are preserved.
+to another profile creates that person's future doses, while past doses remain with
+the original person. Existing retained record IDs are preserved.
+
+Each previous definition is archived with its effective interval. If a past date was
+never viewed, backfill uses the definition that governed that date, not today's edited
+schedule. Changing dose times, weekdays, timezone, or course dates cannot invent new
+missed doses before the edit. Name, dosage, caregiver, reminder, and grace-period edits
+also leave past dose snapshots and completed backfill coverage unchanged.
 
 During spring daylight saving, a nonexistent clock time moves forward by the gap
 (for example, 2:30 AM becomes 3:30 AM). A repeated fall-back clock time produces one
@@ -168,8 +184,9 @@ return `409 edit_conflict` rather than overwriting a newer taken/pending decisio
 including when the status changed away and back. Repeating the current status with
 the current version preserves its version and taken timestamp. The list refreshes
 after a conflict or missing-dose response so the caregiver can review current data.
-Undoing a taken occurrence whose schedule time was removed returns `409 schedule_conflict`;
-its taken record is retained rather than becoming pending and disappearing on reload.
+Historical taken doses can be marked pending without losing their original schedule
+or details. Undoing a future taken occurrence whose time was removed still returns
+`409 schedule_conflict`; it is retained rather than disappearing on reload.
 
 ### Multiple tabs and save failures
 
@@ -247,23 +264,36 @@ definition/profile/caregiver IDs are numeric strings and occurrence IDs are stab
 | File | Responsibility |
 | --- | --- |
 | `nurture-api/src/db/migrations/1795478400000_create-medications.sql` | Definitions, dose history, versions, indexes, and family-scoped foreign keys |
+| `nurture-api/src/db/migrations/1795564800000_medication-revisions.sql` | Effective-time definition snapshots for prospective edits |
 | `nurture-api/src/models/medication.model.js` | Transactions, CRUD, reconciliation, overdue backfill, and conditional writes |
 | `nurture-api/src/routes/medications.routes.js` | Definition and occurrence endpoints mounted under a family |
 | `nurture-api/src/validators/medications.validators.js` | Schedule, date range, ID, version, and body validation |
 | `nurture-api/src/services/medication-schedule.js` | Server-side timezone/DST-aware dose generation |
 
-Every operation locks the family row and checks current membership inside the same
-transaction. The membership lock is held through commit. Definition edits/deletes and
-dose updates check versions; status writes also use a conditional SQL update. Unique
+Every transaction checks current membership and holds a shared lock on only the
+requesting member's membership row through commit. Plain definition listings take
+no exclusive row locks. Writes and dose generation lock only their medication row;
+dose status updates acquire the medication before the individual dose to keep a
+consistent lock order. Family-wide dose reads commit each medication's generation
+separately, releasing that lock before moving to the next medication. Unrelated
+medications and ordinary family/profile operations do not wait for the whole batch.
+Access is rechecked for each medication and before returning the collected result.
+Definition edits/deletes and dose updates check versions; status writes also use a
+conditional SQL update. Unique
 `(medication_id, recipient_id, scheduled_at)` keys and upserts prevent duplicate generated doses.
-Reads and writes share the lock, so an overdue read cannot restore an outdated pending
-status over another caregiver's completion. Failed operations roll back.
+Generation and writes share the medication lock, so an overdue read cannot restore
+an outdated pending status over another caregiver's completion. Failed medication
+operations roll back their transaction; earlier successfully generated batches remain
+saved. Counts/lists combine the per-medication results rather than holding a single
+exclusive family lock for a globally simultaneous snapshot.
 
-Generation refreshes pending metadata, increments its version only when it changes,
-and removes obsolete pending times. Completed records retain their original details
-and taken timestamps. Overdue reads fill missing history in bounded windows and store
-coverage per definition version. Shortened courses and moved start dates remove obsolete
-pending history as well. Deleting a medication cascades to its occurrences. Assigned
+Generation refreshes only future pending metadata and increments its version only
+when it changes. Past pending and completed records retain their original details.
+The update transaction archives the previous definition and retires obsolete future
+rows. Overdue reads fill missing history using the archived effective intervals and
+continue from existing coverage after edits. Shortened courses and moved start dates
+do not erase past missed doses. Deleting a medication cascades to its occurrences and
+definition snapshots. Assigned
 caregivers and care profiles must belong to the same family.
 
 To enable when the real API is ready:

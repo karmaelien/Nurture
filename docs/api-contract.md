@@ -421,8 +421,10 @@ marks incomplete backfill, so this count is a lower bound until it is false.
 Generation advances at most 31 calendar days in total per request, shared among
 selected definitions. The client continues it in short requests and indicates that
 older doses are loading; the family lock is released between requests. There is
-no age cutoff. Schedule edits invalidate coverage without making stale pending
-snapshots visible before their range is reconciled.
+no age cutoff. Edits preserve coverage and use effective-time definition snapshots
+for previously unviewed dates. Past pending and taken doses retain their original
+details; only future untaken doses follow the new schedule. Obsolete materialized
+future doses are retired during the edit transaction, before they can become past history.
 
 #### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId`
 
@@ -432,11 +434,20 @@ or inaccessible occurrences return 404 and invalid bodies return 400. Status upd
 Home and Medications and are saved in the browser mock database or PostgreSQL when enabled.
 Stale dose versions return `409 edit_conflict`. A successful status transition increments
 the dose version; repeating its current status with the current version preserves its
-taken timestamp and version. Undoing a taken occurrence whose time was removed from
-the schedule returns `409 schedule_conflict` and preserves the taken history.
+taken timestamp and version. Historical taken doses can be marked pending while
+preserving their original details. Undoing a future taken occurrence whose time was
+removed from the schedule returns `409 schedule_conflict` and preserves that record.
 Medication deletion requires a JSON `{ version: number }` body and rejects stale
-confirmation versions with `409 edit_conflict`. Failed browser persistence returns
+confirmation versions with `409 edit_conflict`. It permanently deletes pending doses,
+taken dose history, and archived medication definitions along with the medication.
+The delete confirmation explicitly includes taken history. Failed browser persistence returns
 `503 storage_unavailable`; a save must not be reported as successful.
+
+PostgreSQL generation and writes lock the individual medication, not its family row.
+Definition listings take no exclusive row lock. Collection reads generate and commit
+one medication at a time, rechecking current family membership between transactions
+and before returning their combined result. Status changes lock the medication before
+the occurrence; version checks still reject stale actions.
 
 #### `GET /api/circles/:circleId/tasks`
 

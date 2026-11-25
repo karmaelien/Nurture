@@ -86,4 +86,53 @@ function generateMedicationDoses(medication, from, to) {
   }
   return [...doses.values()];
 }
-module.exports = { maxDoseRange, historyBatchRange, scheduleEndDate, doseInstant, generateMedicationDoses };
+function medicationSegments(medication, revisions = []) {
+  return [...revisions, { definition: medication, from: revisions.at(-1)?.to ?? null, to: null }];
+}
+function generateEffectiveDoses(medication, from, to, revisions = []) {
+  return medicationSegments(medication, revisions).flatMap((segment) => {
+    const lower = Math.max(Date.parse(from), segment.from ? Date.parse(segment.from) : -Infinity);
+    const upper = Math.min(Date.parse(to), segment.to ? Date.parse(segment.to) : Infinity);
+    return upper > lower
+      ? generateMedicationDoses(
+          segment.definition,
+          new Date(lower).toISOString(),
+          new Date(upper).toISOString(),
+        )
+      : [];
+  });
+}
+function medicationHistoryBounds(medication, before, revisions = []) {
+  const segments = medicationSegments(medication, revisions);
+  const lower = Math.min(
+    ...segments.map((segment) =>
+      Math.max(
+        Date.parse('0001-01-01T00:00:00Z'),
+        Date.parse(`${segment.definition.schedule.startsOn}T00:00:00Z`) - 36 * 3600000,
+        segment.from ? Date.parse(segment.from) : -Infinity,
+      ),
+    ),
+  );
+  const finish = Math.min(
+    Date.parse(before),
+    Math.max(
+      ...segments.map((segment) => {
+        const end = scheduleEndDate(segment.definition.schedule);
+        return Math.min(
+          end ? Date.parse(`${end}T00:00:00Z`) + 36 * 3600000 : Infinity,
+          segment.to ? Date.parse(segment.to) : Infinity,
+        );
+      }),
+    ),
+  );
+  return { lower, finish };
+}
+module.exports = {
+  maxDoseRange,
+  historyBatchRange,
+  scheduleEndDate,
+  doseInstant,
+  generateMedicationDoses,
+  generateEffectiveDoses,
+  medicationHistoryBounds,
+};
