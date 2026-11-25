@@ -87,6 +87,8 @@ export type CareTask = {
   completedAt: string | null // non-null exactly when status is completed
 }
 
+export type TaskInput = Pick<CareTask, 'recipientId' | 'title' | 'dueAt' | 'assignedCaregiverId'>
+
 export type ExpenseCategory = 'medication' | 'appointment' | 'insurance' | 'utilities' | 'other'
 
 export type Expense = {

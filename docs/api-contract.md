@@ -366,6 +366,17 @@ undated tasks last. Overdue means pending with a non-null `dueAt` before the cur
 | 400    | `validation_error`      |
 | 404    | `not_found`             |
 
+#### `POST /api/circles/:circleId/tasks` (browser mock)
+
+Body: `{ recipientId, title, dueAt, assignedCaregiverId }`. `dueAt` is a UTC timestamp
+or null; `assignedCaregiverId` is a current family member's ID or null. Titles are
+trimmed and must contain 1–200 characters. Returns `201 { task }` with a generated
+ID, `status: 'pending'`, and `completedAt: null`. Requires current family membership
+and a care profile/caregiver in that family. Invalid input returns 400, a missing
+session returns 401, unavailable family assignments return 404, and failed browser
+persistence returns 503. See [Tasks](tasks.md) for the initial page and form behavior.
+This creation endpoint does not yet have a PostgreSQL implementation.
+
 #### `GET /api/circles/:circleId/expenses`
 
 Query: `{ fromDate, toDate, recipientId?, category? }`. `fromDate` and `toDate` are required

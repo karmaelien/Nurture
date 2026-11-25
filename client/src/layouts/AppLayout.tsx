@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
-import { CalendarDays, Files, LayoutDashboard, Users, Wallet } from 'lucide-react'
+import { CalendarDays, Files, LayoutDashboard, ListChecks, Users, Wallet } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, ScrollRestoration, useLocation, useMatch, useParams } from 'react-router'
 import { careApi } from '../api/care.ts'
@@ -93,10 +93,10 @@ export function AppLayout() {
           </NavLink>
           {circle && (
             <>
-              <Link to={`${overview}#tasks`} className={`${navClass} hover:bg-wash`}>
-                <CalendarDays className="size-5" aria-hidden />
-                Care
-              </Link>
+              <NavLink to={circleLink('/app/tasks', circle.id)} className={activeNavClass}>
+                <ListChecks className="size-5" aria-hidden />
+                Tasks
+              </NavLink>
               <NavLink to={circleLink('/app/appointments', circle.id)} className={activeNavClass}>
                 <CalendarDays className="size-5" aria-hidden />
                 Appointments

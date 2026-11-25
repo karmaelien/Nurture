@@ -12,6 +12,7 @@ import type {
   MedicationOccurrence,
   MedicationOccurrenceFilters,
   TaskFilters,
+  TaskInput,
 } from './types.ts'
 
 function resourcePath(circleId: string, resource: string, filters: Record<string, string | undefined>) {
@@ -63,6 +64,8 @@ export const careApi = {
     ),
   tasks: (circleId: string, filters: TaskFilters = {}) =>
     request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
+  createTask: (circleId: string, body: TaskInput) =>
+    request<{ task: CareTask }>(resourcePath(circleId, 'tasks', {}), { method: 'POST', body }),
   expenses: (circleId: string, filters: ExpenseFilters) =>
     request<{ expenses: Expense[] }>(resourcePath(circleId, 'expenses', filters)),
 }
