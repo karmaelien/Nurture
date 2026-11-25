@@ -1,5 +1,6 @@
 import { delayedHttp as http } from './http.ts'
 import { HttpResponse } from 'msw'
+import { documentHandlers } from './documentHandlers.ts'
 import type { z } from 'zod'
 import type { AuthResponse, CircleSummary, Recipient, RecipientConflictBody, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
@@ -76,6 +77,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 
 export const handlers = [
   ...medicationHandlers,
+  ...documentHandlers,
   ...careHandlers,
   ...appointmentHandlers,
   ...expenseHandlers,

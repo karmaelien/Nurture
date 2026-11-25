@@ -351,20 +351,22 @@ export function ExpensesPage() {
   const { circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-      <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-      {circle ? (
-        <CircleExpenses key={circle.id} circle={circle} />
-      ) : (
-        <section className={panel}>
-          <h1 className="font-display text-h1 font-bold">Care expenses</h1>
-          <p className="mt-3 text-muted">
-            {circles.length
-              ? 'Choose an available circle above to view its expenses.'
-              : 'Create or join a care circle to track expenses.'}
-          </p>
-        </section>
-      )}
-    </main>
+    <div className="min-h-dvh">
+      <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
+        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+        {circle ? (
+          <CircleExpenses key={circle.id} circle={circle} />
+        ) : (
+          <section className={panel}>
+            <h1 className="font-display text-h1 font-bold">Care expenses</h1>
+            <p className="mt-3 text-muted">
+              {circles.length
+                ? 'Choose an available circle above to view its expenses.'
+                : 'Create or join a care circle to track expenses.'}
+            </p>
+          </section>
+        )}
+      </main>
+    </div>
   )
 }
