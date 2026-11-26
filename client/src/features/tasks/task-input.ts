@@ -1,18 +1,46 @@
 import { z } from 'zod'
 
-export const taskInputSchema = z.strictObject({
+export const taskDetailsSchema = z.strictObject({
   recipientId: z.string().min(1, 'Choose a care profile.'),
   title: z.string().trim().min(1, 'Enter a task title.').max(200),
   dueAt: z.iso.datetime().nullable(),
   assignedCaregiverId: z.string().min(1).nullable(),
 })
 
+const calendarDate = z.iso.date().refine((value) => value >= '0001-01-01')
+export const taskRecurrenceSchema = z
+  .strictObject({
+    unit: z.enum(['days', 'weeks']),
+    interval: z.number().int().min(1).max(365),
+    daysOfWeek: z
+      .array(z.number().int().min(0).max(6))
+      .max(7)
+      .refine((days) => new Set(days).size === days.length),
+    timeZone: z.string().refine((zone) => {
+      try {
+        new Intl.DateTimeFormat('en', { timeZone: zone })
+        return true
+      } catch {
+        return false
+      }
+    }, 'Choose a valid time zone.'),
+    end: z.discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('never') }),
+      z.strictObject({ kind: z.literal('onDate'), date: calendarDate }),
+      z.strictObject({ kind: z.literal('afterOccurrences'), count: z.number().int().min(1).max(36500) }),
+    ]),
+  })
+  .refine((rule) => rule.unit !== 'weeks' || rule.daysOfWeek.length > 0, 'Select at least one repeat day.')
+export const taskInputSchema = taskDetailsSchema
+  .extend({ recurrence: taskRecurrenceSchema.optional() })
+  .refine((input) => !input.recurrence || input.dueAt !== null, 'Repeating tasks require a due date.')
+
 export const taskStatusSchema = z.strictObject({
   status: z.enum(['pending', 'completed']),
   version: z.number().int().positive().max(2147483646),
 })
 
-export const taskUpdateSchema = taskInputSchema.extend({ version: taskStatusSchema.shape.version })
+export const taskUpdateSchema = taskDetailsSchema.extend({ version: taskStatusSchema.shape.version })
 
 /** Dates and typed 12-hour times belong to the viewer's local zone. A date alone
  * means end of day; reject normalized calendar dates and nonexistent DST times.

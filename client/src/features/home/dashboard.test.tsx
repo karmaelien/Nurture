@@ -230,8 +230,11 @@ describe('dashboard', () => {
     cleanup()
     renderApp('/app')
     const restoredPanel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
-    const restored = (await within(restoredPanel).findByText('Annual checkup')).closest('li')!
-    expect(within(restored).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+    await waitFor(() => {
+      // A minute-boundary refetch can replace the row while it is being located.
+      const restored = within(restoredPanel).getByText('Annual checkup').closest('li')!
+      expect(within(restored).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
+    })
   })
   it('keeps the shared navigation between home and appointments with the correct active link', async () => {
     const user = userEvent.setup()

@@ -9,6 +9,7 @@ import { SelectField, TextField } from '../../components/ui/Field.tsx'
 import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useRequiredSession } from '../auth/session.ts'
 import { taskDueAt, taskInputSchema } from './task-input.ts'
+import { TaskRepeatFields, type TaskRepeatUnit } from './TaskRepeatFields.tsx'
 
 export function TaskEditor({
   circle,
@@ -31,6 +32,8 @@ export function TaskEditor({
   const saving = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [repeatUnit, setRepeatUnit] = useState<TaskRepeatUnit>('none')
+  const [stopping, setStopping] = useState(false)
   const heading = useId()
   const due = task?.dueAt ? new Date(task.dueAt) : null
   const initialDate = due
@@ -66,17 +69,41 @@ export function TaskEditor({
       title: field('title'),
       dueAt,
       assignedCaregiverId: field('caregiver') || null,
+      ...(!task && repeatUnit !== 'none'
+        ? {
+            recurrence: {
+              unit: repeatUnit,
+              interval: Number(field('repeatInterval')),
+              daysOfWeek: repeatUnit === 'weeks' ? form.getAll('repeatDays').map(Number) : [],
+              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              end:
+                field('repeatEnd') === 'onDate'
+                  ? { kind: 'onDate', date: field('repeatEndDate') }
+                  : field('repeatEnd') === 'afterOccurrences'
+                    ? { kind: 'afterOccurrences', count: Number(field('repeatCount')) }
+                    : { kind: 'never' },
+            },
+          }
+        : {}),
     })
     if (!parsed.success) {
       setError(parsed.error.issues[0].message)
       return
     }
+    await perform(() =>
+      task
+        ? careApi.updateTask(circle.id, task.id, { ...parsed.data, version: task.version })
+        : careApi.createTask(circle.id, parsed.data),
+    )
+  }
+
+  async function perform(action: () => Promise<unknown>) {
+    if (saving.current) return
     saving.current = true
     setBusy(true)
     setError(undefined)
     try {
-      if (task) await careApi.updateTask(circle.id, task.id, { ...parsed.data, version: task.version })
-      else await careApi.createTask(circle.id, parsed.data)
+      await action()
       // Home and all profile/status-filtered task lists read the same saved records.
       await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id, 'tasks'] })
       onSaved?.()
@@ -110,13 +137,50 @@ export function TaskEditor({
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 id={heading} className="font-display text-h2 font-semibold">
-          {task ? 'Edit task' : 'Add task'}
+          {stopping ? 'Stop repeating?' : task ? 'Edit task' : 'Add task'}
         </h2>
         <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
           Close
         </Button>
       </div>
-      <form onSubmit={save}>
+      {stopping && task?.seriesId && task.seriesVersion && (
+        <div>
+          <p>
+            Stop repeating “{task.seriesTitle ?? task.title}”? Future pending occurrences are removed. Past tasks,
+            undated tasks, and completed occurrences stay saved.
+          </p>
+          {error && (
+            <div className="mt-4">
+              <Alert tone="danger">{error}</Alert>
+            </div>
+          )}
+          <div className="mt-5 flex gap-2">
+            <Button
+              loading={busy}
+              onClick={() => void perform(() => careApi.stopTaskSeries(circle.id, task.seriesId!, task.seriesVersion!))}
+            >
+              Confirm stop
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                setStopping(false)
+                setError(undefined)
+              }}
+            >
+              Keep repeating
+            </Button>
+          </div>
+        </div>
+      )}
+      <form onSubmit={save} hidden={stopping}>
+        {task?.seriesId && (
+          <p className="mb-4 text-small text-muted">
+            {task.seriesStoppedAt ? 'Repeating stopped.' : 'Repeating task.'} Changes here apply only to this
+            occurrence; other tasks and their completion history stay unchanged.
+          </p>
+        )}
         {error && (
           <div className="mb-4">
             <Alert tone="danger">{error}</Alert>
@@ -170,6 +234,7 @@ export function TaskEditor({
               <option value="PM">PM</option>
             </SelectField>
           </div>
+          {!task && <TaskRepeatFields unit={repeatUnit} onChange={setRepeatUnit} startDate={initialDate} />}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" loading={busy}>
               Save task
@@ -177,6 +242,17 @@ export function TaskEditor({
             <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
               Cancel
             </Button>
+            {task?.seriesId && task.seriesVersion && !task.seriesStoppedAt && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStopping(true)
+                  setError(undefined)
+                }}
+              >
+                Stop repeating
+              </Button>
+            )}
           </div>
         </fieldset>
       </form>

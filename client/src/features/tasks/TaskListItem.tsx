@@ -7,6 +7,7 @@ import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { formatDate, formatTime } from '../home/dashboard.ts'
+import { taskAttention } from './task-attention.ts'
 
 export function TaskListItem({
   task,
@@ -33,7 +34,8 @@ export function TaskListItem({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const completed = task.status === 'completed'
-  const overdue = !completed && task.dueAt !== null && Date.parse(task.dueAt) < now
+  const attention = taskAttention(task, now)
+  const overdue = attention === 'overdue'
   const action = completed ? 'Mark To Do' : 'Mark Completed'
   const refresh = () => cache.invalidateQueries({ queryKey: ['care', user.id, circleId, 'tasks'] })
   async function changeStatus() {
@@ -59,7 +61,7 @@ export function TaskListItem({
         <span
           className={`rounded-control border px-3 py-1 text-small ${overdue ? 'border-danger text-danger' : completed ? 'border-primary text-primary' : 'border-line text-muted'}`}
         >
-          {overdue ? 'Overdue' : completed ? 'Completed' : 'To Do'}
+          {overdue ? 'Overdue' : completed ? 'Completed' : attention === 'soon' ? 'Due soon' : 'To Do'}
         </span>
       </div>
       <p className="mt-2">
@@ -68,6 +70,12 @@ export function TaskListItem({
       <p className="mt-2 text-muted">
         {task.dueAt ? `${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}` : 'No due date'}
       </p>
+      {task.seriesId && (
+        <p className="mt-2 text-small text-muted">
+          {task.seriesStoppedAt ? 'Repeating stopped · ' : ''}
+          {task.seriesDescription ?? 'Repeating task'}
+        </p>
+      )}
       {completed && task.completedAt && (
         <p className="mt-2 text-small text-muted">
           Completed on {new Date(task.completedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} at{' '}

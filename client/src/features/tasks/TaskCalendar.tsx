@@ -4,10 +4,11 @@ import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { closeOnBackdropClick } from '../appointments/dialog.ts'
-import type { useTasks } from '../care/queries.ts'
+import { useTasks } from '../care/queries.ts'
 import { formatTime } from '../home/dashboard.ts'
 import { TaskListItem } from './TaskListItem.tsx'
 import { compareTasks } from './task-order.ts'
+import { matchesTask } from './task-filter.ts'
 
 type View = 'daily' | 'weekly' | 'monthly'
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -16,9 +17,10 @@ const dateKey = (date: Date) =>
 
 export function TaskCalendar({
   circle,
-  query,
   recipientId,
   status,
+  search = '',
+  caregiver = '',
   now,
   caregiverName,
   onAdd,
@@ -26,9 +28,10 @@ export function TaskCalendar({
   onDelete,
 }: {
   circle: CircleSummary
-  query: ReturnType<typeof useTasks>
   recipientId: string
   status: CareTask['status'] | ''
+  search?: string
+  caregiver?: string
   now: number
   caregiverName: (id: string | null) => string
   onAdd?: (date: string) => void
@@ -41,7 +44,7 @@ export function TaskCalendar({
     return new Date(date.getFullYear(), date.getMonth(), date.getDate())
   })
   const [preferredDay, setPreferredDay] = useState(anchor.getDate())
-  const filterKey = JSON.stringify([recipientId, status])
+  const filterKey = JSON.stringify([recipientId, status, search.trim().toLocaleLowerCase(), caregiver])
   const [storedSelection, setSelection] = useState<{
     date: string
     taskId?: string
@@ -65,8 +68,15 @@ export function TaskCalendar({
     view === 'monthly'
       ? new Date(year, month + 1, 1)
       : new Date(start.getFullYear(), start.getMonth(), start.getDate() + (view === 'weekly' ? 7 : 1))
+  const query = useTasks(circle.id, {
+    dueFrom: start.toISOString(),
+    dueBefore: end.toISOString(),
+    recipientId: recipientId || undefined,
+    status: status || undefined,
+  })
   const byDay = new Map<string, CareTask[]>()
   for (const task of query.data ?? []) {
+    if (!matchesTask(task, search, caregiver)) continue
     if (!task.dueAt) continue // Undated tasks stay in the main list.
     const date = new Date(task.dueAt)
     if (!Number.isFinite(date.getTime()) || date < start || date >= end) continue
@@ -180,6 +190,11 @@ export function TaskCalendar({
         Due dates for the selected care profiles · Times shown in your local time zone. Undated tasks remain in the task
         list.
       </p>
+      {query.historyPending && (
+        <p role="status" className="mt-3 text-muted">
+          Loading repeating tasks…
+        </p>
+      )}
       <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Calendar view">
         {(['daily', 'weekly', 'monthly'] as const).map((option) => (
           <Button
@@ -220,7 +235,7 @@ export function TaskCalendar({
         </div>
       </div>
       {query.isPending ? (
-        <p role="status" className="mt-4">
+        <p role="status" className="mt-4 h-[38rem]">
           Loading calendar…
         </p>
       ) : query.isError ? (
@@ -319,7 +334,7 @@ export function TaskCalendar({
               </tbody>
             </table>
           </div>
-          {!byDay.size && <p className="mt-3 text-muted">No tasks due this {unit}.</p>}
+          {!byDay.size && !query.historyPending && <p className="mt-3 text-muted">No tasks due this {unit}.</p>}
         </>
       )}
       <dialog

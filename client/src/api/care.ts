@@ -16,12 +16,14 @@ import type {
   MedicationOccurrenceFilters,
   TaskFilters,
   TaskInput,
+  TaskRecurrence,
+  TaskSeriesSummary,
 } from './types.ts'
 
-function resourcePath(circleId: string, resource: string, filters: Record<string, string | undefined>) {
+function resourcePath(circleId: string, resource: string, filters: Record<string, string | boolean | undefined>) {
   const query = new URLSearchParams()
   for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined) query.set(key, value)
+    if (value !== undefined) query.set(key, String(value))
   }
   const suffix = query.size ? `?${query}` : ''
   return `/api/circles/${encodeURIComponent(circleId)}/${resource}${suffix}`
@@ -104,12 +106,19 @@ export const careApi = {
       totalOverdueCount?: number
     }>(resourcePath(circleId, 'medication-occurrences/overdue', { before, recipientId, cursor })),
   tasks: (circleId: string, filters: TaskFilters = {}) =>
-    request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
-  createTask: (circleId: string, body: TaskInput) =>
+    request<{ tasks: CareTask[]; historyPending?: boolean; series?: TaskSeriesSummary[] }>(
+      resourcePath(circleId, 'tasks', filters),
+    ),
+  createTask: (circleId: string, body: TaskInput & { recurrence?: TaskRecurrence }) =>
     request<{ task: CareTask }>(resourcePath(circleId, 'tasks', {}), { method: 'POST', body }),
   deleteTask: (circleId: string, taskId: string, version: number) =>
     request<void>(resourcePath(circleId, `tasks/${encodeURIComponent(taskId)}`, {}), {
       method: 'DELETE',
+      body: { version },
+    }),
+  stopTaskSeries: (circleId: string, seriesId: string, version: number) =>
+    request<void>(resourcePath(circleId, `task-series/${encodeURIComponent(seriesId)}/stop`, {}), {
+      method: 'POST',
       body: { version },
     }),
   updateTask: (circleId: string, taskId: string, body: TaskInput & { version: number }) =>

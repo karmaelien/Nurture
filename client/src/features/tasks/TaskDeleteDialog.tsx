@@ -73,6 +73,9 @@ export function TaskDeleteDialog({
         Delete “{task.title}”? This permanently removes the task
         {task.status === 'completed' ? ' and its completion record' : ''}.
       </p>
+      {task.seriesId && (
+        <p className="mt-3 text-small text-muted">Only this occurrence is deleted. Other repeating tasks remain.</p>
+      )}
       {error && (
         <div className="mt-4">
           <Alert tone="danger">{error}</Alert>

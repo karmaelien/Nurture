@@ -139,10 +139,14 @@ it('completes a task once, moves it below pending tasks, and undoes it from Home
     await user.click(screen.getByRole('link', { name: 'Overview' }))
     await screen.findByRole('heading', { name: 'A little clarity for your day.' })
     const homeEntry = (await screen.findByText('Pick up prescription')).closest('li')!
-    expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/2$/)
+    expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
+      /2$/,
+    )
     await user.click(within(homeEntry).getByRole('button', { name: 'Mark To Do: Pick up prescription' }))
     await within(homeEntry).findByRole('button', { name: 'Mark Completed: Pick up prescription' })
-    expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/3$/)
+    expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
+      /3$/,
+    )
     expect(within(homeEntry).queryByText(/^Completed on /)).not.toBeInTheDocument()
     expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
       status: 'pending',
@@ -397,7 +401,9 @@ it.each(['/app/tasks', '/app'])(
       expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(false)
       expect(screen.queryByRole('button', { name: 'Delete task: Pick up prescription' })).not.toBeInTheDocument()
       if (path === '/app')
-        expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/2$/)
+        expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
+          /2$/,
+        )
     } finally {
       release()
       remove.mockRestore()

@@ -136,6 +136,11 @@ type CareTask = {
   assignedCaregiverId: string | null;
   status: "pending" | "completed";
   completedAt: string | null; // non-null exactly when status is completed
+  seriesId?: string;
+  seriesVersion?: number;
+  seriesStoppedAt?: string | null;
+  seriesTitle?: string;
+  seriesDescription?: string;
 };
 
 type ExpenseCategory =
@@ -491,11 +496,15 @@ the occurrence; version checks still reject stale actions.
 
 #### `GET /api/circles/:circleId/tasks`
 
-Query: `{ dueFrom?, dueBefore?, completedFrom?, completedBefore?, status?, recipientId? }`.
+Query: `{ dueFrom?, dueBefore?, includeUndated?, completedFrom?, completedBefore?, status?, recipientId? }`.
 Date bounds are timestamps filtering `dueAt` or `completedAt`; omitted bounds are
 unbounded. `status` is `pending` or `completed`; omit for both. Filters combine with AND.
 
-Due-date filters exclude undated tasks. Completion-date filters exclude incomplete
+Due-date filters exclude undated tasks unless `includeUndated=true`. This optional
+boolean adds undated tasks alongside the requested dated range; profile, status,
+and completion-date filters still apply. It defaults to false when due-date filters
+are supplied. Without due-date filters, undated tasks are included as before.
+Completion-date filters exclude incomplete
 tasks and cannot be combined with `status=pending`. Results sort by `dueAt` ascending,
 undated tasks last. Overdue means pending with a non-null `dueAt` before the current time.
 
@@ -504,6 +513,11 @@ undated tasks last. Overdue means pending with a non-null `dueAt` before the cur
 | 200    | `{ tasks: CareTask[] }` |
 | 400    | `validation_error`      |
 | 404    | `not_found`             |
+
+Repeating schedules are materialized in bounded batches. Task GET responses can also
+include `historyPending: boolean` and `series: { id, version, title, recipientId,
+description, stoppedAt }[]`. Series follow the profile filter, regardless of status.
+When historyPending is true, counts are partial and the client continues loading.
 
 #### `POST /api/circles/:circleId/tasks` (browser mock)
 
@@ -515,6 +529,26 @@ and a care profile/caregiver in that family. Invalid input returns 400, a missin
 session returns 401, unavailable family assignments return 404, and failed browser
 persistence returns 503. See [Tasks](tasks.md) for the initial page and form behavior.
 This creation endpoint does not yet have a PostgreSQL implementation.
+
+Optional `recurrence` is `{ unit: 'days' | 'weeks', interval: 1..365, daysOfWeek:
+number[], timeZone: string, end }`. Weekly schedules require selected weekdays
+(Sunday = 0); daily schedules use the day interval. End is `{ kind: 'never' }`,
+`{ kind: 'onDate', date }` (inclusive), or `{ kind: 'afterOccurrences', count: 1..36500 }`.
+A due date is required and anchors the local schedule/time. Repeating creation
+returns the first remaining occurrence and never generates pre-creation history;
+an ended/empty remaining schedule returns 400. Each occurrence is independently
+versioned. Editing/deleting/completing one does not alter the others. Deleted slots
+are retained as exceptions to prevent regeneration. See [repeating task behavior](tasks.md#repeating-tasks).
+
+#### `POST /api/circles/:circleId/task-series/:seriesId/stop` (browser mock)
+
+Body: `{ version }`. Returns 204. Requires authentication and current membership
+in the series' family. Invalid input returns 400, missing session 401, unavailable
+series/family 404, stale version 409, and failed persistence 503. The series version
+increments on the first stop; repeating with its current stopped version is a no-op.
+Future pending tasks are removed and cannot regenerate; past, undated, and completed
+tasks stay saved. Deletion exceptions also protect individually moved occurrences.
+This endpoint has no PostgreSQL implementation yet.
 
 #### `PATCH /api/circles/:circleId/tasks/:taskId` (browser mock)
 

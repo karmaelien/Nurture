@@ -18,7 +18,7 @@ async function open(now = new Date(2026, 10, 26, 12)) {
   const at = (hour: number, minute = 0, day = 26) => new Date(2026, 10, day, hour, minute).toISOString()
   db.care.tasks = [
     { ...template, id: 'calendar', title: 'Calendar task', dueAt: at(8) },
-    { ...template, id: 'second', title: 'Second task', dueAt: at(8, 10) },
+    { ...template, id: 'second', title: 'Second task', dueAt: at(8, 10), assignedCaregiverId: null },
     { ...template, id: 'third', title: 'Third task', recipientId: 'r_frank', dueAt: at(8, 20) },
     { ...template, id: 'fourth', title: 'Fourth task', dueAt: at(8, 30), status: 'completed', completedAt: at(8, 35) },
     { ...template, id: 'later', title: 'Later task', dueAt: at(9) },
@@ -31,6 +31,35 @@ async function open(now = new Date(2026, 10, 26, 12)) {
   await within(calendar).findByRole('table')
   return { calendar, user: userEvent.setup() }
 }
+
+it('shares case-insensitive title search and assignment filters across the list and calendar', async () => {
+  const { calendar, user } = await open()
+  const list = screen.getByRole('region', { name: 'Task list' })
+  await user.type(screen.getByLabelText('Search tasks'), '  sEcOnD  ')
+  expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+  expect(within(list).getByRole('heading', { name: 'Second task' })).toBeInTheDocument()
+  expect(within(calendar).getByRole('button', { name: /Second task for Rose/ })).toBeInTheDocument()
+  expect(within(calendar).queryByRole('button', { name: /Calendar task for Rose/ })).not.toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Caregiver'), 'unassigned')
+  expect(within(list).getByRole('heading', { name: 'Second task' })).toBeInTheDocument()
+  await user.selectOptions(screen.getByLabelText('Caregiver'), 'u_demo')
+  expect(within(list).getByText('No tasks for the selected filters.')).toBeInTheDocument()
+  expect(within(calendar).getByText('No tasks due this month.')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toHaveTextContent('4 overdue tasks')
+  await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+  expect(screen.getByLabelText('Search tasks')).toHaveValue('')
+  expect(screen.getByLabelText('Caregiver')).toHaveValue('')
+  expect(within(list).getAllByRole('listitem')).toHaveLength(7)
+  expect(within(calendar).getByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
+})
+
+it('closes a calendar task popup when its search filters change', async () => {
+  const { calendar, user } = await open()
+  await user.click(within(calendar).getByRole('button', { name: /Calendar task for Rose/ }))
+  expect(screen.getByRole('dialog', { name: 'Task Details' })).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Search tasks'), { target: { value: 'Second' } })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
 
 it('caps month blocks, expands all tasks for the date, and updates completed styling', async () => {
   const { calendar, user } = await open()
@@ -53,14 +82,14 @@ it('caps month blocks, expands all tasks for the date, and updates completed sty
 it('uses hourly day/week rows and limits overflow to its hour', async () => {
   const { calendar, user } = await open()
   await user.click(within(calendar).getByRole('button', { name: 'Daily' }))
-  expect(within(calendar).getAllByRole('rowheader')).toHaveLength(24)
+  expect(await within(calendar).findAllByRole('rowheader')).toHaveLength(24)
   await user.click(within(calendar).getByRole('button', { name: /Show all tasks at/ }))
   const dialog = screen.getByRole('dialog', { name: 'Tasks' })
   expect(within(dialog).getAllByRole('listitem')).toHaveLength(4)
   expect(within(dialog).queryByText('Later task')).not.toBeInTheDocument()
   await user.click(within(dialog).getByRole('button', { name: 'Close' }))
   await user.click(within(calendar).getByRole('button', { name: 'Weekly' }))
-  expect(within(calendar).getAllByRole('rowheader')).toHaveLength(24)
+  expect(await within(calendar).findAllByRole('rowheader')).toHaveLength(24)
   expect(within(calendar).getByRole('columnheader', { name: /Nov 22/ })).toBeInTheDocument()
   await user.click(within(calendar).getByRole('button', { name: `View tasks for ${fullDate(27)}` }))
   expect(within(screen.getByRole('dialog', { name: 'Tasks' })).getByText('Tomorrow task')).toBeInTheDocument()
@@ -141,7 +170,7 @@ it('restores the preferred day after short months and handles weeks crossing a y
   await user.click(within(calendar).getByRole('button', { name: 'Daily' }))
   await user.click(within(calendar).getByRole('button', { name: 'Next day' }))
   await user.click(within(calendar).getByRole('button', { name: 'Weekly' }))
-  expect(within(calendar).getByRole('columnheader', { name: /Dec 27/ })).toBeInTheDocument()
+  expect(await within(calendar).findByRole('columnheader', { name: /Dec 27/ })).toBeInTheDocument()
   expect(within(calendar).getByRole('columnheader', { name: /Jan 2/ })).toBeInTheDocument()
 })
 
@@ -149,10 +178,11 @@ it('hides stale popup controls on a failed refresh and retries the same calendar
   const { calendar, user } = await open()
   await user.click(within(calendar).getByRole('button', { name: /Calendar task for Rose/ }))
   expect(screen.getByRole('dialog', { name: 'Task Details' })).toBeInTheDocument()
-  server.use(http.get('/api/circles/:circleId/tasks', () => new HttpResponse(null, { status: 502 }), { once: true }))
+  server.use(http.get('/api/circles/:circleId/tasks', () => new HttpResponse(null, { status: 502 })))
   fireEvent.focus(window)
   expect(await within(calendar).findByRole('alert')).toHaveTextContent('502')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  server.resetHandlers()
   await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
   expect(await within(calendar).findByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
 })
