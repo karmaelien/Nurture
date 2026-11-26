@@ -67,14 +67,46 @@ export type Appointment = {
   assignedCaregiverId: string | null // null means unassigned
 }
 
+export type MedicationSchedule = {
+  times: string[] // HH:mm in timeZone on each selected weekday
+  timeZone: string
+  daysOfWeek: number[] // Sunday = 0 through Saturday = 6
+  startsOn: string // inclusive YYYY-MM-DD in timeZone
+  overdueAfterMinutes?: number // omitted in older definitions; defaults to 30
+  reminderBeforeMinutes?: number | null // null/omitted disables reminders
+  end: { kind: 'never' } | { kind: 'afterDays'; days: number } | { kind: 'onDate'; date: string }
+}
+
+// A medication's recurring schedule is separate from the status of each individual dose.
+export type Medication = {
+  id: string
+  version: number
+  effectiveFrom?: string | null // internal mock boundary; excluded from API responses and input
+  stoppedAt?: string | null // stopping preserves history and ends future scheduling
+  recipientId: string
+  name: string
+  dosage: string
+  schedule: MedicationSchedule
+  assignedCaregiverId: string | null
+}
+
+export type MedicationInput = Omit<Medication, 'id' | 'version' | 'stoppedAt' | 'effectiveFrom'>
+export type MedicationUpdate = MedicationInput & { version: number }
+
 export type MedicationOccurrence = {
   id: string // unique to this occurrence
+  version: number // conditional status writes reject stale copies
+  definitionVersion?: number // mock reconciliation coverage; the server keeps this internally
   medicationId: string
+  medicationStoppedAt?: string | null // response metadata; suppress reminders without changing history
   recipientId: string
   name: string
   dosage: string // display text supplied by the care-management feature
   scheduledAt: string // UTC timestamp
   status: 'pending' | 'completed'
+  takenAt?: string | null // actual recording timestamp; never inferred from scheduledAt
+  overdueAfterMinutes?: number
+  reminderBeforeMinutes?: number | null
 }
 
 export type CareTask = {

@@ -3,6 +3,7 @@ import { authApi } from '../../api/auth.ts'
 import { ApiError } from '../../api/client.ts'
 import { clearToken, getToken, setToken } from '../../api/token.ts'
 import type { AuthResponse, Session } from '../../api/types.ts'
+import { disableMedicationNotifications } from '../medications/medication-notifications.ts'
 
 export const sessionKey = ['session'] as const
 
@@ -51,7 +52,10 @@ export function useRegister() {
 export function useLogout() {
   return useMutation({
     // Log out locally even if the server is unreachable.
-    mutationFn: () => authApi.logout().catch(() => undefined),
+    mutationFn: async () => {
+      await disableMedicationNotifications().catch(() => undefined)
+      await authApi.logout().catch(() => undefined)
+    },
     onSettled: () => {
       clearToken()
       // A full page load guarantees no cached care data survives in memory,

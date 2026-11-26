@@ -1,0 +1,339 @@
+import { createTrackedMedication } from '../../test/medication-fixtures.ts'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { HttpResponse } from 'msw'
+import { expect, it, vi } from 'vitest'
+import { authApi } from '../../api/auth.ts'
+import { careApi } from '../../api/care.ts'
+import { request } from '../../api/client.ts'
+import { setToken } from '../../api/token.ts'
+import type { MedicationSchedule } from '../../api/types.ts'
+import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
+import { http } from '../../mocks/http.ts'
+import { DB_KEY } from '../../mocks/storage.ts'
+import { renderApp } from '../../test/renderApp.tsx'
+import { server } from '../../test/setup.ts'
+
+async function fixture(options: boolean | Partial<MedicationSchedule> = {}) {
+  const startsOn = options === true ? '2099-11-23' : '2026-11-23'
+  setToken((await authApi.login(DEMO_ACCOUNT)).token)
+  const { medication } = await createTrackedMedication('c_demo', {
+    recipientId: 'r_rose',
+    name: 'Concurrent sample',
+    dosage: '1 tablet',
+    assignedCaregiverId: null,
+    schedule: {
+      times: ['08:00'],
+      timeZone: 'UTC',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      startsOn,
+      end: { kind: 'onDate', date: startsOn },
+      ...(typeof options === 'object' ? options : {}),
+    },
+  })
+  const load = async () =>
+    (
+      await careApi.medicationOccurrences('c_demo', {
+        from: `${startsOn}T00:00:00Z`,
+        to: options === true ? '2099-11-24T00:00:00Z' : '2026-11-24T00:00:00Z',
+      })
+    ).medicationOccurrences.filter((dose) => dose.medicationId === medication.id)
+  return { medication, load }
+}
+
+it('rejects a stale dose action even after its status changes away and back', async () => {
+  const { load } = await fixture()
+  const first = (await load())[0]
+  const take = await careApi.updateMedicationDose('c_demo', first.id, 'completed', first.version)
+  const stale = take.medicationOccurrence
+  const undo = await careApi.updateMedicationDose('c_demo', first.id, 'pending', stale.version)
+  const latest = await careApi.updateMedicationDose('c_demo', first.id, 'completed', undo.medicationOccurrence.version)
+  await expect(careApi.updateMedicationDose('c_demo', first.id, 'pending', stale.version)).rejects.toMatchObject({
+    status: 409,
+  })
+  expect((await load())[0]).toEqual(latest.medicationOccurrence)
+})
+
+it('accepts only one of two simultaneous writes based on the same dose version', async () => {
+  const { load } = await fixture()
+  const dose = (await load())[0]
+  const results = await Promise.allSettled([
+    careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version),
+    careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 409 } })
+  const taken = (await load())[0]
+  const repeated = await careApi.updateMedicationDose('c_demo', taken.id, 'completed', taken.version)
+  expect(repeated.medicationOccurrence).toEqual(taken)
+})
+
+it('refuses an old delete confirmation after the definition changes', async () => {
+  const { medication } = await fixture()
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, dosage: '2 tablets' })
+  await expect(careApi.deleteMedication('c_demo', id, medication.version)).rejects.toMatchObject({ status: 409 })
+  expect((await careApi.medications('c_demo')).medications.find((item) => item.id === id)?.dosage).toBe('2 tablets')
+})
+
+it.each(['time removed', 'care profile changed'])(
+  'keeps taken history when undo is attempted after %s',
+  async (change) => {
+    const { medication, load } = await fixture(true)
+    const dose = (await load())[0]
+    const taken = (await careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version))
+      .medicationOccurrence
+    const { id, ...body } = medication
+    await careApi.updateMedication(
+      'c_demo',
+      id,
+      change === 'time removed'
+        ? { ...body, schedule: { ...body.schedule, times: ['09:00'] } }
+        : { ...body, recipientId: 'r_frank' },
+    )
+    await expect(careApi.updateMedicationDose('c_demo', dose.id, 'pending', taken.version)).rejects.toMatchObject({
+      status: 409,
+      code: 'schedule_conflict',
+    })
+    expect((await load()).find((item) => item.id === dose.id)).toEqual(taken)
+  },
+)
+
+it('serializes read/write operations from other mock endpoints with medication changes', async () => {
+  const { medication } = await fixture()
+  let release!: () => void
+  let started!: () => void
+  const began = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server.use(
+    http.post('/api/audit-delayed-save', async () => {
+      const db = readDb()
+      started()
+      await gate
+      db.users[0].phone = '555-010-9999'
+      writeDb(db)
+      return HttpResponse.json({ saved: true })
+    }),
+  )
+  const otherSave = request('/api/audit-delayed-save', { method: 'POST' })
+  await began
+  const { id, ...body } = medication
+  const medicationSave = careApi.updateMedication('c_demo', id, { ...body, dosage: '2 tablets' })
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  } finally {
+    release()
+  }
+  await Promise.all([otherSave, medicationSave])
+  expect(readDb().users[0].phone).toBe('555-010-9999')
+  expect(readDb().care.medications.find((item) => item.id === id)?.dosage).toBe('2 tablets')
+})
+
+it('reports storage failures and preserves the last saved dose status', async () => {
+  const { load } = await fixture()
+  const dose = (await load())[0]
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError')
+  })
+  try {
+    await expect(careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version)).rejects.toMatchObject({
+      status: 503,
+      code: 'storage_unavailable',
+    })
+    expect(readDb().care.medicationOccurrences.find((item) => item.id === dose.id)?.status).toBe('pending')
+  } finally {
+    storage.mockRestore()
+  }
+  await careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version)
+  expect((await load())[0].status).toBe('completed')
+})
+
+it('refreshes another tab’s changes on storage events and on returning to the tab', async () => {
+  const { medication } = await fixture()
+  renderApp('/app/medications')
+  await screen.findByRole('heading', { name: medication.name })
+  const oldValue = localStorage.getItem(DB_KEY)
+  const { id, ...body } = medication
+  const updated = await careApi.updateMedication('c_demo', id, { ...body, name: 'Changed elsewhere' })
+  fireEvent(window, new StorageEvent('storage', { key: DB_KEY, oldValue, newValue: localStorage.getItem(DB_KEY) }))
+  expect(await screen.findByRole('heading', { name: 'Changed elsewhere' })).toBeInTheDocument()
+  const { id: ignored, ...latest } = updated.medication
+  void ignored
+  await careApi.updateMedication('c_demo', id, { ...latest, name: 'Changed while away' })
+  fireEvent.focus(window)
+  expect(await screen.findByRole('heading', { name: 'Changed while away' })).toBeInTheDocument()
+})
+
+it('shows a failed save in the dose list without displaying a taken state', async () => {
+  await fixture()
+  renderApp('/app/medications')
+  const doses = await screen.findByRole('region', { name: 'Medication Schedule' })
+  fireEvent.change(within(doses).getByLabelText('Dose date'), { target: { value: '2026-11-23' } })
+  const button = await within(doses).findByRole('button', { name: /^Mark taken: Concurrent sample/ })
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError')
+  })
+  try {
+    fireEvent.click(button)
+    expect(await within(doses).findByRole('alert')).toHaveTextContent('could not be saved')
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(within(doses).queryByRole('button', { name: /^Mark pending: Concurrent sample/ })).not.toBeInTheDocument()
+  } finally {
+    storage.mockRestore()
+  }
+})
+
+it('does not refresh other tabs for background dose-generation writes', async () => {
+  await fixture()
+  renderApp('/app/medications')
+  await screen.findByRole('heading', { name: 'Concurrent sample' })
+  const medications = vi.spyOn(careApi, 'medications')
+  try {
+    const oldValue = localStorage.getItem(DB_KEY)
+    await careApi.overdueMedicationDoses('c_demo', new Date().toISOString())
+    const newValue = localStorage.getItem(DB_KEY)
+    fireEvent(window, new StorageEvent('storage', { key: DB_KEY, oldValue, newValue }))
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(medications).not.toHaveBeenCalled()
+  } finally {
+    medications.mockRestore()
+  }
+})
+
+it('fails safely when an origin-wide browser lock is unavailable', async () => {
+  await fixture()
+  const locks = navigator.locks
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined })
+  try {
+    await expect(careApi.medications('c_demo')).rejects.toMatchObject({ status: 503, code: 'storage_unavailable' })
+  } finally {
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: locks })
+  }
+})
+
+it('rejects an old tab’s dose action after its time is removed and restored with a new dosage', async () => {
+  const { medication, load } = await fixture(true)
+  const old = (await load())[0]
+  const { id, ...body } = medication
+  const shifted = (
+    await careApi.updateMedication('c_demo', id, { ...body, schedule: { ...body.schedule, times: ['09:00'] } })
+  ).medication
+  await load()
+  await careApi.updateMedication('c_demo', id, { ...body, version: shifted.version, dosage: '2 tablets' })
+  const current = (await load())[0]
+  expect(current.id).not.toBe(old.id)
+  await expect(careApi.updateMedicationDose('c_demo', old.id, 'completed', old.version)).rejects.toMatchObject({
+    status: 404,
+  })
+  expect((await load())[0].status).toBe('pending')
+})
+
+it('creates a new profile’s dose without replacing the old profile’s taken snapshot', async () => {
+  const { medication, load } = await fixture(true)
+  const old = (await load())[0]
+  const taken = (await careApi.updateMedicationDose('c_demo', old.id, 'completed', old.version)).medicationOccurrence
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, recipientId: 'r_frank' })
+  const rows = await load()
+  expect(rows).toHaveLength(2)
+  expect(rows.find((dose) => dose.recipientId === 'r_rose')).toEqual(taken)
+  expect(rows.find((dose) => dose.recipientId === 'r_frank')).toMatchObject({ status: 'pending' })
+})
+
+it('pages large overdue lists without losing instances and reports ongoing backfill', async () => {
+  const { medication } = await fixture({
+    startsOn: '0100-01-01',
+    end: { kind: 'never' },
+    times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+  })
+  const id = medication.id
+  const before = '2026-11-24T00:00:00Z'
+  const first = await careApi.overdueMedicationDoses('c_demo', before, 'r_rose')
+  expect(first.historyPending).toBe(true)
+  expect(first.medicationOccurrences).toHaveLength(100)
+  expect(first.nextCursor).toBeTruthy()
+  const second = await careApi.overdueMedicationDoses('c_demo', before, 'r_rose', first.nextCursor!)
+  expect(second.medicationOccurrences).toHaveLength(100)
+  expect(new Set([...first.medicationOccurrences, ...second.medicationOccurrences].map((dose) => dose.id)).size).toBe(
+    200,
+  )
+  expect(second.totalOverdueCount).toBeGreaterThan(first.totalOverdueCount!)
+  const coverage = readDb().medicationHistory![id]
+  expect(Date.parse(coverage.through)).toBeLessThan(Date.parse('0101-01-01T00:00:00Z'))
+  // The next request can still edit the definition instead of waiting for centuries of generation.
+  const current = (await careApi.medications('c_demo')).medications.find((item) => item.id === id)!
+  const { id: ignored, ...latest } = current
+  void ignored
+  await careApi.updateMedication('c_demo', id, { ...latest, schedule: { ...latest.schedule, startsOn: '2026-11-23' } })
+})
+
+it('shows the full overdue count and loads another page when requested', async () => {
+  const { medication } = await fixture({
+    startsOn: '2020-01-01',
+    end: { kind: 'onDate', date: '2020-01-07' },
+    times: Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, '0')}:00`),
+  })
+  for (const other of (await careApi.medications('c_demo')).medications)
+    if (other.id !== medication.id) await careApi.deleteMedication('c_demo', other.id, other.version)
+  renderApp('/app/medications')
+  const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+  expect(await within(attention).findByText('168 missed doses')).toBeInTheDocument()
+  expect(within(attention).getAllByRole('listitem')).toHaveLength(100)
+  fireEvent.click(within(attention).getByRole('button', { name: 'Show more missed doses' }))
+  await waitFor(() => expect(within(attention).getAllByRole('listitem')).toHaveLength(168))
+  expect(within(attention).queryByRole('button', { name: 'Show more missed doses' })).not.toBeInTheDocument()
+})
+
+it('keeps a valid undone historical dose visible after its definition was edited and backfilled', async () => {
+  const { medication, load } = await fixture()
+  const dose = (await load())[0]
+  const taken = (await careApi.updateMedicationDose('c_demo', dose.id, 'completed', dose.version)).medicationOccurrence
+  const { id, ...body } = medication
+  await careApi.updateMedication('c_demo', id, { ...body, name: 'Renamed' })
+  await careApi.overdueMedicationDoses('c_demo', '2026-11-24T00:00:00Z')
+  await careApi.updateMedicationDose('c_demo', dose.id, 'pending', taken.version)
+  const overdue = await careApi.overdueMedicationDoses('c_demo', '2026-11-24T00:00:00Z')
+  expect(overdue.medicationOccurrences.find((item) => item.id === dose.id)).toMatchObject({
+    status: 'pending',
+    name: 'Concurrent sample',
+  })
+})
+
+it('deleting a medication removes pending doses, taken history, and archived definitions', async () => {
+  const { medication, load } = await fixture({ times: ['08:00', '20:00'] })
+  const first = (await load())[0]
+  await careApi.updateMedicationDose('c_demo', first.id, 'completed', first.version)
+  const { id, ...body } = medication
+  const updated = (await careApi.updateMedication('c_demo', id, { ...body, name: 'Renamed' })).medication
+  expect((await load()).map((dose) => dose.status)).toEqual(['completed', 'pending'])
+  expect(readDb().medicationRevisions?.[id]).toHaveLength(1)
+  await careApi.deleteMedication('c_demo', id, updated.version)
+  expect(readDb().care.medicationOccurrences.filter((dose) => dose.medicationId === id)).toHaveLength(0)
+  expect(readDb().medicationRevisions?.[id]).toBeUndefined()
+})
+
+it('uses the latest overdue page count and backfill state when loading more finishes history', async () => {
+  const { load } = await fixture({ times: ['08:00', '20:00'] })
+  const rows = await load()
+  server.use(
+    http.get('/api/circles/:circleId/medication-occurrences/overdue', ({ request }) => {
+      const more = new URL(request.url).searchParams.has('cursor')
+      return HttpResponse.json({
+        medicationOccurrences: [rows[more ? 1 : 0]],
+        nextCursor: more ? null : `${rows[0].scheduledAt}|${rows[0].id}`,
+        historyPending: !more,
+        totalOverdueCount: more ? 2 : 1,
+      })
+    }),
+  )
+  renderApp('/app/medications')
+  const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+  expect(await within(attention).findByText('At least 1 missed dose')).toBeInTheDocument()
+  fireEvent.click(within(attention).getByRole('button', { name: 'Show more missed doses' }))
+  expect(await within(attention).findByText('2 missed doses')).toBeInTheDocument()
+  expect(within(attention).queryByText('Loading older missed doses…')).not.toBeInTheDocument()
+  expect(within(attention).getAllByRole('listitem')).toHaveLength(2)
+})
