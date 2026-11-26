@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
 import { careApi } from '../../api/care.ts'
 import { setToken } from '../../api/token.ts'
-import { DEMO_ACCOUNT, readDb } from '../../mocks/db.ts'
+import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
 import { taskDueAt, taskInputSchema } from './task-input.ts'
 
@@ -115,4 +115,92 @@ it('validates titles and converts optional typed due times without normalizing i
   expect(taskDueAt('2026-11-25', '12:00', 'PM')).toBe(new Date('2026-11-25T12:00').toISOString())
   expect(() => taskDueAt('', '9:30', 'AM')).toThrow('Choose a due date')
   expect(() => taskDueAt('2026-02-30', '9', 'AM')).toThrow('does not exist')
+})
+
+it('completes a task once, moves it below pending tasks, and undoes it from Home', async () => {
+  await login()
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  const list = await screen.findByRole('region', { name: 'Task list' })
+  const entry = (await within(list).findByText('Pick up prescription')).closest('li')!
+  const save = vi.spyOn(careApi, 'updateTaskStatus')
+  try {
+    const button = within(entry).getByRole('button', { name: 'Mark Completed: Pick up prescription' })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await within(entry).findByText(/^Completed on /)
+    expect(save).toHaveBeenCalledTimes(1)
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows.indexOf(entry)).toBeGreaterThan(rows.findIndex((row) => row.textContent?.includes('Grocery delivery')))
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      status: 'completed',
+      version: 2,
+    })
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    const homeEntry = (await screen.findByText('Pick up prescription')).closest('li')!
+    expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/2$/)
+    await user.click(within(homeEntry).getByRole('button', { name: 'Mark To Do: Pick up prescription' }))
+    await within(homeEntry).findByRole('button', { name: 'Mark Completed: Pick up prescription' })
+    expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/3$/)
+    expect(within(homeEntry).queryByText(/^Completed on /)).not.toBeInTheDocument()
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      status: 'pending',
+      completedAt: null,
+      version: 3,
+    })
+  } finally {
+    save.mockRestore()
+  }
+})
+
+it('refreshes a stale row without overwriting a newer completion', async () => {
+  await login()
+  renderApp('/app/tasks')
+  const list = await screen.findByRole('region', { name: 'Task list' })
+  const entry = (await within(list).findByText('Pick up prescription')).closest('li')!
+  await careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)
+  fireEvent.click(within(entry).getByRole('button', { name: 'Mark Completed: Pick up prescription' }))
+  expect(await within(entry).findByRole('alert')).toHaveTextContent('changed in another tab')
+  await within(entry).findByRole('button', { name: 'Mark To Do: Pick up prescription' })
+  expect(readDb().care.tasks.find((task) => task.id === 't_overdue')?.version).toBe(2)
+})
+
+it('serializes simultaneous saves and rejects stale changes even after undo', async () => {
+  await login()
+  const results = await Promise.allSettled([
+    careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1),
+    careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 409 } })
+  const saved = readDb().care.tasks.find((task) => task.id === 't_overdue')!
+  expect((await careApi.updateTaskStatus('c_demo', saved.id, 'completed', 2)).task).toEqual(saved)
+  await careApi.updateTaskStatus('c_demo', saved.id, 'pending', 2)
+  await expect(careApi.updateTaskStatus('c_demo', saved.id, 'completed', 1)).rejects.toMatchObject({ status: 409 })
+  expect(readDb().care.tasks.find((task) => task.id === saved.id)?.version).toBe(3)
+})
+
+it('rejects inaccessible tasks, invalid versions, and failed persistence', async () => {
+  await expect(careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)).rejects.toMatchObject({ status: 401 })
+  await login()
+  await expect(careApi.updateTaskStatus('c_demo', 'missing', 'completed', 1)).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 0)).rejects.toMatchObject({ status: 400 })
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError')
+  })
+  try {
+    await expect(careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)).rejects.toMatchObject({ status: 503 })
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      status: 'pending',
+      completedAt: null,
+      version: 1,
+    })
+  } finally {
+    storage.mockRestore()
+  }
+  const db = readDb()
+  db.circles[0].members = []
+  writeDb(db)
+  await expect(careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)).rejects.toMatchObject({ status: 404 })
 })

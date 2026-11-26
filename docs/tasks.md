@@ -23,7 +23,28 @@ Successful creation refreshes all task queries, including Home's task panel.
 Home's existing date-bounded list excludes undated tasks; those remain accessible
 on Tasks. The API persists due times as UTC and displays them in local time.
 
-This increment implements listing and basic creation in the browser mock. Editing,
-deletion, completion actions, recurrence, reminders, and a real PostgreSQL task API
+Each task has Mark Completed / Mark To Do controls shared by Tasks and Home.
+Completion records the save time; undo clears it. Completed tasks stay visible
+below pending tasks when the status filter includes them. Home counts only pending
+tasks and retains today's completed tasks in its date-bounded panel for undo.
+Both lists have capped scrolling areas.
+
+`PATCH /api/circles/:circleId/tasks/:taskId` accepts `{ status, version }` and returns
+`{ task }`. New tasks start at version 1; legacy browser tasks receive version 1
+without resetting their data. A changed status increments the version. Repeating
+the current status with the current version leaves its timestamp and version intact.
+The mock checks current membership and task ownership on every request. A stale
+version returns 409, including when another user completed and then reopened the
+task. The UI refreshes on 404/409 and displays the error. Failed persistence returns
+503 without displaying an unsaved completion. Repeated clicks are blocked while saving.
+
+All mock handlers share a browser Web Lock around their database operations so
+simultaneous tabs cannot overwrite the shared database snapshot. Unsupported
+browsers return 503. Task queries refresh after successful mutations, on window
+focus, and every minute. This mock uses browser storage; it does not synchronize
+different devices or provide real multi-user server persistence.
+
+This increment implements listing, creation, and completion in the browser mock. Editing,
+deletion, recurrence, reminders, and a real PostgreSQL task API
 remain separate steps. The existing empty backend task controller is not wired up
 by this change.

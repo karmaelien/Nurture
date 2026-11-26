@@ -66,6 +66,11 @@ export const careApi = {
     request<{ tasks: CareTask[] }>(resourcePath(circleId, 'tasks', filters)),
   createTask: (circleId: string, body: TaskInput) =>
     request<{ task: CareTask }>(resourcePath(circleId, 'tasks', {}), { method: 'POST', body }),
+  updateTaskStatus: (circleId: string, taskId: string, status: CareTask['status'], version: number) =>
+    request<{ task: CareTask }>(resourcePath(circleId, `tasks/${encodeURIComponent(taskId)}`, {}), {
+      method: 'PATCH',
+      body: { status, version },
+    }),
   expenses: (circleId: string, filters: ExpenseFilters) =>
     request<{ expenses: Expense[] }>(resourcePath(circleId, 'expenses', filters)),
 }

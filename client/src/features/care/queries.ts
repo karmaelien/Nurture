@@ -43,6 +43,8 @@ export function useTasks(circleId: string | null, filters: TaskFilters = {}) {
     queryKey: careKeys.tasks(user.id, circleId, filters),
     queryFn: circleId ? () => careApi.tasks(circleId, filters) : skipToken,
     select: (data) => data.tasks,
+    refetchOnWindowFocus: true,
+    refetchInterval: 60_000,
     retry: false,
   })
 }

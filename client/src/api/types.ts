@@ -79,6 +79,7 @@ export type MedicationOccurrence = {
 
 export type CareTask = {
   id: string
+  version: number // stale status writes are rejected
   recipientId: string
   title: string
   dueAt: string | null // UTC timestamp, or no due date

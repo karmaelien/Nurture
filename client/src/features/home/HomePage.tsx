@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
+import type { CircleSummary, ExpenseCategory, CareTask } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { useRequiredSession } from '../auth/session.ts'
@@ -13,8 +13,10 @@ import { appointmentUpcomingEnd } from '../appointments/appointment-window.ts'
 import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
+import { TaskListItem } from '../tasks/TaskListItem.tsx'
+import { compareTasks } from '../tasks/task-order.ts'
 import { useHomeAppointments } from './useHomeAppointments.ts'
-import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
+import { dashboardWindow, formatMoney, formatTime } from './dashboard.ts'
 
 const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
@@ -49,7 +51,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     to: windowDates.tomorrowStart,
     recipientId: recipient,
   })
-  const tasks = useTasks(circle.id, { status: 'pending', dueBefore: windowDates.to, recipientId: recipient })
+  const tasks = useTasks(circle.id, { dueBefore: windowDates.to, recipientId: recipient })
   const expenses = useExpenses(circle.id, {
     fromDate: windowDates.fromDate,
     toDate: windowDates.toDate,
@@ -86,9 +88,21 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     }))
     .filter((category) => category.amount > 0)
     .sort((a, b) => b.amount - a.amount)
-  const count = (query: QueryState & { data?: unknown[] }) =>
-    query.isError ? 'Unavailable' : query.isPending ? '…' : String(query.data?.length ?? 0)
+  const count = (query: QueryState & { data?: CareTask[] }) =>
+    query.isError
+      ? 'Unavailable'
+      : query.isPending
+        ? '…'
+        : String(query.data?.filter((task) => task.status === 'pending').length ?? 0)
 
+  // Home retains today's completions for undo; its outstanding count includes only pending tasks.
+  const taskEntries = (tasks.data ?? [])
+    .filter(
+      (task) =>
+        task.status === 'pending' ||
+        (task.completedAt && Date.parse(task.completedAt) >= Date.parse(windowDates.todayStart)),
+    )
+    .sort(compareTasks)
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -135,20 +149,18 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         </div>
       )}
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <Panel id="tasks" title="Tasks to take care of" icon={<ListChecks />} query={tasks} empty={!tasks.data?.length}>
-          <ul className="divide-y divide-line">
-            {tasks.data?.map((task) => (
-              <li key={task.id} className="py-4 first:pt-0 last:pb-0">
-                <p className="font-semibold">{task.title}</p>
-                <p className="text-muted">
-                  {name(task.recipientId)} · {assigned(task.assignedCaregiverId)}
-                </p>
-                <p className="mt-2">
-                  {task.dueAt
-                    ? `${Date.parse(task.dueAt) < now.getTime() ? 'Overdue · ' : ''}${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}`
-                    : 'No due date'}
-                </p>
-              </li>
+        <Panel id="tasks" title="Tasks" icon={<ListChecks />} query={tasks} empty={!taskEntries.length}>
+          <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto pr-2">
+            {taskEntries.map((task) => (
+              <TaskListItem
+                key={task.id}
+                task={task}
+                circleId={circle.id}
+                person={name(task.recipientId)}
+                caregiver={assigned(task.assignedCaregiverId)}
+                now={now.getTime()}
+                compact
+              />
             ))}
           </ul>
         </Panel>

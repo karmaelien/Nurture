@@ -124,6 +124,7 @@ type MedicationOccurrence = {
 
 type CareTask = {
   id: string;
+  version: number; // starts at 1; required for status updates
   recipientId: string;
   title: string;
   dueAt: string | null; // UTC timestamp, or no due date
@@ -412,6 +413,18 @@ and a care profile/caregiver in that family. Invalid input returns 400, a missin
 session returns 401, unavailable family assignments return 404, and failed browser
 persistence returns 503. See [Tasks](tasks.md) for the initial page and form behavior.
 This creation endpoint does not yet have a PostgreSQL implementation.
+
+#### `PATCH /api/circles/:circleId/tasks/:taskId` (browser mock)
+
+Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { task }`.
+Requires current family membership and a task belonging to a care profile in that
+family. Invalid input returns 400; missing session 401; inaccessible task/family
+404; stale version 409 (`edit_conflict`); failed browser persistence 503.
+New tasks start at version 1. Changing status increments it and sets `completedAt`
+to the save time for completed tasks, or null for pending tasks. Repeating the
+current status with the current version preserves both timestamp and version.
+The version check and write run under the shared browser database lock.
+This endpoint does not yet have a PostgreSQL implementation.
 
 #### `GET /api/circles/:circleId/expenses`
 

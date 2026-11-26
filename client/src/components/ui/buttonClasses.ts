@@ -1,9 +1,10 @@
 import { clsx } from 'clsx'
 
-export type Variant = 'primary' | 'secondary' | 'ghost'
+export type Variant = 'primary' | 'secondary' | 'ghost' | 'outline'
 export type Size = 'sm' | 'md' | 'lg'
 
 const variants: Record<Variant, string> = {
+  outline: 'border border-primary bg-transparent text-primary hover:bg-primary hover:text-primary-foreground',
   primary: 'bg-primary text-primary-foreground hover:bg-primary-hover',
   secondary: 'border border-line-strong bg-surface text-ink hover:bg-wash',
   ghost: 'text-ink hover:bg-wash',

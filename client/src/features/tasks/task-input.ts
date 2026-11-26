@@ -7,6 +7,11 @@ export const taskInputSchema = z.strictObject({
   assignedCaregiverId: z.string().min(1).nullable(),
 })
 
+export const taskStatusSchema = z.strictObject({
+  status: z.enum(['pending', 'completed']),
+  version: z.number().int().positive().max(2147483646),
+})
+
 /** Dates and typed 12-hour times belong to the viewer's local zone. A date alone
  * means end of day; reject normalized calendar dates and nonexistent DST times.
  */

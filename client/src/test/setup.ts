@@ -18,6 +18,21 @@ const originalDialogMethods = dialogMethods.map((method) =>
 )
 
 beforeAll(() => {
+  // Model the origin-wide browser lock queue used by the mock database.
+  const locks = new Map<string, Promise<unknown>>()
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: (name: string, action: () => unknown) => {
+        const next = (locks.get(name) ?? Promise.resolve()).catch(() => {}).then(action)
+        locks.set(
+          name,
+          next.catch(() => {}),
+        )
+        return next
+      },
+    },
+  })
   server.listen({ onUnhandledRequest: 'error' })
   // React Router restores document scroll; jsdom does not implement this browser method.
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})

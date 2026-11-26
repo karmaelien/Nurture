@@ -74,6 +74,7 @@ export function seedCareData(now = new Date()) {
   const tasks: CareTask[] = [
     {
       id: 't_overdue',
+      version: 1,
       recipientId: 'r_rose',
       title: 'Pick up prescription',
       dueAt: at(-1, 16),
@@ -83,6 +84,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 't_today',
+      version: 1,
       recipientId: 'r_frank',
       title: 'Grocery delivery',
       dueAt: at(0, 17),
@@ -92,6 +94,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 't_upcoming',
+      version: 1,
       recipientId: 'r_rose',
       title: 'Arrange transport',
       dueAt: at(2, 9),
@@ -101,6 +104,7 @@ export function seedCareData(now = new Date()) {
     },
     {
       id: 't_completed',
+      version: 1,
       recipientId: 'r_frank',
       title: 'Morning check-in',
       dueAt: at(0, 8),

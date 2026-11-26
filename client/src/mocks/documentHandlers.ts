@@ -1,4 +1,5 @@
-import { http, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { http } from './http.ts'
 import { z } from 'zod'
 import type { CareDocument } from '../api/types.ts'
 import { createDocumentSchema, documentFileError, updateDocumentSchema } from '../features/documents/schemas.ts'

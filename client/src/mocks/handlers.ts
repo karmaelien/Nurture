@@ -1,5 +1,6 @@
 import { documentHandlers } from './documentHandlers.ts'
-import { delay, http, HttpResponse } from 'msw'
+import { HttpResponse } from 'msw'
+import { delayedHttp as http } from './http.ts'
 import type { z } from 'zod'
 import type { AuthResponse, CircleSummary, Recipient, RecipientConflictBody, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
@@ -81,7 +82,6 @@ export const handlers = [
   ...appointmentHandlers,
   ...expenseHandlers,
   http.get('/api/circles/:circleId', async ({ request, params }) => {
-    await delay()
     const db = readDb()
     const userId = signedInUserId(db, request)
     if (!userId) return unauthorized()
@@ -98,7 +98,6 @@ export const handlers = [
   }),
 
   http.post('/api/circles', async ({ request }) => {
-    await delay()
     const db = readDb()
     const userId = signedInUserId(db, request)
     if (!userId) return unauthorized()
@@ -129,7 +128,6 @@ export const handlers = [
   }),
 
   http.post('/api/circles/:circleId/recipients', async ({ request, params }) => {
-    await delay()
     const db = readDb()
     const userId = signedInUserId(db, request)
     if (!userId) return unauthorized()
@@ -148,7 +146,6 @@ export const handlers = [
   }),
 
   http.patch('/api/circles/:circleId/recipients/:recipientId', async ({ request, params }) => {
-    await delay()
     const db = readDb()
     const found = findRecipient(db, request, params.circleId, params.recipientId)
     if (found.failure) return found.failure
@@ -180,7 +177,6 @@ export const handlers = [
   }),
 
   http.put('/api/circles/:circleId/recipients/:recipientId/relationship', async ({ request, params }) => {
-    await delay()
     const db = readDb()
     const found = findRecipient(db, request, params.circleId, params.recipientId)
     if (found.failure) return found.failure
@@ -196,7 +192,6 @@ export const handlers = [
   }),
 
   http.patch('/api/users/me', async ({ request }) => {
-    await delay()
     const db = readDb()
     const userId = signedInUserId(db, request)
     if (!userId) return unauthorized()
@@ -212,7 +207,6 @@ export const handlers = [
     return HttpResponse.json({ user: toUser(user) })
   }),
   http.post('/api/auth/register', async ({ request }) => {
-    await delay()
     const body = await parseBody(request, registerSchema)
     if (body.failure) return body.failure
 
@@ -227,7 +221,6 @@ export const handlers = [
   }),
 
   http.post('/api/auth/login', async ({ request }) => {
-    await delay()
     const body = await parseBody(request, loginSchema)
     if (body.failure) return body.failure
 
@@ -241,7 +234,6 @@ export const handlers = [
   }),
 
   http.get('/api/auth/me', async ({ request }) => {
-    await delay()
     const db = readDb()
     const userId = signedInUserId(db, request)
     if (!userId) return unauthorized()
@@ -249,7 +241,6 @@ export const handlers = [
   }),
 
   http.post('/api/auth/logout', async ({ request }) => {
-    await delay()
     const token = bearerToken(request)
     const db = readDb()
     if (token) delete db.sessions[token]

@@ -1,5 +1,6 @@
 import { seedCareData } from './careData.ts'
 import type { CircleDetail, Member, User } from '../api/types.ts'
+import { DB_KEY } from './storage.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -13,9 +14,6 @@ export type Db = {
   /** token -> user id. A user can have several tokens, one per device. */
   sessions: Record<string, string>
 }
-
-// Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v6'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
@@ -76,7 +74,12 @@ function seed(): Db {
 export function readDb(): Db {
   try {
     const raw = localStorage.getItem(DB_KEY)
-    if (raw) return JSON.parse(raw) as Db
+    if (raw) {
+      const db = JSON.parse(raw) as Db
+      // Preserve existing tasks and statuses when upgrading earlier browser data.
+      for (const task of db.care.tasks) task.version ??= 1
+      return db
+    }
   } catch {
     // Fall through to a fresh seed.
   }

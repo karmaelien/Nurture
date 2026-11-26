@@ -10,8 +10,9 @@ import { useRequiredSession } from '../auth/session.ts'
 import { useTasks } from '../care/queries.ts'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
-import { formatDate, formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
+import { TaskListItem } from './TaskListItem.tsx'
+import { compareTasks } from './task-order.ts'
 import { TaskEditor } from './TaskEditor.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
@@ -26,12 +27,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
     queryFn: () => circlesApi.detail(circle.id),
     retry: false,
   })
-  const sorted = [...(tasks.data ?? [])].sort(
-    (a, b) =>
-      Number(a.status === 'completed') - Number(b.status === 'completed') ||
-      (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity) ||
-      a.title.localeCompare(b.title),
-  )
+  const sorted = [...(tasks.data ?? [])].sort(compareTasks)
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end gap-4">
@@ -45,7 +41,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         </SelectField>
         <SelectField label="Status" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
           <option value="">All tasks</option>
-          <option value="pending">To do</option>
+          <option value="pending">To Do</option>
           <option value="completed">Completed</option>
         </SelectField>
         <Button
@@ -90,33 +86,25 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         ) : !sorted.length ? (
           <p className="text-muted">No tasks for the selected filters.</p>
         ) : (
-          <ul className="divide-y divide-line">
+          <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
             {sorted.map((task) => {
-              const overdue = task.status === 'pending' && task.dueAt !== null && Date.parse(task.dueAt) < now
               const caregiver =
                 task.assignedCaregiverId === null
                   ? 'Unassigned'
                   : (detail.data?.circle.members.find((member) => member.user.id === task.assignedCaregiverId)?.user
                       .name ?? (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
               return (
-                <li key={task.id} className="py-5 first:pt-0 last:pb-0">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="font-display text-h3 font-semibold">{task.title}</h2>
-                    <span
-                      className={`rounded-control border px-3 py-1 text-small ${overdue ? 'border-danger text-danger' : 'border-line text-muted'}`}
-                    >
-                      {overdue ? 'Overdue' : task.status === 'completed' ? 'Completed' : 'To do'}
-                    </span>
-                  </div>
-                  <p className="mt-2">
-                    {circle.recipients.find((person) => person.id === task.recipientId)?.name ??
-                      'Care profile unavailable'}{' '}
-                    · Caregiver: {caregiver}
-                  </p>
-                  <p className="mt-2 text-muted">
-                    {task.dueAt ? `${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}` : 'No due date'}
-                  </p>
-                </li>
+                <TaskListItem
+                  key={task.id}
+                  task={task}
+                  circleId={circle.id}
+                  person={
+                    circle.recipients.find((person) => person.id === task.recipientId)?.name ??
+                    'Care profile unavailable'
+                  }
+                  caregiver={caregiver}
+                  now={now}
+                />
               )
             })}
           </ul>
