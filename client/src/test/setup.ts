@@ -18,7 +18,7 @@ const originalDialogMethods = dialogMethods.map((method) =>
 )
 
 beforeAll(() => {
-  // Model the origin-wide browser lock queue used by the mock database.
+  // Model the browser's origin-wide Web Lock queue in jsdom.
   const locks = new Map<string, Promise<unknown>>()
   Object.defineProperty(navigator, 'locks', {
     configurable: true,

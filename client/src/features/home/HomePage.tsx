@@ -17,9 +17,12 @@ import { TaskListItem } from '../tasks/TaskListItem.tsx'
 import { TaskEditor } from '../tasks/TaskEditor.tsx'
 import { compareTasks } from '../tasks/task-order.ts'
 import { useHomeAppointments } from './useHomeAppointments.ts'
-import { dashboardWindow, formatMoney, formatTime } from './dashboard.ts'
+import { dashboardWindow, formatMoney } from './dashboard.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { MedicationPanel } from '../medications/MedicationPanel.tsx'
+import { useMinute } from '../profiles/time.ts'
 
-const selectClass = 'max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body'
 const categoryNames: Record<ExpenseCategory, string> = {
   medication: 'Medication',
   appointment: 'Appointments',
@@ -39,13 +42,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
-  const [recipientId, setRecipientId] = useState('')
   const [editingTask, setEditingTask] = useState<CareTask | null>(null)
-  const [now, setNow] = useState(() => new Date())
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
+  const { recipientId, setRecipientId } = useCareSelection(circle)
+  const now = useMinute()
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
   const medications = useMedicationOccurrences(circle.id, {
@@ -119,22 +118,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         <p className="text-muted">
           {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
         </p>
-        <label className="grid gap-2">
-          Showing
-          <select
-            aria-label="Showing"
-            className={selectClass}
-            value={recipientId}
-            onChange={(event) => setRecipientId(event.target.value)}
-          >
-            <option value="">Everyone</option>
-            {circle.recipients.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
       </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Stat label="Outstanding tasks · next 7 days + overdue" value={count(tasks)} />
@@ -159,79 +143,78 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         </div>
       )}
       <div className="grid items-start gap-5 lg:grid-cols-2">
-        <Panel id="tasks" title="Tasks" icon={<ListChecks />} query={tasks} empty={!taskEntries.length}>
-          <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto pr-2">
-            {taskEntries.map((task) => (
-              <TaskListItem
-                key={task.id}
-                task={task}
-                circleId={circle.id}
-                person={name(task.recipientId)}
-                caregiver={assigned(task.assignedCaregiverId)}
-                now={now.getTime()}
-                compact
-                onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
-              />
+        <div className="grid content-start gap-5">
+          <Panel id="tasks" title="Tasks" icon={<ListChecks />} query={tasks} empty={!taskEntries.length}>
+            <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto pr-2">
+              {taskEntries.map((task) => (
+                <TaskListItem
+                  key={task.id}
+                  task={task}
+                  circleId={circle.id}
+                  person={name(task.recipientId)}
+                  caregiver={assigned(task.assignedCaregiverId)}
+                  now={now.getTime()}
+                  compact
+                  onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
+                />
+              ))}
+            </ul>
+          </Panel>
+          <HomeAppointmentsPanel
+            appointments={appointments}
+            circle={circle}
+            recipientId={recipient}
+            now={now.getTime()}
+            caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+          />
+        </div>
+        <div className="grid content-start gap-5">
+          <Panel
+            id="expenses"
+            title="Care spending"
+            icon={<Wallet />}
+            query={expenses}
+            empty={!expenses.data?.length}
+            action={
+              <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
+                View all expenses
+              </Link>
+            }
+          >
+            <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
+            <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
+            {categories.map(({ label, amount }) => (
+              <div key={label} className="mb-4">
+                <div className="flex justify-between gap-3">
+                  <span>{label}</span>
+                  <span className="tabular-nums">{formatMoney(amount)}</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-wash" aria-hidden>
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${(amount / total) * 100}%` }} />
+                </div>
+              </div>
             ))}
-          </ul>
-        </Panel>
-        <Panel
+            <p className="mt-6 text-muted">{expenses.data?.length} recorded expenses · USD</p>
+          </Panel>
+        </div>
+      </div>
+      <div className="mt-5">
+        <MedicationPanel
           id="medications"
-          title="Today’s medications"
-          icon={<Pill />}
-          query={medications}
-          empty={!medications.data?.length}
-        >
-          <ul className="divide-y divide-line">
-            {medications.data?.map((dose) => (
-              <li key={dose.id} className="py-4 first:pt-0 last:pb-0">
-                <p className="font-semibold">
-                  {formatTime(dose.scheduledAt)} · {name(dose.recipientId)}
-                </p>
-                <p className="text-muted">
-                  {dose.name} · {dose.dosage}
-                </p>
-                <span className="mt-2 inline-block rounded-control border border-line px-2 py-1">
-                  {dose.status === 'completed' ? 'Completed' : 'Pending'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        <HomeAppointmentsPanel
-          appointments={appointments}
           circle={circle}
-          recipientId={recipient}
-          now={now.getTime()}
-          caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
-        />
-        <Panel
-          id="expenses"
-          title="Care spending"
-          icon={<Wallet />}
-          query={expenses}
-          empty={!expenses.data?.length}
-          action={
-            <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
-              View all expenses
+          showCaregiverError={false}
+          showProfileFilter={false}
+          heading={
+            <Link
+              to={circleLink('/app/medications', circle.id)}
+              aria-label="View medications"
+              className="flex items-center gap-2 rounded-control hover:text-primary"
+            >
+              <h2 className="font-display text-h3 font-semibold">Medications</h2>
+              <Pill className="size-5 text-primary" aria-hidden />
             </Link>
           }
-        >
-          <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
-          <p className="mb-6 mt-1 font-display text-display font-semibold tabular-nums">{formatMoney(total)}</p>
-          {categories.map(({ label, amount }) => (
-            <div key={label} className="mb-4">
-              <div className="flex justify-between gap-3">
-                <span>{label}</span>
-                <span className="tabular-nums">{formatMoney(amount)}</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-wash" aria-hidden>
-                <div className="h-full rounded-full bg-primary" style={{ width: `${(amount / total) * 100}%` }} />
-              </div>
-            </div>
-          ))}
-          <p className="mt-6 text-muted">{expenses.data?.length} recorded expenses · USD</p>
-        </Panel>
+        />
       </div>
     </>
   )

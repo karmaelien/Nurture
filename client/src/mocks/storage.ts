@@ -2,7 +2,7 @@ export const DB_KEY = 'nurture.mock-db.v6'
 
 export class MockStorageError extends Error {}
 
-/** All mock handlers share the origin-wide lock.
+/** All mock handlers share the origin-wide lock, including reads that materialize doses.
  * Acquire it before reading so the whole read/check/write operation is atomic across tabs.
  */
 export async function withMockDbLock<T>(action: () => T | Promise<T>): Promise<T> {

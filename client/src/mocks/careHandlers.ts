@@ -1,7 +1,8 @@
-import { HttpResponse } from 'msw'
 import { delayedHttp as http } from './http.ts'
+import { HttpResponse } from 'msw'
 import { expenseCategorySchema } from '../features/expenses/schemas.ts'
-import { readDb } from './db.ts'
+import { readDb, writeDb } from './db.ts'
+import { maxDoseRange, reconcileMedicationDoses } from '../features/medications/medication-occurrences.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 const notFound = () => error(404, 'not_found', 'This care circle or recipient is unavailable.')
@@ -86,6 +87,20 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       return HttpResponse.json({ appointments: appointments.sort(byDate((record) => record.startsAt)) })
     }
     if (resource === 'medication-occurrences') {
+      const from = query.get('from')!
+      const to = query.get('to')!
+      if (Date.parse(to) - Date.parse(from) > maxDoseRange) return invalid()
+      const definitions = db.care.medications.filter((medication) =>
+        circle.recipients.some((person) => person.id === medication.recipientId),
+      )
+      db.care.medicationOccurrences = reconcileMedicationDoses(
+        db.care.medicationOccurrences,
+        definitions,
+        from,
+        to,
+        db.medicationRevisions,
+      )
+      writeDb(db, false)
       const medicationOccurrences = db.care.medicationOccurrences.filter(
         (record) =>
           included(record) &&
@@ -93,7 +108,10 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
           inRange(record.scheduledAt, query.get('from'), query.get('to')),
       )
       return HttpResponse.json({
-        medicationOccurrences: medicationOccurrences.sort(byDate((record) => record.scheduledAt)),
+        medicationOccurrences: medicationOccurrences.sort(byDate((record) => record.scheduledAt)).map((dose) => {
+          const stoppedAt = definitions.find((medication) => medication.id === dose.medicationId)?.stoppedAt
+          return stoppedAt ? { ...dose, medicationStoppedAt: stoppedAt } : dose
+        }),
       })
     }
     if (resource === 'tasks') {

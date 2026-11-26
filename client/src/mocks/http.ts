@@ -23,7 +23,7 @@ function locked(create: typeof mswHttp.get, delayed = false) {
     )
 }
 
-// Every handler using the shared database must participate, including task status writes.
+// Every handler using the shared database must participate, not only medication writes.
 export const http = {
   get: locked(mswHttp.get),
   post: locked(mswHttp.post),

@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
@@ -10,7 +10,7 @@ import { seedCareData } from '../../mocks/careData.ts'
 import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
 import { server } from '../../test/setup.ts'
 import { sessionKey } from '../auth/session.ts'
-import { useAppointments, useExpenses, useMedicationOccurrences, useTasks } from './queries.ts'
+import { useAppointments, useExpenses, useMedications, useMedicationOccurrences, useTasks } from './queries.ts'
 
 const dates = { from: '2026-11-01T00:00:00Z', to: '2026-12-01T00:00:00Z' }
 const expenseDates = { fromDate: '2026-11-01', toDate: '2026-12-01' }
@@ -64,6 +64,46 @@ describe('care API requests', () => {
 })
 
 describe('care queries', () => {
+  it('refreshes medications and doses on return even when global focus refresh is disabled', async () => {
+    client.setDefaultOptions({ queries: { retry: false, gcTime: 0, refetchOnWindowFocus: false } })
+    let changed = false
+    server.use(
+      http.get('/api/circles/:circleId/medications', () =>
+        HttpResponse.json({
+          medications: readDb().care.medications.map((item) => ({
+            ...item,
+            name: changed ? 'Changed elsewhere' : item.name,
+          })),
+        }),
+      ),
+      http.get('/api/circles/:circleId/medication-occurrences', () =>
+        HttpResponse.json({
+          medicationOccurrences: readDb().care.medicationOccurrences.map((item) => ({
+            ...item,
+            status: changed ? 'completed' : 'pending',
+          })),
+        }),
+      ),
+    )
+    const { result, unmount } = renderHook(
+      () => ({ medications: useMedications('c_demo'), doses: useMedicationOccurrences('c_demo', dates) }),
+      { wrapper: Wrapper },
+    )
+    try {
+      await waitFor(() => expect(result.current.medications.isSuccess && result.current.doses.isSuccess).toBe(true))
+      changed = true
+      act(() => {
+        focusManager.setFocused(false)
+        focusManager.setFocused(true)
+      })
+      await waitFor(() => expect(result.current.medications.data?.[0].name).toBe('Changed elsewhere'))
+      await waitFor(() => expect(result.current.doses.data?.every((dose) => dose.status === 'completed')).toBe(true))
+    } finally {
+      unmount()
+      focusManager.setFocused(undefined)
+    }
+  })
+
   it('keeps section failures independent and supports retry', async () => {
     server.use(
       http.get('/api/circles/:circleId/expenses', () =>

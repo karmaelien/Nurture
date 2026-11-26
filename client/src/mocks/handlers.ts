@@ -1,6 +1,6 @@
-import { documentHandlers } from './documentHandlers.ts'
-import { HttpResponse } from 'msw'
 import { delayedHttp as http } from './http.ts'
+import { HttpResponse } from 'msw'
+import { documentHandlers } from './documentHandlers.ts'
 import type { z } from 'zod'
 import type { AuthResponse, CircleSummary, Recipient, RecipientConflictBody, Session } from '../api/types.ts'
 import { loginSchema, registerSchema } from '../features/auth/schemas.ts'
@@ -17,6 +17,7 @@ import { expenseHandlers } from './expenseHandlers.ts'
 import { appointmentHandlers } from './appointmentHandlers.ts'
 import { careHandlers } from './careHandlers.ts'
 import { taskHandlers } from './taskHandlers.ts'
+import { medicationHandlers } from './medicationHandlers.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
@@ -77,6 +78,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 
 export const handlers = [
   ...taskHandlers,
+  ...medicationHandlers,
   ...documentHandlers,
   ...careHandlers,
   ...appointmentHandlers,
