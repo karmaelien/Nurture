@@ -15,6 +15,7 @@ import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
 import { TaskListItem } from '../tasks/TaskListItem.tsx'
 import { TaskEditor } from '../tasks/TaskEditor.tsx'
+import { TaskDeleteDialog } from '../tasks/TaskDeleteDialog.tsx'
 import { compareTasks } from '../tasks/task-order.ts'
 import { useHomeAppointments } from './useHomeAppointments.ts'
 import { dashboardWindow, formatMoney } from './dashboard.ts'
@@ -43,6 +44,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [editingTask, setEditingTask] = useState<CareTask | null>(null)
+  const [deletingTask, setDeletingTask] = useState<CareTask | null>(null)
   const { recipientId, setRecipientId } = useCareSelection(circle)
   const now = useMinute()
   const windowDates = dashboardWindow(now)
@@ -106,6 +108,9 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     .sort(compareTasks)
   return (
     <>
+      {deletingTask && (
+        <TaskDeleteDialog task={deletingTask} circleId={circle.id} onClose={() => setDeletingTask(null)} />
+      )}
       {editingTask && details.data && !details.isError && (
         <TaskEditor
           circle={details.data.circle}
@@ -156,6 +161,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                   now={now.getTime()}
                   compact
                   onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
+                  onDelete={() => setDeletingTask(task)}
                 />
               ))}
             </ul>

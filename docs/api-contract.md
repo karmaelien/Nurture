@@ -533,6 +533,15 @@ current status with the current version preserves both timestamp and version.
 The version check and write run under the shared browser database lock.
 This endpoint does not yet have a PostgreSQL implementation.
 
+#### `DELETE /api/circles/:circleId/tasks/:taskId` (browser mock)
+
+Body: `{ version: number }`. Returns `204` and permanently removes the task,
+including its completion record. Current family membership, task ownership, and
+the exact version are checked under the shared browser database lock. Invalid input
+returns 400, missing session 401, inaccessible/missing task or family 404, stale
+version 409 (`edit_conflict`), and failed browser persistence 503. List queries and
+Home counts refresh after success. This endpoint has no PostgreSQL implementation yet.
+
 #### `GET /api/circles/:circleId/expenses`
 
 Query: `{ fromDate, toDate, recipientId?, category? }`. `fromDate` and `toDate` are required

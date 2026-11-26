@@ -5,6 +5,34 @@ import { readDb, writeDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 export const taskHandlers = [
+  http.delete('/api/circles/:circleId/tasks/:taskId', async ({ request, params }) => {
+    const body = await request.json().catch(() => null)
+    const db = readDb()
+    const token = bearerToken(request)
+    const userId = token ? db.sessions[token] : undefined
+    if (!userId || !db.users.some((user) => user.id === userId)) return unauthorized()
+    const circle = db.circles.find(
+      (item) => item.id === params.circleId && item.members.some((member) => member.user.id === userId),
+    )
+    if (!circle) return error(404, 'not_found', 'This care circle is unavailable.')
+    const task = db.care.tasks.find(
+      (item) => item.id === params.taskId && circle.recipients.some((person) => person.id === item.recipientId),
+    )
+    if (!task) return error(404, 'not_found', 'This task is unavailable.')
+    const parsed = taskStatusSchema.pick({ version: true }).safeParse(body)
+    if (!parsed.success) return error(400, 'validation_error', 'Provide the current task version.')
+    if (task.version !== parsed.data.version)
+      return error(
+        409,
+        'edit_conflict',
+        'This task changed in another tab or by another caregiver. Close and reopen the confirmation to review the latest task before deleting it.',
+      )
+    db.care.tasks = db.care.tasks.filter((item) => item.id !== task.id)
+    writeDb(db)
+    if (readDb().care.tasks.some((item) => item.id === task.id))
+      return error(503, 'storage_unavailable', 'This task could not be deleted from your browser. Try again.')
+    return new HttpResponse(null, { status: 204 })
+  }),
   http.post('/api/circles/:circleId/tasks', async ({ request, params }) => {
     // Parse before reading storage, so an awaited body cannot leave a stale snapshot.
     const body = await request.json().catch(() => null)

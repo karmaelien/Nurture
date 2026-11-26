@@ -16,6 +16,7 @@ export function TaskListItem({
   now,
   compact = false,
   onEdit,
+  onDelete,
 }: {
   task: CareTask
   circleId: string
@@ -24,6 +25,7 @@ export function TaskListItem({
   now: number
   compact?: boolean
   onEdit?: () => void
+  onDelete?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -90,6 +92,15 @@ export function TaskListItem({
           aria-label={`Edit task: ${task.title}`}
         >
           Edit task
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
+          disabled={busy || !onDelete}
+          onClick={onDelete}
+          aria-label={`Delete task: ${task.title}`}
+        >
+          Delete task
         </Button>
       </div>
       {error && (

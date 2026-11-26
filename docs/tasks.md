@@ -29,6 +29,21 @@ below pending tasks when the status filter includes them. Home counts only pendi
 tasks and retains today's completed tasks in its date-bounded panel for undo.
 Both lists have capped scrolling areas.
 
+Delete task is available on Tasks and Home. Its red-outline action opens a shared
+confirmation naming the task; deletion is permanent, including the completion record
+for a completed task. Keep task, Close, Escape, or clicking outside cancels without
+saving. While deleting, repeat clicks and dismissal are blocked. The confirmation
+keeps the version from when it opened, so another caregiver's edit or completion
+causes 409 instead of deleting the changed task. Failed saves leave the task stored
+and the confirmation retryable. Successful deletion refreshes every task list and
+Home's outstanding count and survives page refresh.
+
+`DELETE /api/circles/:circleId/tasks/:taskId` accepts `{ version }` and returns 204.
+It checks the session, current family membership, task ownership, and version under
+the same browser database lock as task edits and status writes. Invalid version
+input returns 400, missing session 401, unavailable task/family 404, stale version
+409, and failed persistence 503. There is no PostgreSQL task delete endpoint yet.
+
 Edit task is available in both Tasks and Home and opens the shared Add/Edit form.
 It prefills the title, care profile, caregiver, and due date/time. Saving details
 preserves completion status and its timestamp. An unchanged due date/time retains
@@ -57,7 +72,7 @@ browsers return 503. Task queries refresh after successful mutations, on window
 focus, and every minute. This mock uses browser storage; it does not synchronize
 different devices or provide real multi-user server persistence.
 
-This increment implements listing, creation, editing, and completion in the browser mock.
-Deletion, recurrence, reminders, and a real PostgreSQL task API
+This increment implements listing, creation, editing, deletion, and completion in the browser mock.
+Recurrence, reminders, and a real PostgreSQL task API
 remain separate steps. The existing empty backend task controller is not wired up
 by this change.

@@ -351,3 +351,126 @@ it('validates edit assignments, serializes competing edits, and reports failed p
   expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
   expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 409 } })
 })
+
+it.each(['/app/tasks', '/app'])(
+  'confirms deletion on %s, supports click-away, and blocks duplicate saves and dismissal while deleting',
+  async (path) => {
+    await login()
+    const user = userEvent.setup()
+    renderApp(path)
+    const openDelete = () => user.click(screen.getByRole('button', { name: 'Delete task: Pick up prescription' }))
+    await screen.findByRole('button', { name: 'Delete task: Pick up prescription' })
+    await openDelete()
+    let dialog = screen.getByRole('dialog', { name: 'Delete task?' })
+    expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(true)
+    fireEvent.click(dialog, { clientX: -10, clientY: -10 })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await openDelete()
+    dialog = screen.getByRole('dialog', { name: 'Delete task?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Keep task' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await openDelete()
+    dialog = screen.getByRole('dialog', { name: 'Delete task?' })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = careApi.deleteTask
+    const remove = vi.spyOn(careApi, 'deleteTask').mockImplementation(async (...args) => {
+      await gate
+      return original(...args)
+    })
+    try {
+      const confirm = within(dialog).getByRole('button', { name: 'Delete task' })
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+      expect(remove).toHaveBeenCalledTimes(1)
+      expect(within(dialog).getByRole('button', { name: 'Keep task' })).toBeDisabled()
+      const cancel = new Event('cancel', { cancelable: true })
+      fireEvent(dialog, cancel)
+      expect(cancel.defaultPrevented).toBe(true)
+      fireEvent.click(dialog, { clientX: -10, clientY: -10 })
+      expect(dialog).toHaveAttribute('open')
+      expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(true)
+      release()
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(false)
+      expect(screen.queryByRole('button', { name: 'Delete task: Pick up prescription' })).not.toBeInTheDocument()
+      if (path === '/app')
+        expect(screen.getByText('Outstanding tasks · next 7 days + overdue').parentElement).toHaveTextContent(/2$/)
+    } finally {
+      release()
+      remove.mockRestore()
+    }
+    cleanup()
+    renderApp(path === '/app' ? '/app/tasks' : '/app')
+    await screen.findByText('Grocery delivery')
+    expect(screen.queryByText('Pick up prescription')).not.toBeInTheDocument()
+  },
+)
+
+it('rejects stale deletion and retains the task after another caregiver completes it', async () => {
+  await login()
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  await user.click(await screen.findByRole('button', { name: 'Delete task: Pick up prescription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Delete task?' })
+  await careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)
+  await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Close and reopen the confirmation')
+  expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({ status: 'completed', version: 2 })
+  await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+  await user.click(screen.getByRole('button', { name: 'Delete task: Pick up prescription' }))
+  const current = screen.getByRole('dialog', { name: 'Delete task?' })
+  expect(within(current).getByText(/completion record/)).toBeInTheDocument()
+  await user.click(within(current).getByRole('button', { name: 'Delete task' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(false)
+})
+
+it('keeps a failed delete visible and retryable without removing the saved task', async () => {
+  await login()
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  await user.click(await screen.findByRole('button', { name: 'Delete task: Pick up prescription' }))
+  const dialog = screen.getByRole('dialog', { name: 'Delete task?' })
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError')
+  })
+  try {
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('could not be saved')
+    expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(true)
+  } finally {
+    storage.mockRestore()
+  }
+  await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(false)
+})
+
+it('checks deletion access and versions and rejects a competing edit or delete', async () => {
+  await expect(careApi.deleteTask('c_demo', 't_overdue', 1)).rejects.toMatchObject({ status: 401 })
+  await login()
+  await expect(careApi.deleteTask('c_demo', 'missing', 1)).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.deleteTask('c_demo', 't_overdue', 0)).rejects.toMatchObject({ status: 400 })
+  await expect(careApi.deleteTask('c_demo', 't_overdue', 2)).rejects.toMatchObject({ status: 409 })
+  const results = await Promise.allSettled([
+    careApi.deleteTask('c_demo', 't_overdue', 1),
+    careApi.updateTask('c_demo', 't_overdue', {
+      recipientId: 'r_rose',
+      title: 'New details',
+      assignedCaregiverId: null,
+      dueAt: null,
+      version: 1,
+    }),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  const failure = results.find((result) => result.status === 'rejected')
+  expect(failure?.status === 'rejected' && [404, 409].includes(failure.reason.status)).toBe(true)
+  const db = readDb()
+  db.circles[0].members = []
+  writeDb(db)
+  await expect(careApi.deleteTask('c_demo', 't_today', 1)).rejects.toMatchObject({ status: 404 })
+  expect(readDb().care.tasks.some((task) => task.id === 't_today')).toBe(true)
+})

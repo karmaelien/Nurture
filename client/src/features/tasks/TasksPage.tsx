@@ -14,6 +14,7 @@ import { useMinute } from '../profiles/time.ts'
 import { TaskListItem } from './TaskListItem.tsx'
 import { compareTasks } from './task-order.ts'
 import { TaskEditor } from './TaskEditor.tsx'
+import { TaskDeleteDialog } from './TaskDeleteDialog.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -21,6 +22,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
   const [status, setStatus] = useState<CareTask['status'] | ''>('')
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<CareTask | null>(null)
+  const [deleting, setDeleting] = useState<CareTask | null>(null)
   const now = useMinute().getTime()
   const tasks = useTasks(circle.id, { recipientId: recipientId || undefined, status: status || undefined })
   const detail = useQuery({
@@ -31,6 +33,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
   const sorted = [...(tasks.data ?? [])].sort(compareTasks)
   return (
     <>
+      {deleting && <TaskDeleteDialog task={deleting} circleId={circle.id} onClose={() => setDeleting(null)} />}
       <div className="mb-6 flex flex-wrap items-end gap-4">
         <SelectField label="Care profile" value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>
           <option value="">All care profiles</option>
@@ -112,6 +115,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
                   caregiver={caregiver}
                   now={now}
                   onEdit={detail.data && !detail.isError ? () => setEditing(task) : undefined}
+                  onDelete={() => setDeleting(task)}
                 />
               )
             })}
