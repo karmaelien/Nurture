@@ -41,6 +41,7 @@ export function TaskEditor({
     : (initialDueDate ?? '')
   const initialTime = due ? `${due.getHours() % 12 || 12}:${String(due.getMinutes()).padStart(2, '0')}` : ''
   const initialPeriod = due && due.getHours() >= 12 ? 'PM' : 'AM'
+  const [dueDate, setDueDate] = useState(initialDate)
   useEffect(() => {
     dialog.current?.showModal()
   }, [])
@@ -216,7 +217,8 @@ export function TaskEditor({
             label="Due date"
             name="dueDate"
             type="date"
-            defaultValue={initialDate}
+            value={dueDate}
+            onChange={(event) => setDueDate(event.target.value)}
             optional
             hint="Leave blank for no due date."
           />
@@ -234,7 +236,7 @@ export function TaskEditor({
               <option value="PM">PM</option>
             </SelectField>
           </div>
-          {!task && <TaskRepeatFields unit={repeatUnit} onChange={setRepeatUnit} startDate={initialDate} />}
+          {!task && <TaskRepeatFields unit={repeatUnit} onChange={setRepeatUnit} startDate={dueDate} />}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" loading={busy}>
               Save task

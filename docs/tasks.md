@@ -88,7 +88,9 @@ Add task supports Does not repeat, Daily, and Weekly. Daily accepts an interval 
 days; Weekly accepts an interval in weeks and selected Sunday–Saturday checkboxes
 with Select all. Repeating tasks require a due date. That date anchors the schedule;
 weekly occurrences follow the selected weekdays on or after it. Blank time means
-11:59 PM. Schedules retain the browser's time zone at creation, preserving wall-clock
+11:59 PM. Before weekdays are explicitly selected, the weekly default follows the
+chosen due date; later date changes preserve manually selected weekdays.
+Schedules retain the browser's time zone at creation, preserving wall-clock
 times across DST; spring-forward gaps shift forward and repeated times use the first
 instant. The list displays the schedule and a readable time-zone name.
 
@@ -121,7 +123,8 @@ partial history retries automatically in bounded batches and shows a loading mes
 and an “At least” count on Home. All generation, task writes, deletion exceptions,
 and series stops share the existing Web Lock. Read generation does not change the
 cross-tab user-write marker, preventing refresh loops. Browser storage failures
-return 503; no separate database or PostgreSQL task implementation is introduced.
+return 503. The frontend continues to use this browser database; the staged PostgreSQL
+implementation is described below.
 
 `POST /api/circles/:circleId/tasks` optionally accepts `recurrence: { unit: 'days' |
 'weeks', interval, daysOfWeek, timeZone, end }`. End is `{ kind: 'never' }`,
@@ -174,7 +177,8 @@ Home's outstanding count and survives page refresh.
 It checks the session, current family membership, task ownership, and version under
 the same browser database lock as task edits and status writes. Invalid version
 input returns 400, missing session 401, unavailable task/family 404, stale version
-409, and failed persistence 503. There is no PostgreSQL task delete endpoint yet.
+409, and failed browser persistence 503. The staged backend implements the same
+deletion contract using a PostgreSQL transaction.
 
 Edit task is available in both Tasks and Home and opens the shared Add/Edit form.
 It prefills the title, care profile, caregiver, and due date/time. Saving details
@@ -204,7 +208,41 @@ browsers return 503. Task queries refresh after successful mutations, on window
 focus, and every minute. This mock uses browser storage; it does not synchronize
 different devices or provide real multi-user server persistence.
 
-This increment implements listing, calendar views, creation, editing, deletion, completion,
-repeating tasks, and in-page reminders in the browser mock. Background notification
-delivery and a real PostgreSQL task API remain separate steps. The existing empty backend task controller is not wired up
-by this change.
+## Staged PostgreSQL Backend
+
+The task controller, model, validators, and router in `nurture-api` implement the same
+list/create/edit/status/delete/stop-series contract as the browser mock, including
+`includeUndated` and recurring-task metadata. The migration
+`1795824000000_create-tasks.sql` creates `tasks`, `task_series`, and
+`task_occurrence_exceptions` in the application's existing PostgreSQL database.
+No new production database is created. Only schedule/date exceptions remain after
+deleting an occurrence; its details and completion record are removed.
+
+Routes mount after authentication only when `ENABLE_TASKS_API=true` is set before
+starting the server. This flag has not been enabled, and frontend mock routing has
+not changed. Activation requires running the existing migration command against
+the configured application database and connecting the frontend/authentication/family
+endpoints to the real API together. Browser mock data is not automatically imported.
+Do not enable the flag alone and expect the mock frontend to use PostgreSQL.
+
+Each request checks current family membership inside a transaction and keeps that
+membership locked until commit. Task writes lock their parent series (if any) before
+the occurrence, compare the submitted version, and then save/delete. Concurrent stale
+edits return 409, and repeated status saves at the current version preserve timestamps.
+Generation and stop operations lock the same series, preventing duplicate occurrences
+and regeneration after a stop. Reads generate bounded batches (366 dates per series),
+persist progress, and preserve individually edited and deleted slots. List generation
+locks series in a consistent order; it does not take an exclusive lock on the family row.
+Database failures roll back the whole request and use the shared backend error handler.
+
+Run `npm run test:tasks` from `nurture-api` after repository dependencies are installed.
+Unit tests cover schedule parity with the frontend, DST, history bounds, and strict
+validation. To include integration tests, set `TASK_TEST_DATABASE_URL` to a separate
+local test database whose name contains `test` and differs from `DATABASE_URL`.
+The integration suite uses and removes an isolated schema, applies all migrations,
+and checks real concurrent reads/writes, access revocation, rollback, occurrence
+exceptions, stopping schedules, and the task migration's down operation. It never
+runs against the application's configured database.
+
+Task background push/email delivery remains a separate step; current task reminders
+are in-page only.

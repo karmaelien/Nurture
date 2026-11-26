@@ -145,6 +145,38 @@ it('creates a repeating task through the form and confirms stopping from its exi
   expect(readDb().care.tasks.some((task) => task.title === 'Three daily tasks')).toBe(false)
 })
 
+it.each(['/app/tasks', '/app'])(
+  'uses the chosen due date for weekly defaults on %s and preserves explicit weekday choices',
+  async (path) => {
+    vi.setSystemTime(new Date(2026, 10, 26, 7))
+    setToken((await authApi.login(DEMO_ACCOUNT)).token)
+    const user = userEvent.setup()
+    renderApp(path)
+    const add = await screen.findByRole('button', { name: /^Add task$/i })
+    await waitFor(() => expect(add).toBeEnabled())
+    await user.click(add)
+    const form = within(screen.getByRole('dialog', { name: 'Add task' }))
+    await user.type(form.getByLabelText('Task title'), 'Weekly default test')
+    fireEvent.change(form.getByLabelText('Due date (optional)'), { target: { value: '2026-11-30' } })
+    await user.selectOptions(form.getByLabelText('Repeat'), 'weeks')
+    expect(form.getByRole('checkbox', { name: 'Monday' })).toBeChecked()
+    expect(form.getByRole('checkbox', { name: 'Thursday' })).not.toBeChecked()
+    fireEvent.change(form.getByLabelText('Due date (optional)'), { target: { value: '2026-12-01' } })
+    expect(form.getByRole('checkbox', { name: 'Tuesday' })).toBeChecked()
+    expect(form.getByRole('checkbox', { name: 'Monday' })).not.toBeChecked()
+    await user.click(form.getByRole('checkbox', { name: 'Tuesday' }))
+    await user.click(form.getByRole('checkbox', { name: 'Wednesday' }))
+    fireEvent.change(form.getByLabelText('Due date (optional)'), { target: { value: '2026-12-03' } })
+    expect(form.getByRole('checkbox', { name: 'Wednesday' })).toBeChecked()
+    expect(form.getByRole('checkbox', { name: 'Thursday' })).not.toBeChecked()
+    await user.click(form.getByRole('button', { name: 'Save task' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(
+      readDb().taskSeries?.find((series) => series.title === 'Weekly default test')?.recurrence.daysOfWeek,
+    ).toEqual([3])
+  },
+)
+
 it('validates weekly selections and saves an inclusive weekly end date', async () => {
   vi.setSystemTime(new Date(2026, 10, 26, 7))
   setToken((await authApi.login(DEMO_ACCOUNT)).token)

@@ -496,6 +496,13 @@ the occurrence; version checks still reject stale actions.
 
 #### `GET /api/circles/:circleId/tasks`
 
+The browser mock and staged PostgreSQL API implement these task endpoints. The
+backend router mounts after authentication only with `ENABLE_TASKS_API=true`;
+the frontend still uses browser mock storage. Apply the task migration before
+activation. See [task backend activation and testing](tasks.md#staged-postgresql-backend).
+The mock reports browser persistence failures as 503. Unexpected PostgreSQL errors
+roll back the request and return the shared backend's generic `500 internal_error`.
+
 Query: `{ dueFrom?, dueBefore?, includeUndated?, completedFrom?, completedBefore?, status?, recipientId? }`.
 Date bounds are timestamps filtering `dueAt` or `completedAt`; omitted bounds are
 unbounded. `status` is `pending` or `completed`; omit for both. Filters combine with AND.
@@ -519,7 +526,7 @@ include `historyPending: boolean` and `series: { id, version, title, recipientId
 description, stoppedAt }[]`. Series follow the profile filter, regardless of status.
 When historyPending is true, counts are partial and the client continues loading.
 
-#### `POST /api/circles/:circleId/tasks` (browser mock)
+#### `POST /api/circles/:circleId/tasks`
 
 Body: `{ recipientId, title, dueAt, assignedCaregiverId }`. `dueAt` is a UTC timestamp
 or null; `assignedCaregiverId` is a current family member's ID or null. Titles are
@@ -528,7 +535,7 @@ ID, `status: 'pending'`, and `completedAt: null`. Requires current family member
 and a care profile/caregiver in that family. Invalid input returns 400, a missing
 session returns 401, unavailable family assignments return 404, and failed browser
 persistence returns 503. See [Tasks](tasks.md) for the initial page and form behavior.
-This creation endpoint does not yet have a PostgreSQL implementation.
+The backend uses its existing PostgreSQL connection and a transaction.
 
 Optional `recurrence` is `{ unit: 'days' | 'weeks', interval: 1..365, daysOfWeek:
 number[], timeZone: string, end }`. Weekly schedules require selected weekdays
@@ -540,7 +547,7 @@ an ended/empty remaining schedule returns 400. Each occurrence is independently
 versioned. Editing/deleting/completing one does not alter the others. Deleted slots
 are retained as exceptions to prevent regeneration. See [repeating task behavior](tasks.md#repeating-tasks).
 
-#### `POST /api/circles/:circleId/task-series/:seriesId/stop` (browser mock)
+#### `POST /api/circles/:circleId/task-series/:seriesId/stop`
 
 Body: `{ version }`. Returns 204. Requires authentication and current membership
 in the series' family. Invalid input returns 400, missing session 401, unavailable
@@ -548,9 +555,9 @@ series/family 404, stale version 409, and failed persistence 503. The series ver
 increments on the first stop; repeating with its current stopped version is a no-op.
 Future pending tasks are removed and cannot regenerate; past, undated, and completed
 tasks stay saved. Deletion exceptions also protect individually moved occurrences.
-This endpoint has no PostgreSQL implementation yet.
+The backend serializes generation and stopping with a parent-series row lock.
 
-#### `PATCH /api/circles/:circleId/tasks/:taskId` (browser mock)
+#### `PATCH /api/circles/:circleId/tasks/:taskId`
 
 Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { task }`.
 Alternatively accepts complete details `{ recipientId, title, dueAt,
@@ -565,16 +572,17 @@ New tasks start at version 1. Changing status increments it and sets `completedA
 to the save time for completed tasks, or null for pending tasks. Repeating the
 current status with the current version preserves both timestamp and version.
 The version check and write run under the shared browser database lock.
-This endpoint does not yet have a PostgreSQL implementation.
+The backend checks versions under a row lock in the same transaction as the write.
 
-#### `DELETE /api/circles/:circleId/tasks/:taskId` (browser mock)
+#### `DELETE /api/circles/:circleId/tasks/:taskId`
 
 Body: `{ version: number }`. Returns `204` and permanently removes the task,
 including its completion record. Current family membership, task ownership, and
 the exact version are checked under the shared browser database lock. Invalid input
 returns 400, missing session 401, inaccessible/missing task or family 404, stale
 version 409 (`edit_conflict`), and failed browser persistence 503. List queries and
-Home counts refresh after success. This endpoint has no PostgreSQL implementation yet.
+Home counts refresh after success. The backend uses a PostgreSQL transaction and
+records a schedule/date exception before deleting a recurring occurrence.
 
 #### `GET /api/circles/:circleId/expenses`
 
@@ -773,7 +781,7 @@ deletion rolls back and can be retried. A missing or already-deleted document re
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
-- **Tasks:** create/update/delete operations and recurring task schedules.
+- **Task activation:** migrate and enable the staged PostgreSQL task API alongside real authentication/family endpoints. Task CRUD, repeating schedules, and in-page reminders are implemented; background task notification delivery remains future work.
 - **Medication activation and push delivery:** migrate and enable the PostgreSQL medication API and optional Web Push service when the real app endpoints are ready. Configure VAPID keys and verify provider delivery in a permitted browser; see [medications](medications.md#closed-app-notifications).
 - **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 - **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.

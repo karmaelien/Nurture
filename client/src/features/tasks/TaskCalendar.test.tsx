@@ -32,6 +32,16 @@ async function open(now = new Date(2026, 10, 26, 12)) {
   return { calendar, user: userEvent.setup() }
 }
 
+it('matches due-soon labels between calendar blocks, popup rows, and task list rows', async () => {
+  const { calendar, user } = await open(new Date(2026, 10, 26, 7, 30))
+  const block = within(calendar).getByRole('button', { name: /Calendar task for Rose.*Due soon/ })
+  const list = screen.getByRole('region', { name: 'Task list' })
+  const row = within(list).getByRole('heading', { name: 'Calendar task' }).closest('li')!
+  expect(within(row).getByText('Due soon')).toBeInTheDocument()
+  await user.click(block)
+  expect(within(screen.getByRole('dialog', { name: 'Task Details' })).getByText('Due soon')).toBeInTheDocument()
+})
+
 it('shares case-insensitive title search and assignment filters across the list and calendar', async () => {
   const { calendar, user } = await open()
   const list = screen.getByRole('region', { name: 'Task list' })

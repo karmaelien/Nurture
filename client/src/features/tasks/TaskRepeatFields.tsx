@@ -12,9 +12,10 @@ export function TaskRepeatFields({
   onChange: (unit: TaskRepeatUnit) => void
   startDate: string
 }) {
-  const [selected, setSelected] = useState(() => [
-    startDate ? new Date(`${startDate}T00:00:00`).getDay() : new Date().getDay(),
-  ])
+  const [today] = useState(() => new Date().getDay())
+  const [chosenDays, setSelected] = useState<number[] | null>(null)
+  // Follow the due date until the user explicitly chooses weekdays; preserve their choices afterward.
+  const selected = chosenDays ?? [startDate ? new Date(`${startDate}T00:00:00`).getDay() : today]
   const [ending, setEnding] = useState('never')
   return (
     <>

@@ -9,6 +9,7 @@ import { formatTime } from '../home/dashboard.ts'
 import { TaskListItem } from './TaskListItem.tsx'
 import { compareTasks } from './task-order.ts'
 import { matchesTask } from './task-filter.ts'
+import { taskAttention } from './task-attention.ts'
 
 type View = 'daily' | 'weekly' | 'monthly'
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -150,8 +151,9 @@ export function TaskCalendar({
       <>
         <ul className={hour === undefined ? 'mt-2 grid gap-1' : 'grid grid-flow-col auto-cols-fr gap-1'}>
           {entries.slice(0, 3).map((task) => {
-            const overdue = task.status === 'pending' && Date.parse(task.dueAt!) < now
-            const description = `${task.title} for ${personName(task.recipientId)}, ${formatTime(task.dueAt!)}, ${task.status === 'completed' ? 'Completed' : overdue ? 'Overdue' : 'To Do'}`
+            const attention = taskAttention(task, now)
+            const overdue = attention === 'overdue'
+            const description = `${task.title} for ${personName(task.recipientId)}, ${formatTime(task.dueAt!)}, ${task.status === 'completed' ? 'Completed' : overdue ? 'Overdue' : attention === 'soon' ? 'Due soon' : 'To Do'}`
             return (
               <li key={task.id} className="min-w-0">
                 <button
