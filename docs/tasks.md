@@ -29,6 +29,33 @@ below pending tasks when the status filter includes them. Home counts only pendi
 tasks and retains today's completed tasks in its date-bounded panel for undo.
 Both lists have capped scrolling areas.
 
+## Calendar
+
+Tasks has a full-width calendar below its list, using the appointment/medication
+calendar styling. Daily and Weekly views use hourly rows; Monthly uses fixed-height
+day cells. The calendar has its own capped scrolling area. Today and Previous/Next
+navigate the visible period, and month navigation restores the preferred day after
+shorter months. Local date boundaries keep deadlines on the correct dates across DST.
+
+The calendar shares the list's care-profile/status filters and saved task query.
+It places tasks at their due date/time; tasks have deadlines, not invented durations.
+Undated tasks remain available in the main list. Completed blocks use strikethrough;
+pending tasks past their deadline have a red overdue outline. Month cells show up
+to three tasks with a more button. Hourly rows place up to three tasks side by side;
+their overflow opens only that hour's tasks.
+
+Click a month date/cell or a day/week heading for that day's filtered task list,
+including empty dates. Individual blocks open Task Details. Popups use the same
+completion, Edit task, and Delete task controls as Tasks/Home. Add task prefills
+the clicked due date and current profile; leaving time blank means end of that day.
+The popup closes before an editor or delete confirmation opens, avoiding stacked
+dialogs. Close, Escape, and click-away dismiss the popup. Profile/status changes,
+failed refreshes, or removal of a selected individual task hide stale controls.
+All task writes refresh both calendar and lists. Existing version checks, write
+locking, and persistence failures apply to calendar actions as well.
+
+## Task Changes
+
 Delete task is available on Tasks and Home. Its red-outline action opens a shared
 confirmation naming the task; deletion is permanent, including the completion record
 for a completed task. Keep task, Close, Escape, or clicking outside cancels without
@@ -72,7 +99,7 @@ browsers return 503. Task queries refresh after successful mutations, on window
 focus, and every minute. This mock uses browser storage; it does not synchronize
 different devices or provide real multi-user server persistence.
 
-This increment implements listing, creation, editing, deletion, and completion in the browser mock.
+This increment implements listing, calendar views, creation, editing, deletion, and completion in the browser mock.
 Recurrence, reminders, and a real PostgreSQL task API
 remain separate steps. The existing empty backend task controller is not wired up
 by this change.

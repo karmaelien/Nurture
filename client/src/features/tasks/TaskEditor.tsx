@@ -14,12 +14,14 @@ export function TaskEditor({
   circle,
   recipientId,
   task,
+  initialDueDate,
   onClose,
   onSaved,
 }: {
   circle: CircleDetail
   recipientId: string
   task?: CareTask
+  initialDueDate?: string
   onClose: () => void
   onSaved?: () => void
 }) {
@@ -33,7 +35,7 @@ export function TaskEditor({
   const due = task?.dueAt ? new Date(task.dueAt) : null
   const initialDate = due
     ? `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`
-    : ''
+    : (initialDueDate ?? '')
   const initialTime = due ? `${due.getHours() % 12 || 12}:${String(due.getMinutes()).padStart(2, '0')}` : ''
   const initialPeriod = due && due.getHours() >= 12 ? 'PM' : 'AM'
   useEffect(() => {

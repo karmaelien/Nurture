@@ -15,12 +15,14 @@ import { TaskListItem } from './TaskListItem.tsx'
 import { compareTasks } from './task-order.ts'
 import { TaskEditor } from './TaskEditor.tsx'
 import { TaskDeleteDialog } from './TaskDeleteDialog.tsx'
+import { TaskCalendar } from './TaskCalendar.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [recipientId, setRecipientId] = useState('')
   const [status, setStatus] = useState<CareTask['status'] | ''>('')
   const [adding, setAdding] = useState(false)
+  const [addDate, setAddDate] = useState<string>()
   const [editing, setEditing] = useState<CareTask | null>(null)
   const [deleting, setDeleting] = useState<CareTask | null>(null)
   const now = useMinute().getTime()
@@ -31,6 +33,11 @@ function TaskList({ circle }: { circle: CircleSummary }) {
     retry: false,
   })
   const sorted = [...(tasks.data ?? [])].sort(compareTasks)
+  const caregiverName = (id: string | null) =>
+    id === null
+      ? 'Unassigned'
+      : (detail.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
+        (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
   return (
     <>
       {deleting && <TaskDeleteDialog task={deleting} circleId={circle.id} onClose={() => setDeleting(null)} />}
@@ -51,7 +58,10 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         <Button
           className="sm:ml-auto"
           disabled={!detail.data || detail.isError || !circle.recipients.length}
-          onClick={() => setAdding(true)}
+          onClick={() => {
+            setAddDate(undefined)
+            setAdding(true)
+          }}
         >
           Add task
         </Button>
@@ -61,9 +71,11 @@ function TaskList({ circle }: { circle: CircleSummary }) {
           circle={detail.data.circle}
           recipientId={recipientId}
           task={editing ?? undefined}
+          initialDueDate={editing ? undefined : addDate}
           onClose={() => {
             setAdding(false)
             setEditing(null)
+            setAddDate(undefined)
           }}
           onSaved={() => {
             if (!editing) {
@@ -98,11 +110,6 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         ) : (
           <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
             {sorted.map((task) => {
-              const caregiver =
-                task.assignedCaregiverId === null
-                  ? 'Unassigned'
-                  : (detail.data?.circle.members.find((member) => member.user.id === task.assignedCaregiverId)?.user
-                      .name ?? (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
               return (
                 <TaskListItem
                   key={task.id}
@@ -112,7 +119,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
                     circle.recipients.find((person) => person.id === task.recipientId)?.name ??
                     'Care profile unavailable'
                   }
-                  caregiver={caregiver}
+                  caregiver={caregiverName(task.assignedCaregiverId)}
                   now={now}
                   onEdit={detail.data && !detail.isError ? () => setEditing(task) : undefined}
                   onDelete={() => setDeleting(task)}
@@ -122,6 +129,24 @@ function TaskList({ circle }: { circle: CircleSummary }) {
           </ul>
         )}
       </section>
+      <TaskCalendar
+        circle={circle}
+        query={tasks}
+        recipientId={recipientId}
+        status={status}
+        now={now}
+        caregiverName={caregiverName}
+        onAdd={
+          detail.data && !detail.isError && circle.recipients.length
+            ? (date) => {
+                setAddDate(date)
+                setAdding(true)
+              }
+            : undefined
+        }
+        onEdit={detail.data && !detail.isError ? (task) => setEditing(task) : undefined}
+        onDelete={setDeleting}
+      />
     </>
   )
 }

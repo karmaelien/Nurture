@@ -1,0 +1,158 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import { afterEach, expect, it, vi } from 'vitest'
+import { authApi } from '../../api/auth.ts'
+import { setToken } from '../../api/token.ts'
+import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
+import { renderApp } from '../../test/renderApp.tsx'
+import { server } from '../../test/setup.ts'
+
+afterEach(() => vi.useRealTimers())
+const fullDate = (day: number) => new Date(2026, 10, day).toLocaleDateString(undefined, { dateStyle: 'full' })
+async function open(now = new Date(2026, 10, 26, 12)) {
+  vi.setSystemTime(now)
+  setToken((await authApi.login(DEMO_ACCOUNT)).token)
+  const db = readDb()
+  const template = db.care.tasks[0]
+  const at = (hour: number, minute = 0, day = 26) => new Date(2026, 10, day, hour, minute).toISOString()
+  db.care.tasks = [
+    { ...template, id: 'calendar', title: 'Calendar task', dueAt: at(8) },
+    { ...template, id: 'second', title: 'Second task', dueAt: at(8, 10) },
+    { ...template, id: 'third', title: 'Third task', recipientId: 'r_frank', dueAt: at(8, 20) },
+    { ...template, id: 'fourth', title: 'Fourth task', dueAt: at(8, 30), status: 'completed', completedAt: at(8, 35) },
+    { ...template, id: 'later', title: 'Later task', dueAt: at(9) },
+    { ...template, id: 'undated', title: 'Undated task', dueAt: null },
+    { ...template, id: 'tomorrow', title: 'Tomorrow task', recipientId: 'r_frank', dueAt: at(0, 0, 27) },
+  ]
+  writeDb(db)
+  renderApp('/app/tasks')
+  const calendar = await screen.findByRole('region', { name: 'Task Calendar' })
+  await within(calendar).findByRole('table')
+  return { calendar, user: userEvent.setup() }
+}
+
+it('caps month blocks, expands all tasks for the date, and updates completed styling', async () => {
+  const { calendar, user } = await open()
+  expect(within(calendar).getByRole('button', { name: /Calendar task for Rose.*Overdue/ })).toHaveClass('border-danger')
+  expect(within(calendar).queryByRole('button', { name: /Undated task for/ })).not.toBeInTheDocument()
+  expect(within(screen.getByRole('region', { name: 'Task list' })).getByText('Undated task')).toBeInTheDocument()
+  await user.click(within(calendar).getByRole('button', { name: /Show all tasks on/ }))
+  const dialog = screen.getByRole('dialog', { name: 'Tasks' })
+  expect(within(dialog).getAllByRole('listitem')).toHaveLength(5)
+  expect(within(dialog).queryByText('Tomorrow task')).not.toBeInTheDocument()
+  await user.click(within(dialog).getByRole('button', { name: 'Mark Completed: Calendar task' }))
+  await within(dialog).findByRole('button', { name: 'Mark To Do: Calendar task' })
+  expect(within(calendar).getByRole('button', { name: /Calendar task for Rose.*Completed/ })).toHaveClass(
+    'line-through',
+  )
+  fireEvent.click(dialog, { clientX: -10, clientY: -10 })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('uses hourly day/week rows and limits overflow to its hour', async () => {
+  const { calendar, user } = await open()
+  await user.click(within(calendar).getByRole('button', { name: 'Daily' }))
+  expect(within(calendar).getAllByRole('rowheader')).toHaveLength(24)
+  await user.click(within(calendar).getByRole('button', { name: /Show all tasks at/ }))
+  const dialog = screen.getByRole('dialog', { name: 'Tasks' })
+  expect(within(dialog).getAllByRole('listitem')).toHaveLength(4)
+  expect(within(dialog).queryByText('Later task')).not.toBeInTheDocument()
+  await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Weekly' }))
+  expect(within(calendar).getAllByRole('rowheader')).toHaveLength(24)
+  expect(within(calendar).getByRole('columnheader', { name: /Nov 22/ })).toBeInTheDocument()
+  await user.click(within(calendar).getByRole('button', { name: `View tasks for ${fullDate(27)}` }))
+  expect(within(screen.getByRole('dialog', { name: 'Tasks' })).getByText('Tomorrow task')).toBeInTheDocument()
+})
+
+it('prefills the clicked date and selected profile when adding from an empty day', async () => {
+  const { calendar, user } = await open()
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+  await within(calendar).findByRole('table')
+  const day = within(calendar).getByRole('button', { name: `View tasks for ${fullDate(28)}` })
+  day.focus()
+  await user.keyboard('{Enter}')
+  const popup = screen.getByRole('dialog', { name: 'Tasks' })
+  expect(within(popup).getByText('No tasks due for the selected filters on this date.')).toBeInTheDocument()
+  await user.click(within(popup).getByRole('button', { name: 'Add task' }))
+  const editor = screen.getByRole('dialog', { name: 'Add task' })
+  expect(popup).not.toHaveAttribute('open')
+  expect(within(editor).getByLabelText('Due date (optional)')).toHaveValue('2026-11-28')
+  expect(within(editor).getByLabelText('Care profile')).toHaveValue('r_frank')
+  await user.type(within(editor).getByLabelText('Task title'), 'Calendar addition')
+  await user.click(within(editor).getByRole('button', { name: 'Save task' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(await within(calendar).findByRole('button', { name: /Calendar addition for Frank/ })).toBeInTheDocument()
+  expect(readDb().care.tasks.find((task) => task.title === 'Calendar addition')).toMatchObject({
+    recipientId: 'r_frank',
+    dueAt: new Date(2026, 10, 28, 23, 59).toISOString(),
+  })
+})
+
+it('opens existing edit and delete dialogs without stacking calendar popups', async () => {
+  const { calendar, user } = await open()
+  await user.click(within(calendar).getByRole('button', { name: /Calendar task for Rose/ }))
+  let popup = screen.getByRole('dialog', { name: 'Task Details' })
+  await user.click(within(popup).getByRole('button', { name: 'Edit task: Calendar task' }))
+  const editor = screen.getByRole('dialog', { name: 'Edit task' })
+  expect(popup).not.toHaveAttribute('open')
+  await user.clear(within(editor).getByLabelText('Task title'))
+  await user.type(within(editor).getByLabelText('Task title'), 'Renamed task')
+  await user.click(within(editor).getByRole('button', { name: 'Save task' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(within(calendar).getByRole('button', { name: /Renamed task for Rose/ }))
+  popup = screen.getByRole('dialog', { name: 'Task Details' })
+  await user.click(within(popup).getByRole('button', { name: 'Delete task: Renamed task' }))
+  const confirmation = screen.getByRole('dialog', { name: 'Delete task?' })
+  expect(popup).not.toHaveAttribute('open')
+  await user.click(within(confirmation).getByRole('button', { name: 'Delete task' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(within(calendar).queryByRole('button', { name: /Renamed task for Rose/ })).not.toBeInTheDocument()
+  expect(readDb().care.tasks.some((task) => task.id === 'calendar')).toBe(false)
+})
+
+it('filters completed tasks and retains its viewed period when changing profiles', async () => {
+  const { calendar, user } = await open()
+  await user.selectOptions(screen.getByLabelText('Status'), 'completed')
+  expect(await within(calendar).findByRole('button', { name: /Fourth task for Rose.*Completed/ })).toHaveClass(
+    'line-through',
+  )
+  expect(within(calendar).queryByRole('button', { name: /Calendar task for Rose/ })).not.toBeInTheDocument()
+  await user.click(within(calendar).getByRole('button', { name: 'Next month' }))
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+  await within(calendar).findByRole('heading', { name: 'December 2026' })
+  await within(calendar).findByText('No tasks due this month.')
+})
+
+it('restores the preferred day after short months and handles weeks crossing a year boundary', async () => {
+  const { calendar, user } = await open(new Date(2027, 0, 31, 12))
+  await user.click(within(calendar).getByRole('button', { name: 'Next month' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Next month' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Daily' }))
+  expect(
+    within(calendar).getByRole('heading', {
+      name: new Date(2027, 2, 31).toLocaleDateString(undefined, { dateStyle: 'full' }),
+    }),
+  ).toBeInTheDocument()
+  await user.click(within(calendar).getByRole('button', { name: 'Today' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Monthly' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Previous month' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Daily' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Next day' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Weekly' }))
+  expect(within(calendar).getByRole('columnheader', { name: /Dec 27/ })).toBeInTheDocument()
+  expect(within(calendar).getByRole('columnheader', { name: /Jan 2/ })).toBeInTheDocument()
+})
+
+it('hides stale popup controls on a failed refresh and retries the same calendar period', async () => {
+  const { calendar, user } = await open()
+  await user.click(within(calendar).getByRole('button', { name: /Calendar task for Rose/ }))
+  expect(screen.getByRole('dialog', { name: 'Task Details' })).toBeInTheDocument()
+  server.use(http.get('/api/circles/:circleId/tasks', () => new HttpResponse(null, { status: 502 }), { once: true }))
+  fireEvent.focus(window)
+  expect(await within(calendar).findByRole('alert')).toHaveTextContent('502')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
+  expect(await within(calendar).findByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
+})
