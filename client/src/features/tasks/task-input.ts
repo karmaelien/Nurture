@@ -12,6 +12,8 @@ export const taskStatusSchema = z.strictObject({
   version: z.number().int().positive().max(2147483646),
 })
 
+export const taskUpdateSchema = taskInputSchema.extend({ version: taskStatusSchema.shape.version })
+
 /** Dates and typed 12-hour times belong to the viewer's local zone. A date alone
  * means end of day; reject normalized calendar dates and nonexistent DST times.
  */

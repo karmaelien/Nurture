@@ -20,6 +20,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
   const [recipientId, setRecipientId] = useState('')
   const [status, setStatus] = useState<CareTask['status'] | ''>('')
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<CareTask | null>(null)
   const now = useMinute().getTime()
   const tasks = useTasks(circle.id, { recipientId: recipientId || undefined, status: status || undefined })
   const detail = useQuery({
@@ -46,20 +47,26 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         </SelectField>
         <Button
           className="sm:ml-auto"
-          disabled={!detail.data || !circle.recipients.length}
+          disabled={!detail.data || detail.isError || !circle.recipients.length}
           onClick={() => setAdding(true)}
         >
           Add task
         </Button>
       </div>
-      {adding && detail.data && (
+      {(adding || editing) && detail.data && !detail.isError && (
         <TaskEditor
           circle={detail.data.circle}
           recipientId={recipientId}
-          onClose={() => setAdding(false)}
+          task={editing ?? undefined}
+          onClose={() => {
+            setAdding(false)
+            setEditing(null)
+          }}
           onSaved={() => {
-            setRecipientId('')
-            setStatus('pending')
+            if (!editing) {
+              setRecipientId('')
+              setStatus('pending')
+            }
           }}
         />
       )}
@@ -104,6 +111,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
                   }
                   caregiver={caregiver}
                   now={now}
+                  onEdit={detail.data && !detail.isError ? () => setEditing(task) : undefined}
                 />
               )
             })}

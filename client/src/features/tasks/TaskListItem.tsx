@@ -15,6 +15,7 @@ export function TaskListItem({
   caregiver,
   now,
   compact = false,
+  onEdit,
 }: {
   task: CareTask
   circleId: string
@@ -22,6 +23,7 @@ export function TaskListItem({
   caregiver: string
   now: number
   compact?: boolean
+  onEdit?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -70,16 +72,26 @@ export function TaskListItem({
           {new Date(task.completedAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
         </p>
       )}
-      <Button
-        className="mt-3"
-        variant="outline"
-        size="sm"
-        loading={busy}
-        onClick={() => void changeStatus()}
-        aria-label={`${action}: ${task.title}`}
-      >
-        {action}
-      </Button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          loading={busy}
+          onClick={() => void changeStatus()}
+          aria-label={`${action}: ${task.title}`}
+        >
+          {action}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !onEdit}
+          onClick={onEdit}
+          aria-label={`Edit task: ${task.title}`}
+        >
+          Edit task
+        </Button>
+      </div>
       {error && (
         <div className="mt-3">
           <Alert tone="danger">{error}</Alert>

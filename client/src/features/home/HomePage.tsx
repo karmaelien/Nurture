@@ -14,6 +14,7 @@ import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
 import { TaskListItem } from '../tasks/TaskListItem.tsx'
+import { TaskEditor } from '../tasks/TaskEditor.tsx'
 import { compareTasks } from '../tasks/task-order.ts'
 import { useHomeAppointments } from './useHomeAppointments.ts'
 import { dashboardWindow, formatMoney, formatTime } from './dashboard.ts'
@@ -39,6 +40,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [recipientId, setRecipientId] = useState('')
+  const [editingTask, setEditingTask] = useState<CareTask | null>(null)
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
@@ -105,6 +107,14 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     .sort(compareTasks)
   return (
     <>
+      {editingTask && details.data && !details.isError && (
+        <TaskEditor
+          circle={details.data.circle}
+          recipientId={recipientId}
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <p className="text-muted">
           {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -160,6 +170,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                 caregiver={assigned(task.assignedCaregiverId)}
                 now={now.getTime()}
                 compact
+                onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
               />
             ))}
           </ul>

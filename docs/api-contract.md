@@ -417,6 +417,11 @@ This creation endpoint does not yet have a PostgreSQL implementation.
 #### `PATCH /api/circles/:circleId/tasks/:taskId` (browser mock)
 
 Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { task }`.
+Alternatively accepts complete details `{ recipientId, title, dueAt,
+assignedCaregiverId, version }`, with the same field validation as POST.
+Details edits preserve status and completedAt and increment the version only when
+fields change. New profile/caregiver assignments must belong to the same family.
+Status and details cannot be combined in one request.
 Requires current family membership and a task belonging to a care profile in that
 family. Invalid input returns 400; missing session 401; inaccessible task/family
 404; stale version 409 (`edit_conflict`); failed browser persistence 503.

@@ -29,9 +29,22 @@ below pending tasks when the status filter includes them. Home counts only pendi
 tasks and retains today's completed tasks in its date-bounded panel for undo.
 Both lists have capped scrolling areas.
 
-`PATCH /api/circles/:circleId/tasks/:taskId` accepts `{ status, version }` and returns
+Edit task is available in both Tasks and Home and opens the shared Add/Edit form.
+It prefills the title, care profile, caregiver, and due date/time. Saving details
+preserves completion status and its timestamp. An unchanged due date/time retains
+its exact stored instant, including seconds and repeated daylight-saving hours.
+Clear both due fields to remove a deadline; select Unassigned to remove the caregiver.
+Editing preserves current page filters, so moving a task to another profile or outside
+Home's date range can remove it from that list. The task remains saved on Tasks.
+Close, Cancel, Escape, and click-away discard the draft; dismissal and duplicate
+submissions are blocked while saving. Failed saves keep the draft visible. A stale
+version refreshes the lists but keeps the editor's original version: close and reopen
+to review the latest task rather than silently overwriting another caregiver's change.
+
+`PATCH /api/circles/:circleId/tasks/:taskId` accepts `{ status, version }` or the complete
+`{ recipientId, title, dueAt, assignedCaregiverId, version }` details and returns
 `{ task }`. New tasks start at version 1; legacy browser tasks receive version 1
-without resetting their data. A changed status increments the version. Repeating
+without resetting their data. Changed details or status increment the version. Repeating
 the current status with the current version leaves its timestamp and version intact.
 The mock checks current membership and task ownership on every request. A stale
 version returns 409, including when another user completed and then reopened the
@@ -44,7 +57,7 @@ browsers return 503. Task queries refresh after successful mutations, on window
 focus, and every minute. This mock uses browser storage; it does not synchronize
 different devices or provide real multi-user server persistence.
 
-This increment implements listing, creation, and completion in the browser mock. Editing,
-deletion, recurrence, reminders, and a real PostgreSQL task API
+This increment implements listing, creation, editing, and completion in the browser mock.
+Deletion, recurrence, reminders, and a real PostgreSQL task API
 remain separate steps. The existing empty backend task controller is not wired up
 by this change.

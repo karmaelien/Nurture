@@ -1,6 +1,6 @@
 import { HttpResponse } from 'msw'
 import { http } from './http.ts'
-import { taskInputSchema, taskStatusSchema } from '../features/tasks/task-input.ts'
+import { taskInputSchema, taskStatusSchema, taskUpdateSchema } from '../features/tasks/task-input.ts'
 import { readDb, writeDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
@@ -55,18 +55,36 @@ export const taskHandlers = [
       (item) => item.id === params.taskId && circle.recipients.some((person) => person.id === item.recipientId),
     )
     if (!task) return error(404, 'not_found', 'This task is unavailable.')
-    const parsed = taskStatusSchema.safeParse(body)
+    const parsed = taskStatusSchema.or(taskUpdateSchema).safeParse(body)
     if (!parsed.success)
-      return error(400, 'validation_error', 'Choose To Do or Completed and provide the current task version.')
+      return error(
+        400,
+        'validation_error',
+        'Provide valid task details or a status change, and the current task version.',
+      )
     if (task.version !== parsed.data.version)
       return error(
         409,
         'edit_conflict',
         'This task changed in another tab or by another caregiver. The list has been refreshed; review its current status.',
       )
-    if (task.status === parsed.data.status) return HttpResponse.json({ task })
-    task.status = parsed.data.status
-    task.completedAt = task.status === 'completed' ? new Date().toISOString() : null
+    if ('status' in parsed.data) {
+      if (task.status === parsed.data.status) return HttpResponse.json({ task })
+      task.status = parsed.data.status
+      task.completedAt = task.status === 'completed' ? new Date().toISOString() : null
+    } else {
+      const { version: _version, ...details } = parsed.data
+      if (
+        !circle.recipients.some((person) => person.id === details.recipientId) ||
+        (details.assignedCaregiverId !== null &&
+          !circle.members.some((member) => member.user.id === details.assignedCaregiverId))
+      )
+        return error(404, 'not_found', 'This care profile or caregiver is unavailable.')
+      if (Object.entries(details).every(([key, value]) => task[key as keyof typeof details] === value))
+        return HttpResponse.json({ task })
+      // Editing details never changes completion state or the original completion timestamp.
+      Object.assign(task, details)
+    }
     task.version += 1
     writeDb(db)
     const saved = readDb().care.tasks.find((item) => item.id === task.id)

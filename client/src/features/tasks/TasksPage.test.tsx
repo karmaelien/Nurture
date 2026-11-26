@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
@@ -203,4 +203,151 @@ it('rejects inaccessible tasks, invalid versions, and failed persistence', async
   db.circles[0].members = []
   writeDb(db)
   await expect(careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)).rejects.toMatchObject({ status: 404 })
+})
+
+it('edits all details from Home, submits once, and persists them on Tasks after a fresh mount', async () => {
+  vi.setSystemTime(new Date(2026, 10, 26, 12))
+  try {
+    await login()
+    const user = userEvent.setup()
+    renderApp('/app')
+    const edit = await screen.findByRole('button', { name: 'Edit task: Pick up prescription' })
+    await waitFor(() => expect(edit).toBeEnabled())
+    await user.click(edit)
+    const dialog = screen.getByRole('dialog', { name: 'Edit task' })
+    const form = within(dialog)
+    expect(form.getByLabelText('Task title')).toHaveValue('Pick up prescription')
+    await user.clear(form.getByLabelText('Task title'))
+    await user.type(form.getByLabelText('Task title'), 'Collect supplies')
+    await user.selectOptions(form.getByLabelText('Care profile'), 'r_frank')
+    await user.selectOptions(form.getByLabelText('Caregiver (optional)'), 'u_daniel')
+    fireEvent.change(form.getByLabelText('Due date (optional)'), { target: { value: '2026-11-27' } })
+    fireEvent.change(form.getByLabelText('Due time (optional)'), { target: { value: '2:30' } })
+    await user.selectOptions(form.getByLabelText('AM/PM'), 'PM')
+    const save = vi.spyOn(careApi, 'updateTask')
+    try {
+      fireEvent.submit(dialog.querySelector('form')!)
+      fireEvent.submit(dialog.querySelector('form')!)
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(save).toHaveBeenCalledTimes(1)
+    } finally {
+      save.mockRestore()
+    }
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      title: 'Collect supplies',
+      recipientId: 'r_frank',
+      assignedCaregiverId: 'u_daniel',
+      dueAt: new Date('2026-11-27T14:30').toISOString(),
+      status: 'pending',
+      completedAt: null,
+      version: 2,
+    })
+    cleanup()
+    renderApp('/app/tasks')
+    const list = await screen.findByRole('region', { name: 'Task list' })
+    const entry = (await within(list).findByText('Collect supplies')).closest('li')!
+    expect(within(entry).getByText('Frank Alvarez · Caregiver: Daniel Alvarez')).toBeInTheDocument()
+    await user.click(within(entry).getByRole('button', { name: 'Edit task: Collect supplies' }))
+    const updated = screen.getByRole('dialog', { name: 'Edit task' })
+    expect(within(updated).getByLabelText('Due time (optional)')).toHaveValue('2:30')
+    expect(within(updated).getByLabelText('AM/PM')).toHaveValue('PM')
+    fireEvent.change(within(updated).getByLabelText('Due date (optional)'), { target: { value: '' } })
+    await user.clear(within(updated).getByLabelText('Due time (optional)'))
+    await user.selectOptions(within(updated).getByLabelText('Caregiver (optional)'), '')
+    await user.click(within(updated).getByRole('button', { name: 'Save task' }))
+    await waitFor(() => expect(updated).not.toBeInTheDocument())
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      dueAt: null,
+      assignedCaregiverId: null,
+      version: 3,
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('rejects an editor opened before completion and undo without overwriting its draft', async () => {
+  await login()
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  const button = await screen.findByRole('button', { name: 'Edit task: Pick up prescription' })
+  await waitFor(() => expect(button).toBeEnabled())
+  await user.click(button)
+  const dialog = screen.getByRole('dialog', { name: 'Edit task' })
+  await user.type(within(dialog).getByLabelText('Task title'), ' draft')
+  await careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1)
+  await careApi.updateTaskStatus('c_demo', 't_overdue', 'pending', 2)
+  await user.click(within(dialog).getByRole('button', { name: 'Save task' }))
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent('Close and reopen the editor')
+  expect(within(dialog).getByLabelText('Task title')).toHaveValue('Pick up prescription draft')
+  expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+    title: 'Pick up prescription',
+    status: 'pending',
+    version: 3,
+  })
+  fireEvent.click(dialog, { clientX: -10, clientY: -10 })
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+})
+
+it('preserves completion history and exact due timestamps when only the title changes', async () => {
+  await login()
+  const db = readDb()
+  const task = db.care.tasks.find((task) => task.id === 't_overdue')!
+  task.dueAt = '2026-11-01T06:30:45.123Z'
+  writeDb(db)
+  const completed = (await careApi.updateTaskStatus('c_demo', task.id, 'completed', 1)).task
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  const edit = await screen.findByRole('button', { name: 'Edit task: Pick up prescription' })
+  await waitFor(() => expect(edit).toBeEnabled())
+  await user.click(edit)
+  const dialog = screen.getByRole('dialog', { name: 'Edit task' })
+  await user.type(within(dialog).getByLabelText('Task title'), ' updated')
+  await user.click(within(dialog).getByRole('button', { name: 'Save task' }))
+  await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  const saved = readDb().care.tasks.find((task) => task.id === 't_overdue')!
+  expect(saved).toMatchObject({
+    dueAt: task.dueAt,
+    status: 'completed',
+    completedAt: completed.completedAt,
+    version: 3,
+  })
+  const { recipientId, title, dueAt, assignedCaregiverId, version } = saved
+  expect(
+    (await careApi.updateTask('c_demo', saved.id, { recipientId, title, dueAt, assignedCaregiverId, version })).task
+      .version,
+  ).toBe(version)
+})
+
+it('validates edit assignments, serializes competing edits, and reports failed persistence', async () => {
+  const body = { title: 'Updated task', recipientId: 'r_frank', assignedCaregiverId: null, dueAt: null, version: 1 }
+  await expect(careApi.updateTask('c_demo', 't_overdue', body)).rejects.toMatchObject({ status: 401 })
+  await login()
+  await expect(careApi.updateTask('c_demo', 't_overdue', { ...body, recipientId: 'outside' })).rejects.toMatchObject({
+    status: 404,
+  })
+  await expect(
+    careApi.updateTask('c_demo', 't_overdue', { ...body, assignedCaregiverId: 'outside' }),
+  ).rejects.toMatchObject({ status: 404 })
+  await expect(careApi.updateTask('c_demo', 't_overdue', { ...body, version: 0 })).rejects.toMatchObject({
+    status: 400,
+  })
+  const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Full', 'QuotaExceededError')
+  })
+  try {
+    await expect(careApi.updateTask('c_demo', 't_overdue', body)).rejects.toMatchObject({ status: 503 })
+    expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
+      title: 'Pick up prescription',
+      version: 1,
+    })
+  } finally {
+    storage.mockRestore()
+  }
+  const results = await Promise.allSettled([
+    careApi.updateTask('c_demo', 't_overdue', body),
+    careApi.updateTaskStatus('c_demo', 't_overdue', 'completed', 1),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { status: 409 } })
 })
