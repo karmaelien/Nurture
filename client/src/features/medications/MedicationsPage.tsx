@@ -16,7 +16,7 @@ export function MedicationsPage() {
         <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
       </div>
       {circle ? (
-        <MedicationPanel key={circle.id} circle={circle} />
+        <MedicationPanel key={circle.id} circle={circle} expanded />
       ) : (
         <p className="text-muted">Choose an available care circle above to view its medications.</p>
       )}

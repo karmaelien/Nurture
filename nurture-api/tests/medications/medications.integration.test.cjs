@@ -460,6 +460,7 @@ test(
           .send({
             ...details,
             name: 'Stopped course',
+            assignedCaregiverId: null, // The previous access test removed the assigned caregiver.
             schedule: { ...schedule, end: { kind: 'never' } },
           })
           .expect(201)
@@ -540,6 +541,96 @@ test(
       assert.ok(!(await load()).some((dose) => dose.medicationId === medication.id));
       await auth(request(app).delete(item)).send({ version: current.version }).expect(404);
       await auth(request(app).delete(backfillItem)).send({ version: changed.version }).expect(204);
+      // Exercise notification persistence, membership checks, and duplicate prevention on real PostgreSQL.
+      const notificationRouter = require('../../src/routes/medication-notifications.routes');
+      const { deliver } = require('../../src/services/medication-push');
+      const keys = require('web-push').generateVAPIDKeys();
+      const pushConfig = { ...keys, subject: 'mailto:tests@example.invalid' };
+      app.use('/api/medication-notifications', notificationRouter({ db, config: pushConfig }));
+      app.use(errorHandler);
+      const subscription = {
+        endpoint: 'https://fcm.googleapis.com/fcm/send/medication-test',
+        expirationTime: null,
+        keys: {
+          p256dh: keys.publicKey,
+          auth: Buffer.alloc(16, 1).toString('base64url'),
+        },
+      };
+      await request(app).post('/api/medication-notifications/subscription').send(subscription).expect(401);
+      await auth(request(app).post('/api/medication-notifications/subscription'))
+        .send({ ...subscription, endpoint: 'https://127.0.0.1/private' })
+        .expect(400);
+      await auth(request(app).post('/api/medication-notifications/subscription'))
+        .send({ ...subscription, endpoint: 'not-a-url' })
+        .expect(400);
+      await auth(request(app).post('/api/medication-notifications/subscription')).send(subscription).expect(204);
+      const subscriptionId = (
+        await db.query('SELECT id FROM medication_push_subscriptions WHERE user_id=$1', [owner])
+      ).rows[0].id;
+      const upcoming = new Date(Date.now() + 120_000);
+      const pushMedication = (
+        await auth(request(app).post(`${route}/medications`))
+          .send({
+            ...details,
+            name: 'Notification sample',
+            assignedCaregiverId: null,
+            schedule: {
+              ...schedule,
+              times: [upcoming.toISOString().slice(11, 16)],
+              startsOn: upcoming.toISOString().slice(0, 10),
+              end: { kind: 'never' },
+              reminderBeforeMinutes: 15,
+            },
+          })
+          .expect(201)
+      ).body.medication;
+      const pushDose = (
+        await auth(request(app).get(`${route}/medication-occurrences`))
+          .query({
+            from: new Date(Date.now()).toISOString(),
+            to: new Date(Date.now() + 86_400_000).toISOString(),
+          })
+          .expect(200)
+      ).body.medicationOccurrences.find((dose) => dose.medicationId === pushMedication.id);
+      assert.ok(pushDose);
+      let sends = 0;
+      const send = async (sub, payload) => {
+        sends++;
+        const message = JSON.parse(payload);
+        assert.ok(!payload.includes('Notification sample'));
+        assert.ok(message.url.includes(circle));
+      };
+      const pushDb = {
+        transaction: async (action) => {
+          const tx = await db.connect();
+          try {
+            await tx.query('BEGIN');
+            const result = await action(tx);
+            await tx.query('COMMIT');
+            return result;
+          } catch (error) {
+            await tx.query('ROLLBACK');
+            throw error;
+          } finally {
+            tx.release();
+          }
+        },
+      };
+      const competing = await Promise.all([
+        deliver(pushDb, subscriptionId, pushDose.id, 'reminder', pushConfig, send),
+        deliver(pushDb, subscriptionId, pushDose.id, 'reminder', pushConfig, send),
+      ]);
+      assert.equal(competing.filter(Boolean).length, 1);
+      assert.equal(sends, 1);
+      await db.query('DELETE FROM circle_members WHERE circle_id=$1 AND user_id=$2', [circle, owner]);
+      // A duplicate delivery or revoked membership cannot send another push.
+      assert.equal(await deliver(pushDb, subscriptionId, pushDose.id, 'reminder', pushConfig, send), false);
+      assert.equal(sends, 1);
+      await db.query(
+        fs
+          .readFileSync(path.join(migrationDir, '1795737600000_medication-push.sql'), 'utf8')
+          .split('-- Down Migration')[1],
+      );
       const migration = fs.readFileSync(
         path.join(migrationDir, '1795478400000_create-medications.sql'),
         'utf8',

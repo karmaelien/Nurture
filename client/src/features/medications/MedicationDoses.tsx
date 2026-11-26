@@ -12,7 +12,17 @@ import { MedicationDoseList } from './MedicationDoseList.tsx'
 const localDate = (date: Date) =>
   `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
-function DosesForDate({ circle, recipientId, date }: { circle: CircleSummary; recipientId: string; date: string }) {
+function DosesForDate({
+  circle,
+  recipientId,
+  date,
+  scrollable,
+}: {
+  circle: CircleSummary
+  recipientId: string
+  date: string
+  scrollable: boolean
+}) {
   // Local midnights keep the selected calendar date correct across time zones and DST.
   const { todayStart, tomorrowStart } = dashboardWindow(new Date(`${date}T00:00:00`))
   const doses = useMedicationOccurrences(circle.id, {
@@ -45,13 +55,22 @@ function DosesForDate({ circle, recipientId, date }: { circle: CircleSummary; re
         circleId={circle.id}
         doses={doses.data}
         showDate
+        scrollable={scrollable}
         personName={(id) => circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'}
       />
     </>
   )
 }
 
-export function MedicationDoses({ circle, recipientId }: { circle: CircleSummary; recipientId: string }) {
+export function MedicationDoses({
+  circle,
+  recipientId,
+  fillColumn = false,
+}: {
+  circle: CircleSummary
+  recipientId: string
+  fillColumn?: boolean
+}) {
   const today = localDate(useMinute())
   // A null selection follows today across midnight; explicitly chosen history stays on its date.
   const { selectedDate, setSelectedDate } = useCareSelection(circle)
@@ -60,30 +79,37 @@ export function MedicationDoses({ circle, recipientId }: { circle: CircleSummary
   const valid =
     /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(parsedDate.getTime()) && localDate(parsedDate) === date
   return (
-    <section aria-label="Medication Schedule" className="mb-4 rounded-panel border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-h3 font-semibold">Medication Schedule</h2>
-      <p className="mt-2 mb-4 text-small text-muted">
-        Doses for the selected care profiles · Times shown in your local time zone.
-      </p>
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="w-full max-w-sm">
-          <TextField
-            label="Dose date"
-            type="date"
-            value={date}
-            onChange={(event) => setSelectedDate(event.target.value)}
-            error={date && !valid ? 'Choose a valid date.' : undefined}
-          />
+    <section
+      aria-label="Medication Schedule"
+      className={`min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6 ${fillColumn ? 'flex flex-col lg:h-[38rem]' : 'mb-4'}`}
+    >
+      <div className="shrink-0">
+        <h2 className="font-display text-h3 font-semibold">Medication Schedule</h2>
+        <p className="mt-2 mb-4 text-small text-muted">
+          Doses for the selected care profiles · Times shown in your local time zone.
+        </p>
+        <div className="mb-5 flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-sm lg:w-auto lg:min-w-0 lg:basis-48 lg:flex-1">
+            <TextField
+              label="Dose date"
+              type="date"
+              value={date}
+              onChange={(event) => setSelectedDate(event.target.value)}
+              error={date && !valid ? 'Choose a valid date.' : undefined}
+            />
+          </div>
+          <Button variant="secondary" onClick={() => setSelectedDate(null)}>
+            Today
+          </Button>
         </div>
-        <Button variant="secondary" onClick={() => setSelectedDate(null)}>
-          Today
-        </Button>
       </div>
-      {valid ? (
-        <DosesForDate circle={circle} recipientId={recipientId} date={date} />
-      ) : (
-        <p className="text-muted">Choose a date to view doses.</p>
-      )}
+      <div className={fillColumn ? 'min-h-0 max-h-64 flex-1 overflow-y-auto pr-2 lg:max-h-none' : ''}>
+        {valid ? (
+          <DosesForDate circle={circle} recipientId={recipientId} date={date} scrollable={!fillColumn} />
+        ) : (
+          <p className="text-muted">Choose a date to view doses.</p>
+        )}
+      </div>
     </section>
   )
 }

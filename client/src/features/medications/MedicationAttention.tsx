@@ -1,5 +1,5 @@
 import type { CircleSummary } from '../../api/types.ts'
-import { errorMessage } from '../../api/client.ts'
+import { ApiError, errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { useMedicationOccurrences, useOverdueMedicationDoses } from '../care/queries.ts'
@@ -17,11 +17,18 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
     status: 'pending',
     recipientId: recipientId || undefined,
   })
-  // Reminder and overdue windows do not overlap. Keep all overdue doses first.
-  const doses = [
-    ...(overdue.data ?? []),
-    ...(reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? []),
-  ]
+  const accessLost = [overdue.error, reminders.error].some(
+    (error) => error instanceof ApiError && [401, 403, 404].includes(error.status),
+  )
+  // Do not reuse cached health data after an access failure from either request.
+  const doses = accessLost
+    ? []
+    : [
+        ...(overdue.isError ? [] : (overdue.data ?? [])),
+        ...(reminders.isError
+          ? []
+          : (reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? [])),
+      ]
   if (!doses.length && !overdue.historyPending && !overdue.isError && !reminders.isError) return null
   return (
     <section aria-label="Attention Needed" className="mb-4 rounded-panel border border-line bg-surface p-5 sm:p-6">
@@ -47,8 +54,8 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
           <MedicationDoseList
             circleId={circle.id}
             doses={doses}
-            totalOverdueCount={overdue.totalOverdueCount}
-            overdueCountIsPartial={overdue.historyPending}
+            totalOverdueCount={overdue.isError ? undefined : overdue.totalOverdueCount}
+            overdueCountIsPartial={!overdue.isError && overdue.historyPending}
             showDate
             scrollable={false}
             personName={(id) =>
@@ -56,12 +63,14 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
             }
           />
         )}
-        <OverdueDoseControls
-          historyPending={overdue.historyPending}
-          hasNextPage={overdue.hasNextPage}
-          busy={overdue.isFetchingNextPage}
-          onMore={() => void overdue.fetchNextPage()}
-        />
+        {!overdue.isError && !accessLost && (
+          <OverdueDoseControls
+            historyPending={overdue.historyPending}
+            hasNextPage={overdue.hasNextPage}
+            busy={overdue.isFetchingNextPage}
+            onMore={() => void overdue.fetchNextPage()}
+          />
+        )}
       </div>
     </section>
   )

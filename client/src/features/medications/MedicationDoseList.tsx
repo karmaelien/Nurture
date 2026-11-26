@@ -16,12 +16,14 @@ function Dose({
   person,
   now,
   showDate,
+  onEdit,
 }: {
   circleId: string
   dose: MedicationOccurrence
   person: string
   now: number
   showDate: boolean
+  onEdit?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -82,6 +84,11 @@ function Dose({
         >
           {action}
         </Button>
+        {onEdit && (
+          <Button variant="outline" onClick={onEdit}>
+            Edit medication
+          </Button>
+        )}
       </div>
       {taken && dose.takenAt && (
         <p className="mt-2 text-small text-muted">
@@ -106,6 +113,8 @@ export function MedicationDoseList({
   totalOverdueCount,
   overdueCountIsPartial = false,
   scrollable = true,
+  onEdit,
+  editableMedicationIds,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
@@ -114,6 +123,8 @@ export function MedicationDoseList({
   totalOverdueCount?: number
   overdueCountIsPartial?: boolean
   scrollable?: boolean
+  onEdit?: (medicationId: string) => void
+  editableMedicationIds?: string[]
 }) {
   const now = useMinute().getTime()
   const priority = (dose: MedicationOccurrence) => (dose.status === 'completed' ? 2 : isDoseOverdue(dose, now) ? 0 : 1)
@@ -138,6 +149,9 @@ export function MedicationDoseList({
             person={personName(dose.recipientId)}
             now={now}
             showDate={showDate}
+            onEdit={
+              onEdit && editableMedicationIds?.includes(dose.medicationId) ? () => onEdit(dose.medicationId) : undefined
+            }
           />
         ))}
       </ul>

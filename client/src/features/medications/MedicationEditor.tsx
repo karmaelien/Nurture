@@ -32,6 +32,8 @@ export function MedicationEditor({
   deleting = false,
   stopping = false,
   restarting = false,
+  initialStartsOn,
+  allowDelete = true,
   onClose,
 }: {
   circle: CircleDetail
@@ -40,6 +42,8 @@ export function MedicationEditor({
   deleting?: boolean
   stopping?: boolean
   restarting?: boolean
+  initialStartsOn?: string
+  allowDelete?: boolean
   onClose: () => void
 }) {
   const { user } = useRequiredSession()
@@ -358,7 +362,7 @@ export function MedicationEditor({
             label="Start date"
             name="startsOn"
             type="date"
-            defaultValue={restarting ? '' : (medication?.schedule.startsOn ?? today)}
+            defaultValue={restarting ? '' : (medication?.schedule.startsOn ?? initialStartsOn ?? today)}
             required
           />
           <SelectField label="Ends" value={ending} onChange={(event) => setEnding(event.target.value)}>
@@ -415,7 +419,7 @@ export function MedicationEditor({
             <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
               Cancel
             </Button>
-            {medication && !restarting && (
+            {medication && !restarting && allowDelete && (
               <Button
                 variant="danger"
                 disabled={busy}

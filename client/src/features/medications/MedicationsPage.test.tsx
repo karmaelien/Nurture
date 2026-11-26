@@ -16,6 +16,48 @@ async function logIn() {
   setToken((await authApi.login(DEMO_ACCOUNT)).token)
 }
 
+it.each(['/app', '/app/medications'])('hides cached attention data after a failed refresh on %s', async (path) => {
+  vi.setSystemTime(new Date(2026, 10, 25, 12))
+  try {
+    await logIn()
+    await createTrackedMedication('c_demo', {
+      recipientId: 'r_rose',
+      name: 'Attention refresh sample',
+      dosage: '1 tablet',
+      assignedCaregiverId: null,
+      schedule: {
+        times: ['08:00'],
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        startsOn: '2026-11-25',
+        end: { kind: 'never' },
+      },
+    })
+    renderApp(path)
+    const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+    await within(attention).findAllByRole('button', { name: /^Mark taken:/ })
+    server.use(
+      http.get('/api/circles/:circleId/medication-occurrences/overdue', () =>
+        HttpResponse.json({ error: { code: 'not_found', message: 'Medication access unavailable.' } }, { status: 404 }),
+      ),
+      http.get('/api/circles/:circleId/medication-occurrences', () =>
+        HttpResponse.json({ error: { code: 'unavailable', message: 'Medication refresh failed.' } }, { status: 502 }),
+      ),
+    )
+    fireEvent.focus(window)
+    await within(attention).findByText('Medication access unavailable.')
+    expect(within(attention).queryAllByRole('button', { name: /^Mark taken:/ })).toHaveLength(0)
+    expect(within(attention).queryAllByRole('listitem')).toHaveLength(0)
+    expect(within(attention).queryByRole('button', { name: 'Show more missed doses' })).not.toBeInTheDocument()
+    server.resetHandlers()
+    await userEvent.setup().click(within(attention).getByRole('button', { name: 'Retry missed doses' }))
+    await userEvent.setup().click(within(attention).getByRole('button', { name: 'Retry reminders' }))
+    await within(attention).findAllByRole('button', { name: /^Mark taken:/ })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it.each(['/app', '/app/medications'])(
   'views future medication doses and keeps that date across navigation from %s',
   async (path) => {

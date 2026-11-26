@@ -5,6 +5,35 @@ The Showing dropdown defaults to Everyone on a new session and filters the list.
 Each entry shows the medication name, person, dosage, schedule and course dates with their time zone,
 and the assigned caregiver. Loading, retry, and empty states are included.
 
+On the Medications page, Attention Needed spans the full width above Medication
+Schedule and Medication List. Those two panels have matching heights on desktop
+and scroll internally; they stack with capped lists on smaller screens. A full-width
+Calendar sits directly below them. Home retains its existing compact medication panel.
+The calendar offers Daily, Weekly, and Monthly views, Previous/Next navigation,
+and Today. It follows the Showing profile filter while keeping its viewed period.
+It queries saved/generated dose occurrences for the visible period using local
+calendar boundaries, including daylight-saving changes, and preserves schedule
+revision, stop, and restart history through the existing occurrence API.
+Monthly cells show up to three compact doses and a more button; day/week views
+use hourly rows with doses beside one another. The calendar area scrolls within
+a capped height. Taken doses use strikethrough; missed doses have a red outline.
+Clicking a month date (or its cell background), or a day/week date heading, opens a
+date-scoped medication popup with that day's doses and their existing status controls.
+It follows the profile filter and shows an empty state when no medications are scheduled.
+Calendar popups offer Add medication, opening the shared editor with the clicked
+date as the Start date and the selected profile prefilled. Active doses also offer
+Edit medication, which opens the latest medication definition and changes its
+schedule rather than a single occurrence. Historical doses do not restore old
+definitions, and stopped medications cannot be edited from the calendar.
+The dose popup closes before the editor opens. Existing save validation, version
+checks, and query refreshes apply. Permanent deletion remains available from
+Medication List and its editor; the calendar editor does not offer it.
+Clicking a dose opens its existing dose controls. Monthly overflow opens that day's
+doses; day/week overflow opens only the selected hour's doses.
+Mark taken/pending refreshes the calendar, schedule, attention panel, and Home.
+Close, Escape, and clicking outside dismiss the popup. Refetches close the popup
+if its doses disappear or the calendar request fails, including loss of access.
+
 `GET /api/circles/:circleId/medications` has a browser mock and a staged PostgreSQL backend. The mock checks
 family membership before returning sample medications for Rose and Frank. Other
 families start empty. The shared types are in `client/src/api/types.ts`; schedule
@@ -320,9 +349,50 @@ The display updates every minute while the app is open. A stable UTC date range
 covers the maximum 24-hour lead and grace periods across midnight and daylight
 saving changes. Dose writes refresh the shared occurrence queries on both pages.
 
-Reminder delivery while the app is closed remains to be implemented. Doses are
-materialized by API reads (mock by default, PostgreSQL when enabled); these panels do
-not send browser notifications, emails, or background notifications.
+Failed attention queries hide their cached dose rows and counts. An access failure
+from either attention request hides both lists until access is restored, on both Home
+and Medications. Retry reloads current data instead of exposing stale controls.
+
+### Closed-app notifications
+
+The staged real backend supports browser Web Push while the website tab is closed.
+An Enable notifications button appears on Home and Medications when the server is
+configured and the browser supports push. Permission is requested only on that click.
+Each browser subscribes separately; Disable notifications and logout unsubscribe it.
+The demo has no background server and continues to show in-app reminders only.
+
+To enable on the real backend:
+
+1. Apply migrations, including `1795737600000_medication-push.sql`.
+2. Generate a VAPID key pair with `npx web-push generate-vapid-keys` from `nurture-api`.
+3. Configure `ENABLE_MEDICATIONS_API=true`, `ENABLE_MEDICATION_PUSH=true`,
+   `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` (a `mailto:` contact).
+   Keep the private key on the server. Restart the server and use the real frontend
+   (`VITE_USE_MOCKS=false`) over HTTPS or localhost.
+4. Click Enable notifications and grant browser permission.
+
+The running API checks active courses every minute using the existing schedule/revision
+generator. Every opted-in current member of that family receives reminders at the configured
+lead time, plus a missed-dose alert after the grace period. Taken or stopped courses do not
+send alerts. Missed alerts have a five-minute catch-up window so a restart does not flood
+users with old history. Browser/OS background delivery must be allowed; this is not a guarantee
+of exact-time delivery. No emails are sent.
+
+Membership, medication, and dose state are checked under database locks before each send.
+The notification router delegates to `medication-notifications.controller.js`,
+`medication-notifications.validators.js`, and `medication-notification.model.js`.
+The push service uses that same model for delivery locks and queries; it handles timing
+and provider calls rather than embedding SQL in routes or scheduling code.
+Delivery records prevent competing server workers from sending the same dose/event to the
+same subscription. Failed sends roll back their delivery claim for retry; expired endpoints
+are removed. A crash after the push provider accepts a message but before the database
+commits can retry that message; a stable notification tag replaces the displayed duplicate.
+Delivery logs expire after seven days and are separate from dose history.
+Lock-screen text omits names, dosages, and care profiles. Clicking the notification opens
+Medications; the normal login and permission checks still apply.
+
+The browser worker and permission/subscription flows have automated tests. Actual delivery
+through a push provider still requires deployment keys and permission on a real browser.
 
 ## PostgreSQL backend
 
@@ -379,7 +449,7 @@ To enable when the real API is ready:
 
 No mock data is copied into PostgreSQL. Browser Web Locks and storage events are demo
 protections; real database transactions provide write safety. Cross-device live push
-and closed-app notification delivery are separate work, not part of this router.
+is separate work. Closed-app notifications use the optional push service described above.
 Medication definitions, date-filtered doses, and missed queries refresh on returning
 to the app and every minute in both real and mock modes. Real-API refresh does not
 depend on the mock storage listener.

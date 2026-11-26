@@ -334,6 +334,24 @@ The body must also include `version`: the `Recipient.version` the edit is based 
 | 404    | `not_found` (also when the recipient isn't in this circle)                                    |
 | 409    | `edit_conflict`, plus `recipient: Recipient` with the current details: `{ error, recipient }` |
 
+### Medication notification subscriptions (real backend)
+
+Mounted at `/api/medication-notifications` when `ENABLE_MEDICATIONS_API=true`.
+Every endpoint requires authentication. There is no mock background push service.
+
+| Method/path | Body | Success |
+| --- | --- | --- |
+| `GET /config` | None | `{ enabled, publicKey }`; private VAPID keys are never returned |
+| `POST /subscription/status` | `{ endpoint }` | `{ enabled }` for the signed-in user's subscription |
+| `POST /subscription` | Browser `PushSubscription.toJSON()` | `204`; saves or transfers this browser endpoint to the signed-in user |
+| `DELETE /subscription` | `{ endpoint }` | `204`; removes only the signed-in user's matching endpoint |
+
+Subscriptions require supported HTTPS browser push endpoints, a 65-byte P-256 key,
+a 16-byte authentication secret, and a nullable expiration timestamp. Invalid input
+returns 400. Creation returns 503 when push is not configured. Opt-in is per browser
+and covers the user's current families; membership and pending dose state are checked
+again at delivery. See [notification setup and delivery behavior](medications.md#closed-app-notifications).
+
 ### Care resources
 
 These read-only endpoints are specified for the initial dashboard; implementation is pending.
@@ -684,7 +702,7 @@ These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Tasks:** create/update/delete operations and recurring task schedules.
-- **Medication activation and background reminders:** migrate and enable the implemented PostgreSQL medication API when the real app endpoints are ready, and implement reminder delivery while the app is closed. In-app reminder panels are implemented; see [medications](medications.md).
+- **Medication activation and push delivery:** migrate and enable the PostgreSQL medication API and optional Web Push service when the real app endpoints are ready. Configure VAPID keys and verify provider delivery in a permitted browser; see [medications](medications.md#closed-app-notifications).
 - **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 - **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.
 
