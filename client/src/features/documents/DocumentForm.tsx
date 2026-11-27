@@ -93,7 +93,7 @@ export function DocumentForm({
             <input
               aria-label="File"
               type="file"
-              accept="application/pdf,image/jpeg,image/png"
+              accept="application/pdf,.pdf"
               className="max-w-full rounded-control border border-field p-2"
               onChange={(e) => {
                 const chosen = e.target.files?.[0]
@@ -101,7 +101,7 @@ export function DocumentForm({
                 if (!title && chosen) setTitle(chosen.name.replace(/\.[^.]+$/, ''))
               }}
             />
-            <span className="text-small text-muted">PDF, JPEG, or PNG · Maximum 10 MiB</span>
+            <span className="text-small text-muted">Text PDF · Maximum 10 MiB</span>
           </label>
         )}
         <TextField
@@ -172,10 +172,16 @@ export function DocumentForm({
         )}
         <p className="text-small text-muted">The uploader and circle owners always have access.</p>
       </fieldset>
+      {!document && (
+        <p className="text-small text-muted">
+          Text PDFs only, up to 10 MiB and 100 pages. Scanned documents are not supported. Processing may take a minute.
+          If the connection drops, refresh the document list before uploading again.
+        </p>
+      )}
       {error && <Alert tone="danger">{error}</Alert>}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" loading={pending}>
-          {document ? 'Save changes' : 'Upload document'}
+          {document ? 'Save changes' : pending ? 'Uploading and processing…' : 'Upload document'}
         </Button>
         <Button variant="secondary" disabled={pending} onClick={cancel}>
           Cancel

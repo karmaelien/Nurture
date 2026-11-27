@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Lock, Users } from 'lucide-react'
-import type { CareDocument, CircleDetail, CircleSummary } from '../../api/types.ts'
+import type {
+  CareDocument,
+  CircleDetail,
+  CircleSummary,
+  DocumentProcessingError,
+  DocumentProcessingStatus,
+} from '../../api/types.ts'
 import { circlesApi } from '../../api/circles.ts'
 import { documentsApi } from '../../api/documents.ts'
 import { errorMessage } from '../../api/client.ts'
@@ -47,16 +53,13 @@ function FilePreview({ circleId, document }: { circleId: string; document: CareD
     )
   return (
     <div className="space-y-3">
-      {url &&
-        (document.mimeType === 'application/pdf' ? (
-          <iframe
-            src={url}
-            title={`Preview of ${document.title}`}
-            className="h-80 w-full rounded-control border border-line bg-wash"
-          />
-        ) : (
-          <img src={url} alt={document.title} className="max-h-80 w-full rounded-control bg-wash object-contain" />
-        ))}
+      {url && (
+        <iframe
+          src={url}
+          title={`Preview of ${document.title}`}
+          className="h-80 w-full rounded-control border border-line bg-wash"
+        />
+      )}
       <p className="text-small text-muted">If the preview is unavailable in your browser, open or download the file.</p>
       {url && (
         <div className="flex flex-wrap gap-4">
@@ -71,6 +74,22 @@ function FilePreview({ circleId, document }: { circleId: string; document: CareD
     </div>
   )
 }
+const processingLabels: Record<DocumentProcessingStatus, string> = {
+  pending: 'Not processed',
+  processing: 'Processing for search…',
+  ready: 'Ready for search',
+  failed: 'Processing failed',
+}
+const processingMessages: Record<DocumentProcessingError, string> = {
+  invalid_pdf: 'This PDF could not be read. It may be damaged or password-protected.',
+  no_extractable_text: 'No selectable text was found. Scanned PDFs are not supported.',
+  document_too_large: 'This document is too long to process. Upload a shorter PDF.',
+  embedding_not_configured: 'Search processing is not configured yet. Ask your project administrator to enable it.',
+  embedding_unavailable: 'The search service was unavailable. You can retry processing.',
+  processing_timeout: 'Processing took too long. Try again or upload a shorter PDF.',
+  processing_interrupted: 'Processing was interrupted. You can retry it.',
+  processing_failed: 'The file was saved, but search processing failed. You can retry it.',
+}
 function DocumentDetails({
   document,
   circle,
@@ -84,11 +103,25 @@ function DocumentDetails({
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
+  const [processing, setProcessing] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  async function process() {
+    setProcessing(true)
+    setError('')
+    try {
+      await documentsApi.process(circle.id, document.id)
+      await refresh()
+    } catch (cause) {
+      setError(errorMessage(cause))
+      await refresh()
+    } finally {
+      setProcessing(false)
+    }
+  }
   async function remove() {
     setPending(true)
     setError('')
@@ -110,6 +143,22 @@ function DocumentDetails({
       <p className="mb-5 mt-2 text-muted">
         {circle.recipients.find((r) => r.id === document.recipientId)?.name} · {documentCategories[document.category]}
       </p>
+      <div className="mb-4 space-y-2 rounded-control bg-wash p-3">
+        <p role="status">{processing ? 'Processing for search…' : processingLabels[document.processingStatus]}</p>
+        {document.processingError && (
+          <p className="text-small text-muted">{processingMessages[document.processingError]}</p>
+        )}
+        {document.canManage && ['pending', 'failed'].includes(document.processingStatus) && (
+          <Button variant="secondary" loading={processing} onClick={() => void process()}>
+            {document.processingStatus === 'failed' ? 'Retry processing' : 'Process for search'}
+          </Button>
+        )}
+        {document.processingStatus === 'processing' && (
+          <Button variant="secondary" onClick={() => void refresh()}>
+            Refresh processing status
+          </Button>
+        )}
+      </div>
       <FilePreview circleId={circle.id} document={document} />
       <p className="mt-4 break-words text-small text-muted">
         {document.fileName} · {size(document.sizeBytes)}
@@ -247,7 +296,8 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
       </div>
       {mocksEnabled && (
         <p className="text-small text-muted">
-          Demo documents — uploads and changes are temporary and reset when you reload. Use sample files only.
+          Demo documents — uploads and changes reset when you reload. Search processing is simulated; no files are sent
+          to OpenAI. Use sample files only.
         </p>
       )}
       {upload && detail.data && (
@@ -258,14 +308,21 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
             userId={user.id}
             cancel={() => setUpload(false)}
             save={async (metadata, file) => {
-              const result = await documentsApi.upload(circle.id, file!, metadata)
+              const result = await documentsApi.upload(circle.id, file!, metadata).catch(async (error: unknown) => {
+                await refresh() // Upload may have committed even if the response timed out.
+                throw error
+              })
               await refresh()
               setSearch('')
               setCategory('all')
               setRecipient('all')
               setSelected(result.document.id)
               setUpload(false)
-              setNotice('Document uploaded.')
+              setNotice(
+                result.document.processingStatus === 'ready'
+                  ? 'Document uploaded and ready for search.'
+                  : 'Document uploaded. Check its processing status below.',
+              )
             }}
           />
         </section>
@@ -340,7 +397,8 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
                           {documentCategories[d.category]}
                         </span>
                         <span className="mt-1 block text-small text-muted">
-                          {new Date(d.uploadedAt).toLocaleDateString()} · {size(d.sizeBytes)}
+                          {new Date(d.uploadedAt).toLocaleDateString()} · {size(d.sizeBytes)} ·{' '}
+                          {processingLabels[d.processingStatus]}
                         </span>
                         <span className="mt-3 inline-flex items-center gap-2 rounded-control border border-line px-2 py-1 text-small">
                           {d.sharing.mode === 'circle' ? (

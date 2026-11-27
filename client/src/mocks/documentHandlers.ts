@@ -64,6 +64,8 @@ function seed() {
         sharing: item.selected
           ? { mode: 'selected', memberIds: index === 0 ? ['u_daniel'] : [] }
           : { mode: 'circle', memberIds: [] },
+        processingStatus: 'ready',
+        processingError: null,
         canManage: true,
       },
     })
@@ -84,7 +86,7 @@ function access(request: Request, circleId: string) {
     canManage(d) || d.sharing.mode === 'circle' || d.sharing.memberIds.includes(userId)
   return { circle, userId, canManage, canRead }
 }
-async function handle(request: Request, circleId: string, id?: string, file = false) {
+async function handle(request: Request, circleId: string, id?: string, file = false, process = false) {
   const context = access(request, circleId)
   if (context.failure) return context.failure
   const { circle, userId, canManage, canRead } = context
@@ -139,6 +141,13 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
   }
   if (record && !canManage(record.document))
     return error(403, 'document_manager_only', 'Only the uploader or a circle owner can manage this document.')
+  if (process && record) {
+    if (record.document.processingStatus === 'processing')
+      return error(409, 'document_processing', 'This document is already processing.')
+    record.document.processingStatus = 'ready'
+    record.document.processingError = null
+    return HttpResponse.json({ document: serialize(record.document) })
+  }
   if (request.method === 'DELETE') {
     records.delete(id!)
     return new HttpResponse(null, { status: 204 })
@@ -169,12 +178,7 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
       return error(400, 'validation_error', 'Provide document metadata.')
     }
     bytes = new Uint8Array(await uploaded.arrayBuffer())
-    const signature =
-      uploaded.type === 'application/pdf'
-        ? [37, 80, 68, 70, 45]
-        : uploaded.type === 'image/png'
-          ? [137, 80, 78, 71, 13, 10, 26, 10]
-          : [255, 216, 255]
+    const signature = [37, 80, 68, 70, 45]
     if (!signature.every((byte, index) => bytes![index] === byte))
       return error(415, 'unsupported_file_type', 'The file contents do not match its type.')
   } else metadata = await request.json().catch(() => null)
@@ -204,6 +208,8 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
     uploadedBy: userId,
     version: 1,
     uploadedAt: new Date().toISOString(),
+    processingStatus: 'ready',
+    processingError: null,
     canManage: true,
   }
   records.set(document.id, { circleId, document, bytes: bytes! })
@@ -211,6 +217,9 @@ async function handle(request: Request, circleId: string, id?: string, file = fa
 }
 const base = '/api/circles/:circleId/documents'
 export const documentHandlers = [
+  http.post(`${base}/:documentId/process`, ({ request, params }) =>
+    handle(request, String(params.circleId), String(params.documentId), false, true),
+  ),
   http.get(base, ({ request, params }) => handle(request, String(params.circleId))),
   http.post(base, ({ request, params }) => handle(request, String(params.circleId))),
   http.get(`${base}/:documentId/file`, ({ request, params }) =>

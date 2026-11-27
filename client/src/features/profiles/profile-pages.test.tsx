@@ -150,7 +150,8 @@ describe('person profile', () => {
     await user.type(await screen.findByLabelText('Notes (optional)'), 'Walks every morning.')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
-    expect(bodies).toEqual([{ version: 1, notes: 'Walks every morning.' }])
+    // The request observer reads a cloned body asynchronously, independently of navigation.
+    await waitFor(() => expect(bodies).toEqual([{ version: 1, notes: 'Walks every morning.' }]))
     server.events.removeAllListeners()
   })
 

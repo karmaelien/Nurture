@@ -144,14 +144,26 @@ export type UpdateExpenseRequest = Partial<CreateExpenseRequest>
 
 export type DocumentCategory = 'medical' | 'insurance' | 'financial' | 'personal' | 'other'
 export type DocumentSharing = { mode: 'circle'; memberIds: [] } | { mode: 'selected'; memberIds: string[] }
+export type DocumentProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type DocumentProcessingError =
+  | 'invalid_pdf'
+  | 'no_extractable_text'
+  | 'document_too_large'
+  | 'embedding_not_configured'
+  | 'embedding_unavailable'
+  | 'processing_timeout'
+  | 'processing_interrupted'
+  | 'processing_failed'
 export type CareDocument = {
+  processingStatus: DocumentProcessingStatus
+  processingError: DocumentProcessingError | null
   version: number // required on edits; increments after every successful update
   id: string
   recipientId: string
   title: string
   category: DocumentCategory
   fileName: string
-  mimeType: 'application/pdf' | 'image/jpeg' | 'image/png'
+  mimeType: 'application/pdf'
   sizeBytes: number
   uploadedBy: string | null
   uploadedAt: string
