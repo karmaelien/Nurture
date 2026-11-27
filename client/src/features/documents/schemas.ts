@@ -30,7 +30,7 @@ export const updateDocumentSchema = createDocumentSchema
   .extend({ version: z.number().int().positive().max(2147483647) })
   .refine((v) => Object.keys(v).some((key) => key !== 'version'))
 export function documentFileError(file: File) {
-  if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) return 'Choose a PDF, JPEG, or PNG file.'
+  if (file.type !== 'application/pdf') return 'Choose a PDF containing selectable text.'
   if (!file.size) return 'Choose a file that is not empty.'
   if (file.size > MAX_DOCUMENT_BYTES) return 'Choose a file no larger than 10 MiB.'
   return null

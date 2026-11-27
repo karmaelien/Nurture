@@ -20,12 +20,8 @@ const parse = (schema, value) => {
 function validateFile(file) {
   if (!file || !file.size) throw httpError(400, 'validation_error', 'Choose a non-empty file.');
   const bytes = file.buffer;
-  const matches = {
-    'application/pdf': bytes.subarray(0, 5).toString() === '%PDF-',
-    'image/png': bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')),
-    'image/jpeg': bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
-  };
-  if (!matches[file.mimetype]) throw httpError(415, 'unsupported_file_type', 'Choose a PDF, JPEG, or PNG with matching file contents.');
+  if (file.mimetype !== 'application/pdf' || bytes.subarray(0, 5).toString() !== '%PDF-')
+    throw httpError(415, 'unsupported_file_type', 'Choose a text PDF with matching file contents.');
 }
 function safeName(name) {
   return name.split(/[\\/]/).pop().replace(/[\x00-\x1f\x7f"<>]/g, '_').slice(0, 200) || 'document';

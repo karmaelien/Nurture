@@ -1,11 +1,11 @@
 # nurture-api
 
-The Nurture backend: an Express 5 + PostgreSQL API that handles accounts, sessions, care circles, and circle-level permissions. The client builds against [`docs/api-contract.md`](../docs/api-contract.md); this API implements the auth, circle, member, and recipient parts of it.
+The Nurture backend: an Express 5 + PostgreSQL API that handles accounts, sessions, care circles, and circle-level permissions. The client builds against [`docs/api-contract.md`](../docs/api-contract.md); this API implements auth, circles, members, recipients, and document management and vector ingestion.
 
 ## Requirements
 
 - Node.js 24 LTS and npm
-- PostgreSQL 14 or later, with permission to create the `citext` extension
+- PostgreSQL 16 or later, with `citext` and `vector` (pgvector) installed and permission to create these extensions
 
 ## Getting started
 
@@ -20,6 +20,8 @@ Create `.env`:
 ```bash
 DATABASE_URL=postgres://USER:PASSWORD@localhost:5432/nurture
 PORT=3000
+# Enables document embeddings; backend-only secret:
+OPENAI_API_KEY=
 ```
 
 Create the tables, then start the server with auto-reload:
@@ -48,7 +50,7 @@ Never commit `.env`.
 | `npm run migrate:down` | Rolls back the latest migration |
 | `npm test` | Runs the Vitest suite |
 
-The schema is still a single migration (`src/db/migrations/…_init-schema.sql`). While it's changing, reset with `npm run migrate:down && npm run migrate:up`. This deletes all data.
+Schema changes live in `src/db/migrations`. Editing an already applied migration does not update the database. See [document setup and RAG handoff](../docs/documents.md) for the vector extension, OpenAI key, and processing details.
 
 ## Testing
 

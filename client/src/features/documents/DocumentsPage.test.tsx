@@ -70,3 +70,67 @@ it('shows a conflict without replacing a stale form or restoring access', async 
   expect(saved.title).toBe(original.title)
   expect(saved.sharing.memberIds).toEqual([])
 })
+
+it('shows failed processing, preserves preview access, and retries without re-uploading', async () => {
+  const { documentsApi } = await import('../../api/documents.ts')
+  const { server } = await import('../../test/setup.ts')
+  const { http, HttpResponse } = await import('msw')
+  const initial = await documentsApi.list('c_demo')
+  let ready = false
+  let retries = 0
+  server.use(
+    http.get('/api/circles/c_demo/documents', () =>
+      HttpResponse.json({
+        documents: initial.documents.map((d) => ({
+          ...d,
+          processingStatus: ready ? 'ready' : 'failed',
+          processingError: ready ? null : 'embedding_unavailable',
+        })),
+      }),
+    ),
+    http.post('/api/circles/c_demo/documents/:id/process', ({ params }) => {
+      retries++
+      ready = true
+      return HttpResponse.json({
+        document: {
+          ...initial.documents.find((d) => d.id === params.id),
+          processingStatus: 'ready',
+          processingError: null,
+        },
+      })
+    }),
+  )
+  renderApp('/app/documents?circleId=c_demo')
+  const user = userEvent.setup()
+  await screen.findByText('The search service was unavailable. You can retry processing.')
+  expect(await screen.findByRole('link', { name: 'Download original' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Retry processing' }))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry processing' })).not.toBeInTheDocument())
+  expect(retries).toBe(1)
+  expect(screen.getByRole('complementary', { name: 'Document details' })).toHaveTextContent('Ready for search')
+})
+
+it('accepts PDF uploads only and displays processing progress during the request', async () => {
+  const { documentsApi } = await import('../../api/documents.ts')
+  const { server } = await import('../../test/setup.ts')
+  const { http, HttpResponse, delay } = await import('msw')
+  const initial = (await documentsApi.list('c_demo')).documents[0]
+  server.use(
+    http.post('/api/circles/c_demo/documents', async () => {
+      await delay(100)
+      return HttpResponse.json(
+        { document: { ...initial, processingStatus: 'ready', processingError: null } },
+        { status: 201 },
+      )
+    }),
+  )
+  renderApp('/app/documents?circleId=c_demo')
+  const user = userEvent.setup()
+  await waitFor(() => expect(screen.getByRole('button', { name: '+ Upload document' })).toBeEnabled())
+  await user.click(screen.getByRole('button', { name: '+ Upload document' }))
+  expect(screen.getByLabelText('File')).toHaveAttribute('accept', 'application/pdf,.pdf')
+  await user.upload(screen.getByLabelText('File'), new File(['%PDF-test'], 'report.pdf', { type: 'application/pdf' }))
+  await user.click(screen.getByRole('button', { name: 'Upload document' }))
+  expect(screen.getByRole('button', { name: 'Uploading and processing…' })).toBeDisabled()
+  await screen.findByText('Document uploaded and ready for search.')
+})

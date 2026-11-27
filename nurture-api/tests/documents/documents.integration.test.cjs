@@ -6,6 +6,8 @@ const { Pool } = require('pg');
 const express = require('express');
 const request = require('supertest');
 const createRouter = require('../../src/routes/documents.routes');
+const pdfFixture = require('./pdf-fixture.cjs');
+const { ProcessingError, DIMENSIONS } = require('../../src/services/document-embeddings');
 const errorHandler = require('../../src/middleware/errorHandler');
 
 const connectionString = process.env.DOCUMENT_TEST_DATABASE_URL;
@@ -18,25 +20,36 @@ const db = { query: (...args) => pool.query(...args), async transaction(fn) {
   try { await tx.query('BEGIN'); const value = await fn(tx); await tx.query('COMMIT'); return value; }
   catch (error) { await tx.query('ROLLBACK'); throw error; } finally { tx.release(); }
 } };
-let failInsert, failDelete, failGrant;
+let failInsert, failDelete, failGrant, failChunks, failEmbedding, embeddingCalls, embeddingHook;
+const embeddings = { async embed(texts) {
+  embeddingCalls++;
+  if (embeddingHook) await embeddingHook();
+  if (failEmbedding) throw new ProcessingError('embedding_unavailable');
+  return texts.map(text => {
+    const vector = Array(DIMENSIONS).fill(0);
+    vector[/insurance/i.test(text) ? 1 : 0] = 1;
+    return vector;
+  });
+} };
 const injectedDb = { async transaction(fn) { return db.transaction(tx => fn({ query: (sql, params) => {
   if (failInsert && sql.startsWith('INSERT INTO care_documents')) throw new Error('simulated insert failure');
   if (failDelete && sql.startsWith('DELETE FROM care_documents')) throw new Error('simulated delete failure');
   if (failGrant && sql.startsWith('INSERT INTO document_grants')) throw new Error('simulated grant failure');
+  if (failChunks && sql.startsWith('INSERT INTO document_chunks')) throw new Error('simulated chunk insert failure');
   return tx.query(sql, params);
 } })); } };
 const app = express();
 app.use(express.json());
 // Test-only identity adapter; production mounts the real authenticate middleware.
 app.use((req, res, next) => { if (req.headers['x-test-user']) req.user = { id: Number(req.headers['x-test-user']) }; next(); });
-app.use('/api/circles/:circleId/documents', createRouter({ db: injectedDb }));
+app.use('/api/circles/:circleId/documents', createRouter({ db: injectedDb, embeddings }));
 app.use(errorHandler);
 let owner, uploader, reader, hidden, outsider, circle, recipient, foreignRecipient;
 const insert = async (sql, params = []) => String((await db.query(sql + ' RETURNING id', params)).rows[0].id);
 const route = () => `/api/circles/${circle}/documents`;
 const auth = (req, user = uploader) => req.set('x-test-user', user);
 const metadata = (overrides = {}) => ({ title: 'Test report', category: 'medical', recipientId: recipient, sharing: { mode: 'selected', memberIds: [reader] }, ...overrides });
-const pdf = Buffer.from('%PDF-1.4\nSample test fixture\n%%EOF');
+const pdf = pdfFixture();
 const upload = (body = metadata(), bytes = pdf, type = 'application/pdf') => auth(request(app).post(route())).field('metadata', JSON.stringify(body)).attach('file', bytes, { filename: 'report.pdf', contentType: type });
 const create = async body => (await upload(body).expect(201)).body.document;
 before(async () => {
@@ -55,7 +68,8 @@ before(async () => {
   foreignRecipient = await insert("INSERT INTO recipients(circle_id,name) VALUES ($1,'Other')", [otherCircle]);
 });
 beforeEach(async () => {
-  failInsert = failDelete = failGrant = false;
+  failInsert = failDelete = failGrant = failChunks = failEmbedding = false;
+  embeddingCalls = 0; embeddingHook = null;
   await db.query('DELETE FROM care_documents');
 });
 after(async () => { await pool.end(); });
@@ -188,4 +202,100 @@ test('stale edits cannot restore revoked access and concurrent saves have one wi
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
   await auth(request(app).patch(`${route()}/${doc.id}`)).send({ title: 'Missing version' }).expect(400);
   await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: saved.version + 1 }).expect(400);
+});
+
+test('indexes actual PDF pages into pgvector without re-embedding metadata edits', async () => {
+  const result = await upload(metadata(), pdfFixture(['Follow-up in two weeks.', 'Insurance coverage information.'])).expect(201);
+  const doc = result.body.document;
+  assert.equal(doc.processingStatus, 'ready');
+  assert.equal(doc.processingError, null);
+  const chunks = (await db.query('SELECT page_number,vector_dims(embedding) AS dimensions FROM document_chunks WHERE document_id=$1 ORDER BY chunk_index', [doc.id])).rows;
+  assert.deepEqual(chunks, [{ page_number: 1, dimensions: 1536 }, { page_number: 2, dimensions: 1536 }]);
+  const calls = embeddingCalls;
+  await auth(request(app).patch(`${route()}/${doc.id}`)).send({ version: 1, title: 'Renamed' }).expect(200);
+  assert.equal(embeddingCalls, calls); // Metadata edits do not embed again.
+
+});
+
+test('provider and database failures retain the original and retries publish without duplicate chunks', async () => {
+  failEmbedding = true;
+  const doc = await create();
+  assert.equal(doc.processingStatus, 'failed');
+  assert.equal(doc.processingError, 'embedding_unavailable');
+  assert.deepEqual((await auth(request(app).get(`${route()}/${doc.id}/file`))).body, pdf);
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '0');
+  failEmbedding = false;
+  failChunks = true;
+  const failed = await auth(request(app).post(`${route()}/${doc.id}/process`)).expect(200);
+  assert.equal(failed.body.document.processingStatus, 'failed');
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '0');
+  failChunks = false;
+  const retry = await auth(request(app).post(`${route()}/${doc.id}/process`)).expect(200);
+  assert.equal(retry.body.document.processingStatus, 'ready');
+  assert.equal(retry.body.document.version, 1); // Processing is separate from metadata edit versions.
+  const calls = embeddingCalls;
+  await auth(request(app).post(`${route()}/${doc.id}/process`)).expect(200);
+  assert.equal(embeddingCalls, calls);
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '1');
+});
+
+test('malformed and text-free PDFs are saved but are not searchable; images are rejected', async () => {
+  for (const [bytes, code] of [[Buffer.from('%PDF-invalid'), 'invalid_pdf'], [pdfFixture(['']), 'no_extractable_text']]) {
+    const result = await upload(metadata(), bytes).expect(201);
+    assert.equal(result.body.document.processingStatus, 'failed');
+    assert.equal(result.body.document.processingError, code);
+  }
+  assert.equal(embeddingCalls, 0);
+  await upload(metadata(), Buffer.from('89504e470d0a1a0a', 'hex'), 'image/png').expect(415);
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '0');
+});
+
+test('processing retry requires management permission and deletion cascades to chunks', async () => {
+  const doc = await create();
+  await auth(request(app).post(`${route()}/${doc.id}/process`), reader).expect(403);
+  await auth(request(app).post(`${route()}/${doc.id}/process`), hidden).expect(404);
+  await auth(request(app).post(`${route()}/${doc.id}/process`), outsider).expect(404);
+  await request(app).post(`${route()}/${doc.id}/process`).expect(401);
+  await auth(request(app).delete(`${route()}/${doc.id}`)).expect(204);
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '0');
+});
+
+test('processing claims reject overlapping retries and recover expired attempts', async () => {
+  failEmbedding = true;
+  const doc = await create();
+  failEmbedding = false;
+  let release, started;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const entered = new Promise(resolve => { started = resolve; });
+  embeddingHook = async () => { started(); await blocked; };
+  const first = auth(request(app).post(`${route()}/${doc.id}/process`)).then(response => response);
+  try {
+    await entered;
+    await auth(request(app).post(`${route()}/${doc.id}/process`)).expect(409);
+    await db.query("UPDATE care_documents SET processing_started_at=now()-interval '3 minutes' WHERE id=$1", [doc.id]);
+    const interrupted = (await auth(request(app).get(`${route()}/${doc.id}`))).body.document;
+    assert.equal(interrupted.processingError, 'processing_interrupted');
+    embeddingHook = null;
+    await auth(request(app).post(`${route()}/${doc.id}/process`)).expect(200);
+  } finally { release(); }
+  assert.equal((await first).status, 409);
+  const saved = (await auth(request(app).get(`${route()}/${doc.id}`))).body.document;
+  assert.equal(saved.processingStatus, 'ready');
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '1');
+});
+
+test('deleting a document during processing does not recreate it', async () => {
+  let release, started;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const entered = new Promise(resolve => { started = resolve; });
+  embeddingHook = async () => { started(); await blocked; };
+  const uploading = upload().then(response => response);
+  try {
+    await entered;
+    const doc = (await auth(request(app).get(route()))).body.documents[0];
+    assert.equal(doc.processingStatus, 'processing');
+    await auth(request(app).delete(`${route()}/${doc.id}`)).expect(204);
+  } finally { release(); }
+  assert.equal((await uploading).status, 404);
+  assert.equal((await db.query('SELECT count(*) FROM document_chunks')).rows[0].count, '0');
 });

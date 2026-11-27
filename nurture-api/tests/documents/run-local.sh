@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-# Prerequisites: PostgreSQL binaries (including citext), Node, and npm ci.
+# Prerequisites: PostgreSQL 16+ binaries (including citext and vector), Node, and npm ci.
 pg_bin="$(pg_config --bindir)"
 document_port="${DOCUMENT_TEST_PORT:-55440}"
 document_tmp="$(mktemp -d "/tmp/nurture-documents-pg.XXXXXX")"
@@ -26,4 +26,4 @@ mkdir "$document_tmp/socket"
 document_started=true
 "$pg_bin/createdb" -h 127.0.0.1 -p "$document_port" -U nurture_documents_test nurture_documents_test
 DOCUMENT_TEST_DATABASE_URL="postgresql://nurture_documents_test@127.0.0.1:$document_port/nurture_documents_test" \
-  node --test tests/documents/documents.integration.test.cjs
+  node --test tests/documents/*.test.cjs

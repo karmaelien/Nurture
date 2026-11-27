@@ -72,3 +72,13 @@ it('rejects stale edits instead of restoring revoked sharing', async () => {
   expect(saved.title).toBe(original.title)
   expect(saved.sharing.memberIds).toEqual([])
 })
+
+it('only managers can retry processing', async () => {
+  await loginDaniel()
+  await expect(documentsApi.process('c_demo', 'doc_demo_0')).rejects.toMatchObject({ status: 403 })
+  await expect(documentsApi.process('c_demo', 'doc_demo_2')).rejects.toMatchObject({ status: 404 })
+  setToken((await authApi.login(DEMO_ACCOUNT)).token)
+  const result = await documentsApi.process('c_demo', 'doc_demo_0')
+  expect(result.document.processingStatus).toBe('ready')
+  expect(result.document.version).toBe(1)
+})

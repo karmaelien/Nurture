@@ -1,9 +1,15 @@
+const { randomUUID } = require('node:crypto');
+const pgvector = require('pgvector');
+const { MODEL, LEASE_MS } = require('../services/document-embeddings');
 const { httpError } = require('../utils/httpErrors');
 const { parseId } = require('../utils/ids');
 const missing = () => httpError(404, 'not_found', 'Document, recipient, or care circle not found.');
 
 module.exports = function documentModel(db) {
   return {
+    async failProcessing(id, token, code) {
+      return db.transaction(tx => tx.query("UPDATE care_documents SET processing_status='failed',processing_error=$3,processing_token=NULL WHERE id=$1 AND processing_token=$2", [id, token, code]));
+    },
     // Membership stays locked for the operation, including private file access.
     async withCircle(circleId, user, work) {
       if (!user) throw httpError(401, 'unauthorized', 'Authentication required.');
@@ -13,9 +19,12 @@ module.exports = function documentModel(db) {
         if (!membership) throw missing();
         const owner = membership.role === 'owner';
         const manage = row => owner || String(row.uploaded_by) === String(user.id);
-        const projection = `d.id, d.version, d.recipient_id, d.title, d.category, d.file_name, d.mime_type, d.size_bytes, d.uploaded_by, d.uploaded_at, d.sharing_mode, ARRAY(SELECT user_id::text FROM document_grants g WHERE g.document_id=d.id ORDER BY user_id) AS member_ids`;
+        const projection = `d.id, d.processing_status, d.processing_error, d.processing_started_at, d.processing_token, d.version, d.recipient_id, d.title, d.category, d.file_name, d.mime_type, d.size_bytes, d.uploaded_by, d.uploaded_at, d.sharing_mode, ARRAY(SELECT user_id::text FROM document_grants g WHERE g.document_id=d.id ORDER BY user_id) AS member_ids`;
         const visible = `(d.uploaded_by=$2 OR $3 OR d.sharing_mode='circle' OR EXISTS (SELECT 1 FROM document_grants g WHERE g.document_id=d.id AND g.user_id=$2))`;
+        const interrupted = row => row.processing_status === 'processing' && Date.now() - new Date(row.processing_started_at).getTime() >= LEASE_MS;
         const wire = row => ({ id: String(row.id), version: row.version, recipientId: String(row.recipient_id), title: row.title, category: row.category,
+          processingStatus: interrupted(row) ? 'failed' : row.processing_status,
+          processingError: interrupted(row) ? 'processing_interrupted' : row.processing_error,
           fileName: row.file_name, mimeType: row.mime_type, sizeBytes: row.size_bytes,
           uploadedBy: row.uploaded_by === null ? null : String(row.uploaded_by), uploadedAt: row.uploaded_at.toISOString(),
           sharing: { mode: row.sharing_mode, memberIds: row.member_ids }, canManage: manage(row) });
@@ -43,6 +52,27 @@ module.exports = function documentModel(db) {
           // Called only after find has authorized and locked the document.
           async bytes(row) {
             return (await tx.query('SELECT file_bytes FROM care_documents WHERE id=$1', [row.id])).rows[0].file_bytes;
+          },
+          async claimProcessing(id) {
+            const row = await find(id, true);
+            if (row.processing_status === 'ready') return { document: wire(row) };
+            if (row.processing_status === 'processing' && !interrupted(row))
+              throw httpError(409, 'document_processing', 'This document is already processing. Refresh its status shortly.');
+            const token = randomUUID();
+            await tx.query("UPDATE care_documents SET processing_status='processing',processing_error=NULL,processing_started_at=now(),processing_token=$2 WHERE id=$1", [row.id, token]);
+            const bytes = (await tx.query('SELECT file_bytes FROM care_documents WHERE id=$1', [row.id])).rows[0].file_bytes;
+            return { token, bytes };
+          },
+          async publishChunks(id, token, chunks) {
+            const row = await find(id, true);
+            if (row.processing_token !== token)
+              throw httpError(409, 'document_processing', 'A newer processing attempt has started. Refresh the document.');
+            await tx.query('DELETE FROM document_chunks WHERE document_id=$1', [row.id]);
+            for (const chunk of chunks) await tx.query(
+              'INSERT INTO document_chunks(document_id,chunk_index,page_number,content,embedding,embedding_model) VALUES ($1,$2,$3,$4,$5::vector,$6)',
+              [row.id, chunk.chunkIndex, chunk.pageNumber, chunk.text, pgvector.toSql(chunk.embedding), MODEL]);
+            await tx.query("UPDATE care_documents SET processing_status='ready',processing_error=NULL,processing_token=NULL WHERE id=$1", [row.id]);
+            return wire(await find(id));
           },
           async list(query) {
             if (query.recipientId) await recipient(query.recipientId);

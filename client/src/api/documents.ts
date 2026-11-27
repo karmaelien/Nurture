@@ -3,6 +3,8 @@ import type { CareDocument, CreateDocumentRequest, UpdateDocumentRequest } from 
 const path = (circleId: string, id?: string) =>
   `/api/circles/${encodeURIComponent(circleId)}/documents${id ? `/${encodeURIComponent(id)}` : ''}`
 export const documentsApi = {
+  process: (circleId: string, id: string) =>
+    request<{ document: CareDocument }>(`${path(circleId, id)}/process`, { method: 'POST' }),
   list: (circleId: string) => request<{ documents: CareDocument[] }>(path(circleId)),
   upload: (circleId: string, file: File, metadata: CreateDocumentRequest) => {
     const body = new FormData()

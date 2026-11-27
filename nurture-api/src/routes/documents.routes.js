@@ -1,13 +1,15 @@
 const express = require('express');
 const multer = require('multer');
+const createDocumentIndexing = require('../services/document-indexing');
 const documentModel = require('../models/document.model');
 const { httpError } = require('../utils/httpErrors');
 const { createSchema, updateSchema, querySchema, fileQuerySchema, parse, validateFile, safeName } = require('../validators/documents.validators');
 
 // Mount after authenticate. Identity is supplied exclusively by req.user.
-module.exports = function createDocumentRouter({ db = require('../config/db') } = {}) {
+module.exports = function createDocumentRouter({ db = require('../config/db'), embeddings, extract } = {}) {
   const router = express.Router({ mergeParams: true });
   const model = documentModel(db);
+  const indexing = createDocumentIndexing(model, { embeddings, extract });
   const within = (req, work) => model.withCircle(req.params.circleId, req.user, work);
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10485760, files: 1, fields: 1, parts: 2, fieldSize: 65536 } }).single('file');
   router.use(async (req, res, next) => {
@@ -18,6 +20,10 @@ module.exports = function createDocumentRouter({ db = require('../config/db') } 
   router.get('/', async (req, res) => {
     const documents = await within(req, scope => scope.list(parse(querySchema, req.query)));
     res.json({ documents });
+  });
+  router.post('/:documentId/process', async (req, res) => {
+    const document = await indexing.process(req.params.circleId, req.user, req.params.documentId);
+    res.json({ document });
   });
   router.post('/', (req, res, next) => upload(req, res, error => {
     if (!error) return next();
@@ -34,7 +40,8 @@ module.exports = function createDocumentRouter({ db = require('../config/db') } 
       await scope.checkSharing(body.sharing);
       return scope.create(body, req.file);
     });
-    res.status(201).json({ document });
+    const processed = await indexing.process(req.params.circleId, req.user, document.id);
+    res.status(201).json({ document: processed });
   });
   router.get('/:documentId', async (req, res) => {
     const document = await within(req, async scope => scope.wire(await scope.find(req.params.documentId)));
