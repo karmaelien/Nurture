@@ -42,6 +42,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/users', require('./routes/users.routes'));
 
 app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/circles/:circleId/documents', require('./middleware/authenticate'), require('./routes/documents.routes')());
 app.use('/api/circles', require('./routes/circles.routes'));
 
 app.use('/api/admin', require('./routes/admin.routes'));
