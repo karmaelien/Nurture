@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { findById } = require('./circle.model');
 
 const Invite = {
     create: async ({ circleId, userId, tokenHash}, conn = db) => {
@@ -14,6 +15,14 @@ const Invite = {
             `SELECT (circleId, invitee_id, status) FROM invites WHERE
             circledId = $1;`,
             [circleId]
+        );
+        return rows[0];
+    },
+    findById: async({circleId, userId}, conn = db) => {
+        const { rows } = await conn.query(
+            `SELECT (circleId, invitee_id) FROM invites WHERE
+            circledId = $1, status = 'pending';`,
+            [circleId, userId]
         );
         return rows[0];
     },
@@ -33,4 +42,15 @@ const Invite = {
         );
         return rows[0];
     },
+    previewCircle: async ({circleId, userId}, conn = db) => {
+        const { rows } = await conn.query(
+          `SELECT c.name 
+          FROM invites AS i
+          LEFT JOIN circles AS c 
+          ON c.circle_id = i.circle_id
+          WHERE c.circle_id = $1, i.invitee_id = $2;`,
+          [circleId, userId]
+        );
+        return rows[0];
+    }
 }

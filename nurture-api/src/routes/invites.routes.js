@@ -1,9 +1,9 @@
 const express = require('express');
-const inviteModel = require('../models/invite.model');
-const invitesController = require('../controllers/invites.controller');
+const invites = require('../controllers/invites.controller');
+const authenticate = require('../middleware/authenticate');
 
 const router = express.Router({ mergeParams: true });
 
-router.post();
-router.post();
-router.post();
+router.post('/api/invites/preview { token }',authenticate,invites.previewCircle());
+router.post('/api/invites/accept { token }',authenticate,invites.update());
+router.post( '/api/invites/decline { token }',authenticate,invites.remove());
