@@ -222,9 +222,8 @@ export function AppointmentEditor({
           </Button>
           {appointment && (
             <Button
-              variant="ghost"
+              variant="danger"
               disabled={busy}
-              className="text-danger"
               onClick={() => {
                 setError(undefined)
                 setConfirmDelete(true)
@@ -238,6 +237,7 @@ export function AppointmentEditor({
       {confirmDelete && (
         <div className="mt-5 flex flex-wrap gap-2">
           <Button
+            variant="danger"
             loading={busy}
             onClick={() =>
               void submit(async () => {
