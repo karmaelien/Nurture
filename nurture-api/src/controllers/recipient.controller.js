@@ -50,12 +50,12 @@ exports.updateRelationship = async (req, res, next) => {
 exports.update = async(req, res, next) => {
   try {
     const recipientId = parseId(req.params.recipientId);
-    if (!recipientId){
-      throw httpError(404, 'not_found', 'No recipient found')
-    }
+    const recipient_exists = recipientId && await Recipient.findInCircle(req.circleId, recipientId);
+    if (!recipient_exists) throw httpError(404, 'not_found', 'This person is not in the care circle.');
+    
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success){
-      throw httpError(400, 'validation_error', 'Provide at least one field.');
+      throw httpError(400, 'validation_error', parsed.error.issues[0].message);
     }
     const { version, ...fields } = parsed.data;
 
@@ -65,7 +65,7 @@ exports.update = async(req, res, next) => {
     if (!updated){
       const exists = await Recipient.findInCircle(req.circleId, recipientId);
       if (!exists){
-        throw httpError(404, 'not_found','No recipient found')
+        throw httpError(404, 'not_found','This person is not in the care circle.')
       }
       return res.status(409).json({
         error: { code: 'edit_conflict', message: 'Someone else saved changes to this person first.' },
