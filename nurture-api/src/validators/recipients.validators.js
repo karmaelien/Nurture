@@ -11,7 +11,7 @@ const isCalendarDate = (s) => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 };
 
-const isBirthDate = z.string().trim().superRefine((s, ctx) => {
+const birthDateSchema = z.string().trim().superRefine((s, ctx) => {
   if (!isCalendarDate(s)) {
     ctx.addIssue({ code: 'custom', message: 'Enter a full date of birth, or leave it blank.' });
   } else if (s > new Date().toISOString().slice(0, 10)) {
@@ -25,14 +25,14 @@ exports.addSchema = z.object({
   name: z.string().trim().min(1).max(80),
   relationship: z.enum(RELATIONSHIPS).nullable(),
   preferredName: optionalText(z.string().trim().min(1).max(80)),
-  dateOfBirth: optionalText(z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isBirthDate)),
+  dateOfBirth: optionalText(birthDateSchema),
   notes: optionalText(z.string().trim().max(500)),
 });
 
 exports.updateSchema = z.object({
   name: z.string().trim().min(1, 'Enter their name.').max(80, 'Keep this to 80 characters or fewer.').optional(),
   preferredName: optionalText(z.string().trim().min(1).max(80)).optional(),
-  dateOfBirth: optionalText(z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isBirthDate)).optional(),
+  dateOfBirth: optionalText(birthDateSchema).optional(),
   notes: optionalText(z.string().trim().max(500, 'Keep notes to 500 characters or fewer.')).optional(),
   version: z.number().int().positive()
 });
