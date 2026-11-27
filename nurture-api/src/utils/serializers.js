@@ -11,6 +11,7 @@ exports.toRecipient = (r, relationship = r.relationship ?? null) => ({
   dateOfBirth: r.date_of_birth ?? null,
   notes: r.notes ?? null,
   relationship,
+  version: r.version
 });
 // The contract's CircleSummary. recipients are rows from Recipient.listByCircle for the signed-in user.
 exports.toCircleSummary = (c, role, recipients) => ({

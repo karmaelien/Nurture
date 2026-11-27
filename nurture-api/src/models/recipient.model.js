@@ -1,6 +1,6 @@
 const db = require('../config/db');
 
-const COLUMNS = 'id, circle_id, name, created_at, preferred_name, date_of_birth, notes';
+const COLUMNS = 'id, circle_id, name, created_at, preferred_name, date_of_birth, notes, version';
 
 const Recipient = {
   findInCircle: async (circleId, recipientId, conn = db) => {
@@ -14,7 +14,7 @@ const Recipient = {
 
   listByCircle: async (circleId,userId, conn = db) => {
     const { rows } = await conn.query(
-      `SELECT r.id, r.name, cr.relationship, r.preferred_name, r.date_of_birth, r.notes
+      `SELECT r.id, r.name, cr.relationship, r.preferred_name, r.date_of_birth, r.notes, r.version
         FROM recipients r
         LEFT JOIN care_relationships cr
           ON cr.recipient_id = r.id AND cr.user_id = $2
@@ -33,6 +33,25 @@ const Recipient = {
       [circleId, name, preferredName, dateOfBirth, notes]
     );
     return rows[0];
+  },
+
+  update: async ({circleId, recipientId, version, fields}, conn = db) => {
+      const columns = { name: 'name', preferredName: 'preferred_name', dateOfBirth: 'date_of_birth', notes: 'notes'};
+      const entries = Object.entries(fields).filter(([key, value]) => key in columns && value !== undefined);
+      const sets = [
+        ...entries.map(([key], i) => `${columns[key]} = $${i + 4}`),
+        'updated_at = now()',
+        'version = version + 1',
+      ];
+
+    const {rows} = await conn.query(
+      `UPDATE recipients 
+      SET ${sets.join(', ')}
+      WHERE circle_id = $1 AND id = $2 AND version = $3 
+      RETURNING ${COLUMNS}`,
+      [circleId, recipientId, version, ...entries.map(([, value]) => value)]
+    )
+    return rows[0] || null;
   },
 
   remove: async (recipientId, conn = db) => {
