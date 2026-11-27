@@ -156,17 +156,24 @@ type DocumentSharing =
   | { mode: 'circle'; memberIds: [] }
   | { mode: 'selected'; memberIds: string[] }
 
+type DocumentProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed'
+type DocumentProcessingError =
+  | 'invalid_pdf' | 'no_extractable_text' | 'document_too_large'
+  | 'embedding_not_configured' | 'embedding_unavailable' | 'processing_timeout'
+  | 'processing_interrupted' | 'processing_failed'
 // JSON metadata returned by the API. The actual file is stored separately from
 // these response fields in care_documents.file_bytes (PostgreSQL BYTEA).
 // File bytes are returned only by GET /documents/:documentId/file under the circle path.
 type CareDocument = {
+  processingStatus: DocumentProcessingStatus
+  processingError: DocumentProcessingError | null
   version: number // required on edits; increments after every successful update
   id: string
   recipientId: string
   title: string
   category: DocumentCategory
   fileName: string // original filename, for display only
-  mimeType: 'application/pdf' | 'image/jpeg' | 'image/png'
+  mimeType: 'application/pdf'
   sizeBytes: number
   uploadedBy: string | null // null if the uploader's account was deleted
   uploadedAt: string
@@ -464,11 +471,11 @@ No body. Deletes the expense. A missing or already-deleted expense returns `404`
 
 ### Documents
 
-The browser mock and standalone backend router implement this contract. Mounting the
-router in the shared server and configuring the PostgreSQL connection remain integration steps.
-Documents belong to one recipient and its circle. The initial file types are PDF, JPEG,
-and PNG, with one non-empty file per upload and a maximum of 10 MiB (10,485,760 bytes).
-Parsing, content search, and AI summaries are deferred.
+The backend router is mounted in the shared server behind session authentication.
+Documents belong to one recipient and its circle. Uploads accept one non-empty text PDF,
+up to 10 MiB (10,485,760 bytes). Images and OCR are not supported. AI answer generation
+is a separate feature; these endpoints prepare and store chunks for a teammate’s RAG implementation.
+The browser mock simulates processing without calling OpenAI.
 
 All endpoints require auth (`401 unauthorized`). A missing/inaccessible circle,
 document, or recipient returns `404 not_found`. Check circle membership and document
@@ -497,15 +504,19 @@ Uploader/owner IDs need not be selected to retain access.
 Removing a member immediately blocks subsequent document requests and removes their
 explicit sharing grants, so rejoining does not restore a previous selected-member grant.
 Removal does not delete documents they uploaded; circle owners can still manage them.
-Downloaded copies cannot be revoked. Future extraction/search must use the same access rules.
+Downloaded copies cannot be revoked. Future retrieval must check current document permissions before returning any chunks;
+permission changes require no re-embedding.
 
 Metadata and file bytes are stored together in PostgreSQL. The backend stores the raw
 binary file in `care_documents.file_bytes` (`BYTEA`, not base64), with its byte length
 constrained to match `size_bytes`. This uses the same PostgreSQL connection locally
 and on Azure Database for PostgreSQL; no filesystem directory or Blob Storage is required.
-Metadata/list queries exclude `file_bytes`; only an authorized file request loads it.
+Metadata/list queries exclude `file_bytes`; authorized file retrieval and processing load it.
 Do not include file bytes in JSON metadata/list responses or expose public file URLs.
-Deleting a recipient or circle also cascades its document rows, bytes, and sharing grants.
+Chunks are stored in `document_chunks` with page numbers and `vector(1536)` embeddings
+from OpenAI `text-embedding-3-small`. Deleting a document, recipient, or circle cascades
+its chunks along with the original bytes and sharing grants. Document text is sent to
+OpenAI for embeddings by the backend; credentials are never sent to the browser.
 Validate actual file contents as well as the claimed file type and sanitize filenames.
 Unknown metadata fields and invalid/null required fields return `400 validation_error`.
 
@@ -525,9 +536,20 @@ descending, then ID ascending. No pagination in the initial version.
 #### `POST /api/circles/:circleId/documents`
 
 Multipart body: `file` (one binary file) and `metadata` (JSON-encoded `CreateDocumentRequest`).
-The server generates the ID, uploader, upload time, and file metadata. Return success
-only after metadata, bytes, and sharing grants commit in one transaction. Failed uploads
-roll back all three.
+The server generates the ID, uploader, upload time, and file metadata. Metadata, bytes,
+and sharing grants commit together first. Then the request awaits PDF extraction,
+chunking and embeddings outside that transaction; there is no background worker.
+Return `201` with the saved document whether indexing succeeds (`ready`) or fails
+(`failed` with a safe `processingError`). Indexing failure never rolls back the original.
+A database failure before saving rolls back the upload. An interrupted response does
+not mean the upload failed: refresh the list before uploading again.
+
+Processing limits: 100 pages, 200,000 extracted characters, 200 chunks. Text is split
+per page into up to 1,800 characters with 200-character overlap, and embeddings are
+requested in batches of 16. Processing has a 60-second deadline; requests may be limited
+further by hosting timeouts. Malformed/password-protected PDFs fail `invalid_pdf`;
+PDFs with no text fail `no_extractable_text`. Blank/image-only pages in mixed PDFs are
+not indexed. All chunks publish atomically only after processing succeeds.
 
 | Status | Body |
 | --- | --- |
@@ -568,7 +590,9 @@ Uploader or circle owner only. Body: `UpdateDocumentRequest`. Changes supplied m
 only; recipient and file bytes cannot be replaced. Include the `version` captured when
 editing began and at least one changed field. The server checks the version while
 locking the document in the transaction. A stale version returns `409 document_conflict`
-without changing metadata or sharing. Successful edits increment the version.
+without changing metadata or sharing. Successful metadata edits increment the version.
+Title/category/sharing edits do not regenerate embeddings. Processing does not change
+the metadata version.
 Cancel editing, refresh, and reopen the form after a conflict; do not silently retry with
 a newer version. Failed validation leaves the record
 and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
@@ -584,7 +608,7 @@ and sharing unchanged. Revoking sharing takes effect on subsequent API requests.
 #### `DELETE /api/circles/:circleId/documents/:documentId`
 
 Uploader or circle owner only. Deletes the document and its stored file. Return success
-only after metadata, bytes, and sharing grants are deleted in one transaction. Failed
+only after metadata, bytes, chunks, and sharing grants are deleted in one transaction. Failed
 deletion rolls back and can be retried. A missing or already-deleted document returns `404`.
 
 | Status | Body |
@@ -594,13 +618,29 @@ deletion rolls back and can be retried. A missing or already-deleted document re
 | 404 | `not_found` |
 | 500 | `internal_error` (database operation failed) |
 
+#### `POST /api/circles/:circleId/documents/:documentId/process`
+
+No body. Uploader or circle owner only. Processes a pending/failed document synchronously.
+A ready document returns unchanged, without another embedding call. An active attempt
+returns `409 document_processing`. After two minutes an interrupted attempt is shown
+as failed with `processing_interrupted` and may be retried. Attempt tokens prevent an
+old attempt from overwriting a newer retry. No automatic retry runs after a server restart.
+
+| Status | Body |
+| --- | --- |
+| 200 | `{ document: CareDocument }` (inspect processing status) |
+| 403 | `document_manager_only` |
+| 404 | `not_found` |
+| 409 | `document_processing` |
+| 500 | `internal_error` |
+
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
-- **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.
+- **Document assistance:** source-linked AI answers/summaries and extracted care actions with user review. Text extraction and vector storage are implemented; retrieval and answer generation are left to teammates.
 - **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
 
 ## Connecting the real backend
