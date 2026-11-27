@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
 import { circlesApi } from '../../api/circles.ts'
 import { getToken, setToken } from '../../api/token.ts'
@@ -134,25 +134,27 @@ describe('person profile', () => {
 
   it('sends only the changed details, with the version they are based on', async () => {
     await logIn()
-    const bodies: unknown[] = []
-    server.events.on('request:start', async ({ request }) => {
-      if (request.method === 'PATCH') bodies.push(await request.clone().json())
-    })
-    const user = userEvent.setup()
-    const router = renderApp('/app/circles/c_demo/people/r_frank/edit')
+    const update = vi.spyOn(circlesApi, 'updateRecipient')
+    try {
+      const user = userEvent.setup()
+      const router = renderApp('/app/circles/c_demo/people/r_frank/edit')
 
-    // Saving without changes sends nothing.
-    await user.click(await screen.findByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
-    expect(bodies).toEqual([])
+      // Saving without changes sends nothing.
+      await user.click(await screen.findByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
+      expect(update).not.toHaveBeenCalled()
 
-    await router.navigate('/app/circles/c_demo/people/r_frank/edit')
-    await user.type(await screen.findByLabelText('Notes (optional)'), 'Walks every morning.')
-    await user.click(screen.getByRole('button', { name: 'Save changes' }))
-    await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
-    // The request observer reads a cloned body asynchronously, independently of navigation.
-    await waitFor(() => expect(bodies).toEqual([{ version: 1, notes: 'Walks every morning.' }]))
-    server.events.removeAllListeners()
+      await user.click(await screen.findByRole('link', { name: 'Edit' }))
+      await user.type(await screen.findByLabelText('Notes (optional)'), 'Walks every morning.')
+      await user.click(screen.getByRole('button', { name: 'Save changes' }))
+      await waitFor(() => expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/r_frank'))
+      expect(update).toHaveBeenCalledExactlyOnceWith('c_demo', 'r_frank', {
+        version: 1,
+        notes: 'Walks every morning.',
+      })
+    } finally {
+      update.mockRestore()
+    }
   })
 
   it('shows what’s saved now when someone else saved first, and saves over it only when asked', async () => {

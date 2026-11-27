@@ -9,7 +9,8 @@
     "migrate:up": "npm run migrate -- up",
     "migrate:down": "npm run migrate -- down",
     "db:reset": "node src/db/reset.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:medications": "node --test tests/medications/medications.unit.test.cjs tests/medications/medication-push.unit.test.cjs tests/medications/medications.integration.test.cjs"
   },
   "keywords": [],
   "author": "",
@@ -28,6 +29,7 @@
     "openai": "^7.64.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.23.1",
+    "web-push": "^4.0.0",
     "pgvector": "^0.3.1",
     "zod": "^4.6.7"
   },

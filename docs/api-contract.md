@@ -114,12 +114,17 @@ type Appointment = {
 
 type MedicationOccurrence = {
   id: string; // unique to this occurrence
+  version: number; // required when changing status; stale versions return 409
   medicationId: string;
+  medicationStoppedAt?: string | null; // range response metadata; suppresses reminders
   recipientId: string;
   name: string;
   dosage: string; // display text supplied by the care-management feature
   scheduledAt: string; // UTC timestamp
   status: "pending" | "completed";
+  takenAt?: string | null; // time marked taken; null after undo; absent on older records
+  overdueAfterMinutes?: number; // pending-dose display grace period; defaults to 30
+  reminderBeforeMinutes?: number | null; // 0–1440 minutes before; null/omitted disables
 };
 
 type CareTask = {
@@ -336,6 +341,24 @@ The body must also include `version`: the `Recipient.version` the edit is based 
 | 404    | `not_found` (also when the recipient isn't in this circle)                                    |
 | 409    | `edit_conflict`, plus `recipient: Recipient` with the current details: `{ error, recipient }` |
 
+### Medication notification subscriptions (real backend)
+
+Mounted at `/api/medication-notifications` when `ENABLE_MEDICATIONS_API=true`.
+Every endpoint requires authentication. There is no mock background push service.
+
+| Method/path | Body | Success |
+| --- | --- | --- |
+| `GET /config` | None | `{ enabled, publicKey }`; private VAPID keys are never returned |
+| `POST /subscription/status` | `{ endpoint }` | `{ enabled }` for the signed-in user's subscription |
+| `POST /subscription` | Browser `PushSubscription.toJSON()` | `204`; saves or transfers this browser endpoint to the signed-in user |
+| `DELETE /subscription` | `{ endpoint }` | `204`; removes only the signed-in user's matching endpoint |
+
+Subscriptions require supported HTTPS browser push endpoints, a 65-byte P-256 key,
+a 16-byte authentication secret, and a nullable expiration timestamp. Invalid input
+returns 400. Creation returns 503 when push is not configured. Opt-in is per browser
+and covers the user's current families; membership and pending dose state are checked
+again at delivery. See [notification setup and delivery behavior](medications.md#closed-app-notifications).
+
 ### Care resources
 
 These read-only endpoints are specified for the initial dashboard; implementation is pending.
@@ -380,18 +403,97 @@ Accepts either the same fields as creation (preserving completion status) or `{ 
 
 Removes the appointment and returns `204`. Appointment writes require circle membership and return `400` for invalid input or `404` for unavailable records.
 
+#### Medication definitions
+
+The medication page currently implements `GET` and `POST /api/circles/:circleId/medications`,
+and `PATCH`/`DELETE /api/circles/:circleId/medications/:medicationId`. Browser mocks are
+the default. The PostgreSQL router implements the same contract and is mounted behind
+authentication when `ENABLE_MEDICATIONS_API=true`. The definition, schedule, version-checking,
+validation, migration, and activation instructions are documented in [Medications](medications.md).
+
+Creation initializes a private `effective_from` timestamp from the database clock
+(the mock stores the equivalent boundary). A backdated Start date never creates
+doses before the medication was added, including earlier times on its creation day.
+Range reads and overdue backfill both enforce the boundary, and subsequent revisions
+preserve it. Legacy records with no known boundary keep their existing history.
+
 #### `GET /api/circles/:circleId/medication-occurrences`
 
 Query: `{ from, to, status?, recipientId? }`. `from` and `to` are required timestamps
 filtering `scheduledAt`. `status` is `pending` or `completed`; omit for both.
 Returns individual scheduled doses, sorted by `scheduledAt` ascending. Medication
-and recurring schedule definitions are separate, future resources.
+and recurring schedule definitions are separate resources, implemented by both the mock and staged PostgreSQL API.
+
+Both implementations generate occurrences from saved medication schedules, preserving existing status
+and taken history. The requested window can span at most 366 days. See [Medications](medications.md)
+for time-zone, daylight-saving, and schedule-edit behavior.
 
 | Status | Body                                                |
 | ------ | --------------------------------------------------- |
 | 200    | `{ medicationOccurrences: MedicationOccurrence[] }` |
 | 400    | `validation_error`                                  |
 | 404    | `not_found`                                         |
+
+#### `GET /api/circles/:circleId/medication-occurrences/overdue`
+
+Query: `{ before, recipientId?, cursor? }`. Returns
+`{ medicationOccurrences, totalOverdueCount, nextCursor, historyPending }` with pending
+doses scheduled strictly before the cutoff and past their individual overdue delay.
+The UI uses next local midnight as the cutoff; the server caps it at the current time.
+Today's overdue doses are included along with earlier days, without counting earlier doses in today's totals.
+Current family membership is required; results follow the care-profile filter and sort
+oldest first. Missing schedule instances are generated from tracked effective intervals,
+never before creation for new medications, with one
+record per dose time. Taken records are preserved and no age cutoff is applied. See [Medications](medications.md)
+for reconciliation and materialization behavior.
+
+Each response includes up to 100 rows. Pass its non-null `nextCursor` to load the
+next page with the same cutoff/profile. `totalOverdueCount` counts all currently
+materialized, current-definition overdue rows, not only the page. `historyPending`
+marks incomplete backfill, so this count is a lower bound until it is false.
+Generation advances at most 31 calendar days in total per request, shared among
+selected definitions. The client continues it in short requests and indicates that
+older doses are loading; the family lock is released between requests. There is
+no age cutoff. Edits preserve coverage and use effective-time definition snapshots
+for previously unviewed dates. Past pending and taken doses retain their original
+details; only future untaken doses follow the new schedule. Obsolete materialized
+future doses are retired during the edit transaction, before they can become past history.
+
+#### `PATCH /api/circles/:circleId/medication-occurrences/:occurrenceId`
+
+Body: `{ status: 'pending' | 'completed', version: number }`. Returns `200 { medicationOccurrence }`.
+The interface labels completed doses Taken. Requires current family membership; missing
+or inaccessible occurrences return 404 and invalid bodies return 400. Status updates refresh
+Home and Medications and are saved in the browser mock database or PostgreSQL when enabled.
+Stale dose versions return `409 edit_conflict`. A successful status transition increments
+the dose version; repeating its current status with the current version preserves its
+taken timestamp and version. Historical taken doses can be marked pending while
+preserving their original details. Undoing a future taken occurrence whose time was
+removed from the schedule returns `409 schedule_conflict` and preserves that record.
+`POST /api/circles/:circleId/medications/:medicationId/stop` accepts `{ version: number }`
+and returns `200 { medication }`, including `stoppedAt` (UTC) and an incremented version.
+It preserves past pending/taken doses and archived definitions, removes future pending doses,
+suppresses reminders, and prevents any dose generation at or after the stop instant.
+Unviewed past history still backfills. Existing future taken records remain; undoing one
+returns `409 schedule_conflict`. Past missed doses remain overdue and can be marked taken.
+Stopped medications remain listed; edits return `409 edit_conflict`. The Restart medication
+action prefills a new course and submits it through `POST /medications` after the user
+chooses new course dates. The new ID leaves stopped history and the intervening dates unchanged.
+Repeating stop with its current version keeps the original timestamp/version. Stale stop
+requests return `409 edit_conflict`. Range occurrence responses include `medicationStoppedAt`
+for stopped medications so reminder displays can suppress them without changing saved dose details.
+
+Permanent medication deletion requires a JSON `{ version: number }` body and rejects stale
+confirmation versions with `409 edit_conflict`. It permanently deletes pending doses,
+taken dose history, and archived medication definitions along with the medication.
+The delete confirmation explicitly includes taken history. Failed browser persistence returns
+`503 storage_unavailable`; a save must not be reported as successful.
+
+PostgreSQL generation and writes lock the individual medication, not its family row.
+Definition listings take no exclusive row lock. Collection reads generate and commit
+one medication at a time, rechecking current family membership between transactions
+and before returning their combined result. Status changes lock the medication before
+the occurrence; version checks still reject stale actions.
 
 #### `GET /api/circles/:circleId/tasks`
 
@@ -639,9 +741,12 @@ old attempt from overwriting a newer retry. No automatic retry runs after a serv
 These aren't part of this contract yet, but the model is built for them:
 
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
+- **Tasks:** create/update/delete operations and recurring task schedules.
+- **Medication activation and push delivery:** migrate and enable the PostgreSQL medication API and optional Web Push service when the real app endpoints are ready. Configure VAPID keys and verify provider delivery in a permitted browser; see [medications](medications.md#closed-app-notifications).
 - **Other care-data mutations and schedules:** create/update/delete operations for appointments, medication occurrences, and tasks, plus medication definitions and recurring schedules.
 - **Document assistance:** source-linked AI answers/summaries and extracted care actions with user review. Text extraction and vector storage are implemented; retrieval and answer generation are left to teammates.
 - **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
+- **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.
 
 ## Connecting the real backend
 
