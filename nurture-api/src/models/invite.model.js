@@ -1,56 +1,43 @@
 const db = require('../config/db');
-const { findById } = require('./circle.model');
 
 const Invite = {
-    create: async ({ circleId, userId, tokenHash}, conn = db) => {
+    create: async ({ circleId, inviteeId, invitedBy}, conn = db) => {
         const { rows } = await conn.query(
-          `INSERT INTO invites (circle_id, user_id, token_hash)
-           VALUES ($1, $2, $3);`,
-          [circleId, userId, tokenHash]
+            `INSERT INTO invites (circle_id, invitee_id, invited_by)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (circle_id, invitee_id) DO UPDATE
+            SET status = 'pending', invited_by = EXCLUDED.invited_by,
+            created_at = now(), expires_at = now() + interval '7 days', responded_at = NULL`,
+            [circleId, inviteeId, invitedBy]
         );
-        return rows[0];
     },
-    listCircleInvites: async({circleId}, conn = db) => {
-        const { rows } = await conn.query(
-            `SELECT (circleId, invitee_id, status) FROM invites WHERE
-            circledId = $1;`,
-            [circleId]
+    list: async(inviteeId, conn = db) => {
+        const {rows} = await conn.query(
+            `SELECT i.circle_id, c.name AS circle_name, u.username AS invited_by_name
+            FROM invites i
+            JOIN circles c ON c.id = i.circle_id
+            LEFT JOIN users u ON u.id = i.invited_by
+            WHERE i.invitee_id = $1 AND i.status = 'pending' AND i.expires_at > now()
+            ORDER BY i.created_at`,
+            [inviteeId]
         );
-        return rows[0];
+        return rows;
     },
-    findById: async({circleId, userId}, conn = db) => {
+    findPending: async (circleId, inviteeId, conn = db) => {
         const { rows } = await conn.query(
-            `SELECT (circleId, invitee_id) FROM invites WHERE
-            circledId = $1, status = 'pending';`,
-            [circleId, userId]
+            `SELECT circle_id FROM invites
+            WHERE circle_id = $1 AND invitee_id = $2 AND status = 'pending' AND expires_at > now()
+            FOR UPDATE`,
+            [circleId, inviteeId]
         );
-        return rows[0];
+        return rows[0] || null;
     },
-    update: async({circleId, userId, new_status}, conn = db) => {
+    respond: async(circleId, inviteeId, new_status, conn = db) => {
         const { rows } = await conn.query(
-            `UPDATE invites SET status = $3 WHERE 
-            circle_id = $1, invitee_id = $2;`,
-            [circleId, userId, new_status]
+            `UPDATE invites SET status = $3, responded_at = now()
+            WHERE circle_id = $1 AND invitee_id = $2;`,
+            [circleId, inviteeId, new_status]
         );
-        return rows[0];
     },
-    remove: async ({ circleId, userId}, conn = db) => {
-        const { rows } = await conn.query(
-          `DELETE FROM invites WHERE
-          circle_id = $1, invitee_id = $2;`,
-          [circleId, userId]
-        );
-        return rows[0];
-    },
-    previewCircle: async ({circleId, userId}, conn = db) => {
-        const { rows } = await conn.query(
-          `SELECT c.name 
-          FROM invites AS i
-          LEFT JOIN circles AS c 
-          ON c.circle_id = i.circle_id
-          WHERE c.circle_id = $1, i.invitee_id = $2;`,
-          [circleId, userId]
-        );
-        return rows[0];
-    }
 }
+module.exports = Invite

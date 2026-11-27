@@ -24,7 +24,6 @@ router.patch('/:circleId', requirePermission('circle:edit'), circles.update);
 router.post('/:circleId/recipients', requirePermission('content:edit'), recipients.add);
 router.put('/:circleId/recipients/:recipientId/relationship', requirePermission('circle:view'), recipients.updateRelationship);
 
-router.post('/:circleId/invites { email }', requirePermission('invites:manage'))
-router.get('/:circleId/invites', requirePermission('invites:manage'))
-router.delete('/:circleId/invites/:inviteId', requirePermission('invites:manage'))
+router.post('/:circleId/invites', requirePermission('invites:manage'),invites.create)
+
 module.exports = router;

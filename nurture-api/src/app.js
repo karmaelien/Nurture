@@ -5,7 +5,6 @@ const db = require('./config/db')
 const errorHandler = require('./middleware/errorHandler')
 const logger = require('./utils/logger')
 const crypto = require('crypto');
-
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
@@ -46,6 +45,8 @@ if (process.env.ENABLE_MEDICATIONS_API === 'true') {
   app.use('/api/medication-notifications', require('./middleware/authenticate'), require('./routes/medication-notifications.routes')());
 }
 app.use('/api/circles', require('./routes/circles.routes'));
+
+app.use('/api/invites', require('./routes/invites.routes'));
 
 app.use('/api/admin', require('./routes/admin.routes'));
 

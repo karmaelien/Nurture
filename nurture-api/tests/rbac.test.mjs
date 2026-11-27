@@ -106,6 +106,20 @@ describe('owners', () => {
     expect(res.status).toBe(400);
   });
 
+  it('get the same response for an email with no account, so it reveals nothing', async () => {
+    const add = (email) => api('post', `/api/circles/${circle.id}/members`, {
+      token: owner.token,
+      body: { email, role: 'member' },
+    });
+
+    const real = await add(outsider.email);
+    const unknown = await add('nobody-here@example.test');
+
+    expect(unknown.status).toBe(real.status);
+    expect(unknown.body).toEqual(real.body);
+    expect(JSON.stringify(unknown.body)).not.toContain('user_not_found');
+  });
+
   it('get a 409 when adding someone who is already a member', async () => {
     const res = await api('post', `/api/circles/${circle.id}/members`, {
       token: owner.token,

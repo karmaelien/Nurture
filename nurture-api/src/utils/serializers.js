@@ -19,3 +19,8 @@ exports.toCircleSummary = (c, role, recipients) => ({
   role,
   recipients: recipients.map((r) => exports.toRecipient(r)),
 });
+exports.toInvite = (i) => ({
+  circleId: String(i.circle_id),
+  circleName: i.circle_name,
+  invitedBy: i.invited_by_name,
+});

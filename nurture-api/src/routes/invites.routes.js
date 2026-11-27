@@ -1,9 +1,16 @@
 const express = require('express');
 const invites = require('../controllers/invites.controller');
 const authenticate = require('../middleware/authenticate');
+const { rateLimit } = require('express-rate-limit');
 
-const router = express.Router({ mergeParams: true });
+const inviteLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20 });
 
-router.post('/api/invites/preview { token }',authenticate,invites.previewCircle());
-router.post('/api/invites/accept { token }',authenticate,invites.update());
-router.post( '/api/invites/decline { token }',authenticate,invites.remove());
+const router = express.Router();
+
+router.use(authenticate, inviteLimiter);
+
+router.get('/', invites.list);
+router.post('/:circleId/accept', invites.accept);
+router.post('/:circleId/decline', invites.decline);
+
+module.exports = router;

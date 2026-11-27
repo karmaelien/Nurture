@@ -27,6 +27,9 @@ exports.list = async (req, res, next) => {
   }
 };
 
+// Sent whether or not the email has an account, so this endpoint can't be used to find out who uses Nurture.
+const ADDED = { message: "If that email belongs to a Nurture account, they're now in this circle." };
+
 // POST /api/circles/:circleId/members
 exports.add = async (req, res, next) => {
   try {
@@ -38,18 +41,16 @@ exports.add = async (req, res, next) => {
     const { email, role } = parsed.data;
 
     const user = await User.findByEmail(email);
-    if (!user) throw httpError(404, 'user_not_found', 'No account exists with that email.');
+    if (!user) return res.status(201).json(ADDED);
 
-    const member = await Member.create({
+    await Member.create({
       circleId: req.circleId,
       userId: user.id,
       displayName: user.username,
       role,
     });
 
-    res.status(201).json({
-      member: toMember({ ...member, username: user.username, email: user.email, phone: user.phone, timezone: user.timezone }, {}),
-    });
+    res.status(201).json(ADDED);
   } catch (err) {
     next(err);
   }
