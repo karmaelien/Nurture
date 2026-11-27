@@ -20,7 +20,7 @@ const Invite = {
     update: async({circleId, userId, new_status}, conn = db) => {
         const { rows } = await conn.query(
             `UPDATE invites SET status = $3 WHERE 
-            (circle_id, user_id) = VALUES ($1, $2);`,
+            circle_id = $1, invitee_id = $2;`,
             [circleId, userId, new_status]
         );
         return rows[0];
@@ -28,7 +28,7 @@ const Invite = {
     remove: async ({ circleId, userId}, conn = db) => {
         const { rows } = await conn.query(
           `DELETE FROM invites WHERE
-          (circle_id, user_id) = VALUES ($1, $2);`,
+          circle_id = $1, invitee_id = $2;`,
           [circleId, userId]
         );
         return rows[0];
