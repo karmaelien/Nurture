@@ -298,7 +298,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                         Edit
                       </Button>
                       <Button
-                        variant="secondary"
+                        variant="danger"
                         disabled={remove.isPending}
                         aria-label={`Delete ${expense.description}`}
                         onClick={() => {
@@ -316,6 +316,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                       {remove.isError && <Alert tone="danger">{errorMessage(remove.error)}</Alert>}
                       <div className="flex gap-3">
                         <Button
+                          variant="danger"
                           loading={remove.isPending}
                           onClick={async () => {
                             try {

@@ -1,5 +1,8 @@
 import { seedCareData } from './careData.ts'
+import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
 import type { CircleDetail, Member, User } from '../api/types.ts'
+import { DB_KEY, MockStorageError } from './storage.ts'
+import type { MedicationRevisions } from '../features/medications/medication-occurrences.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -7,6 +10,9 @@ import type { CircleDetail, Member, User } from '../api/types.ts'
 type DbUser = User & { password: string }
 
 export type Db = {
+  changeId?: string
+  medicationHistory?: Record<string, { version: number; through: string }>
+  medicationRevisions?: MedicationRevisions
   users: DbUser[]
   circles: CircleDetail[]
   care: ReturnType<typeof seedCareData>
@@ -15,7 +21,6 @@ export type Db = {
 }
 
 // Bump the version whenever the shape changes, so stale browser data is replaced rather than misread.
-const DB_KEY = 'nurture.mock-db.v6'
 
 export const DEMO_ACCOUNT = { email: 'demo@nurture.app', password: 'caregiver123' }
 
@@ -76,7 +81,27 @@ function seed(): Db {
 export function readDb(): Db {
   try {
     const raw = localStorage.getItem(DB_KEY)
-    if (raw) return JSON.parse(raw) as Db
+    if (raw) {
+      const db = JSON.parse(raw) as Db
+      // Older demo sessions lack medication definitions; preserve their existing care data.
+      db.care.medications ??= seedCareData().medications
+      for (const medication of db.care.medications) {
+        medication.version ??= 1
+        // Upgrade earlier daily-only definitions without resetting saved medications or other care data.
+        medication.schedule.daysOfWeek ??= [...everyDay]
+        medication.schedule.startsOn ??= dateInZone(new Date(), medication.schedule.timeZone)
+        medication.schedule.end ??= { kind: 'never' }
+      }
+      for (const dose of db.care.medicationOccurrences) {
+        dose.version ??= 1
+        if (dose.definitionVersion === undefined) {
+          dose.definitionVersion = 0
+          // Revisit legacy pending history in bounded batches before showing it as current.
+          if (dose.status === 'pending' && db.medicationHistory) delete db.medicationHistory[dose.medicationId]
+        }
+      }
+      return db
+    }
   } catch {
     // Fall through to a fresh seed.
   }
@@ -85,11 +110,15 @@ export function readDb(): Db {
   return db
 }
 
-export function writeDb(db: Db) {
+export function writeDb(db: Db, notify = true) {
+  if (notify) db.changeId = crypto.randomUUID()
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify(db))
+    const serialized = JSON.stringify(db)
+    if (serialized !== localStorage.getItem(DB_KEY)) localStorage.setItem(DB_KEY, serialized)
   } catch {
-    // Mock data simply won't persist.
+    throw new MockStorageError(
+      'Your changes could not be saved in this browser. Free up browser storage or allow site storage, then try again.',
+    )
   }
 }
 

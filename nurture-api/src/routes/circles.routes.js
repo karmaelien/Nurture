@@ -5,6 +5,10 @@ const circles = require('../controllers/circles.controller');
 const members = require('../controllers/members.controller');
 const recipients = require('../controllers/recipient.controller');
 router.use(authenticate);
+// Keep the new PostgreSQL medication endpoints staged until the real API is enabled.
+if (process.env.ENABLE_MEDICATIONS_API === 'true') {
+  router.use('/:circleId', require('./medications.routes')());
+}
 router.post('/', circles.create);
 router.get('/', circles.list);
 router.get('/:circleId', requirePermission('circle:view'), circles.get);

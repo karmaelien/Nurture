@@ -42,6 +42,9 @@ app.get('/health', async (req, res) => {
 app.use('/api/users', require('./routes/users.routes'));
 
 app.use('/api/auth', require('./routes/auth.routes'));
+if (process.env.ENABLE_MEDICATIONS_API === 'true') {
+  app.use('/api/medication-notifications', require('./middleware/authenticate'), require('./routes/medication-notifications.routes')());
+}
 app.use('/api/circles', require('./routes/circles.routes'));
 
 app.use('/api/admin', require('./routes/admin.routes'));

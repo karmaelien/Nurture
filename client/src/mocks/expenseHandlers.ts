@@ -1,4 +1,5 @@
-import { delay, http, HttpResponse } from 'msw'
+import { delayedHttp as http } from './http.ts'
+import { HttpResponse } from 'msw'
 import { createExpenseSchema, updateExpenseSchema } from '../features/expenses/schemas.ts'
 import { readDb, writeDb } from './db.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
@@ -6,7 +7,6 @@ import { bearerToken, error, unauthorized } from './responses.ts'
 const notFound = () => error(404, 'not_found', 'This expense, recipient, or circle is unavailable.')
 
 async function mutate(request: Request, circleId: string, expenseId?: string) {
-  await delay()
   // Read the body before the database so concurrent requests don't overwrite a stale snapshot.
   const body = request.method === 'DELETE' ? undefined : await request.json().catch(() => null)
   const db = readDb()
