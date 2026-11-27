@@ -34,8 +34,9 @@ const User = {
     },
     updateProfile: async (id, fields, conn = db) => {
       const columns = { name: 'username', phone: 'phone', timeZone: 'timezone' };
-      const entries = Object.entries(fields).filter(([key]) => key in columns);
-      const sets = entries.map(([key], i) => `${columns[key]} = $${i + 2}`);
+      const entries = Object.entries(fields).filter(([key]) => key in columns && value !== undefined);
+      const sets = [
+        ...entries.map(([key], i) => `${columns[key]} = $${i + 2}`)];
       const { rows } = await conn.query(
         `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE id = $1
         RETURNING id, email, username, phone, timezone`,

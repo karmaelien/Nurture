@@ -21,6 +21,14 @@ exports.addSchema = z.object({
   notes: optionalText(z.string().trim().max(500)),
 });
 
+exports.updateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  preferredName: optionalText(z.string().trim().min(1).max(80)).optional(),
+  dateOfBirth: optionalText(z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).refine(isBirthDate)).optional(),
+  notes: optionalText(z.string().trim().max(500)).optional(),
+  version: z.number().int().positive()
+});
+
 exports.relationshipSchema = z.object({
   relationship: z.enum(RELATIONSHIPS).nullable(),
 });

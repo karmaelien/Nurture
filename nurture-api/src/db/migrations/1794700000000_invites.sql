@@ -6,7 +6,8 @@ CREATE TABLE invites (
     expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
     responded_at    TIMESTAMPTZ,
     token_hash      TEXT UNIQUE NOT NULL,
-    status          TEXT CHECK (pending, accepted, declined, cancelled)
+    status          TEXT NOT NULL, 
+    CONSTRAINT check_status CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled'))
 );
 -- Down Migration
 DROP TABLE invites;

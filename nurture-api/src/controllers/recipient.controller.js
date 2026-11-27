@@ -1,4 +1,4 @@
-const { addSchema, relationshipSchema } = require('../validators/recipients.validators');
+const { addSchema, relationshipSchema, updateSchema } = require('../validators/recipients.validators');
 const db = require('../config/db');
 const Recipient = require('../models/recipient.model');
 const { httpError } = require('../utils/httpErrors');
@@ -44,4 +44,38 @@ exports.updateRelationship = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+//PATCH api/circles/:circleId/recipients/:recipientId
+exports.update = async(req, res, next) => {
+  try {
+    const recipientId = parseId(req.params.recipientId);
+    if (!recipientId){
+      throw httpError(404, 'not_found', 'No recipient found')
+    }
+    const parsed = updateSchema.safeParse(req.body);
+    if (!parsed.success){
+      throw httpError(400, 'validation_error', 'Provide at least one field.');
+    }
+    const { version, ...fields } = parsed.data;
+
+    const updated = await Recipient.update({ circleId: req.circleId, recipientId, version, fields });
+    const label = (await Recipient.getRelationships(req.user.id, req.circleId))[recipientId] ?? null;
+
+    if (!updated){
+      const exists = await Recipient.findInCircle(req.circleId, recipientId);
+      if (!exists){
+        throw httpError(404, 'not_found','No recipient found')
+      }
+      return res.status(409).json({
+        error: { code: 'edit_conflict', message: 'Someone else saved changes to this person first.' },
+        recipient: toRecipient(exists, label),
+      });
+    }
+    
+    res.json({ recipient: toRecipient(updated, label) });
+  } catch (err) {
+    next(err);
+  }
+
 };
