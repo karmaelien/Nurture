@@ -63,5 +63,5 @@ it.each(['/app', '/app/medications'])('hides unsupported notification controls o
   setToken((await authApi.login(DEMO_ACCOUNT)).token)
   renderApp(path)
   await screen.findByRole('region', { name: 'Medication List' })
-  expect(screen.queryByRole('button', { name: /notifications$/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /^(Enable|Disable) notifications$/ })).not.toBeInTheDocument()
 })

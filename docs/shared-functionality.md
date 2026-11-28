@@ -9,14 +9,22 @@ application routes and mock API; browser checks use the running desktop website.
 | Function | Surfaces compared | Shared behavior and presentation | Evidence |
 | --- | --- | --- | --- |
 | Navigation | Home, Tasks, Appointments, Medications, Expenses, Documents, Family/profile routes | AppHeader supplies the same tabs, active state, account controls, and family-preserving links. ScrollRestoration handles page navigation. | `home/dashboard.test.tsx`, `profiles/profile-pages.test.tsx`; shared AppHeader/AppLayout |
-| Family selection | The six collection pages | Switching families discards open editors and local notices. Returning restores that family's saved person selection without reopening the editor. | `care/filter-parity.test.tsx` |
-| Person selection | The six collection pages | Care profile offers Everyone or one person. Selection follows navigation, is isolated by account/family, and filters actual records. | `care/filter-parity.test.tsx`, `care/selection.test.tsx` |
-| Clear filters | The six collection pages | Restores Everyone and the current page's extra filters to defaults. Also resets the shared medication schedule date and medication-name selection. | `care/filter-parity.test.tsx`; each toolbar's reset handler |
-| Filter layout | The six collection pages | Shared labeled field controls and compact field widths; Clear filters and Add/Upload align with the input bottoms. | Desktop browser measurements: all six toolbars aligned; person controls 192 × 48px with matching font, border, color, and radius |
+| Family selection | The six collection pages and Patient Assistance | Switching families discards open editors and local notices. Returning restores that family's saved person selection without reopening the editor. | `care/filter-parity.test.tsx` |
+| Person selection | The six collection pages and Patient Assistance | Care profile offers Everyone or one person. Selection follows navigation, is isolated by account/family, and filters actual records. | `care/filter-parity.test.tsx`, `care/selection.test.tsx` |
+| Clear filters | The six collection pages and Patient Assistance | Restores Everyone and the current page's extra filters to defaults. Also resets the shared medication schedule date and medication-name selection. | `care/filter-parity.test.tsx`; each toolbar's reset handler |
+| Filter layout | The six collection pages and Patient Assistance | Shared labeled field controls and compact field widths; Clear filters and Add/Upload align with the input bottoms. | Desktop browser measurements: all six toolbars aligned; person controls 192 × 48px with matching font, border, color, and radius |
 | Read loading/error/retry | Collection lists, Home panels, medication schedule, document preview, task/medication calendar requests | QueryFeedback keeps feedback inside the relevant workspace and uses the same Try again action. Existing filters remain usable. | `care/filter-parity.test.tsx`, feature-page and calendar tests; shared QueryFeedback |
 | Warning summaries | Home, Tasks, Appointments, Medications | AttentionNeeded supplies compact count buttons, state/error handling, capped detail popups, and the same semantic colors. Urgent categories precede reminders/today categories. | `home/HomeAttention.test.tsx`, task/medication/appointment tests; shared AttentionNeeded |
 
 ## Record Actions
+
+Patient-assistance reports use the shared person filter, Attention Needed count
+buttons, report list/actions, and report form on Home and Medications. Dismissal
+retains history. Saved-report dialogs block Close, Escape, and click-away during
+notification writes. Shared `care/filter-parity.test.tsx` cases also cover its family
+switching and person selection across navigation; see [Patient Assistance](patient-assistance.md) and
+`assistance/assistance.test.tsx`. Assistance is an in-app notification category,
+separate from medication push-subscription controls.
 
 | Function | Surfaces compared | Shared behavior and presentation | Evidence |
 | --- | --- | --- | --- |

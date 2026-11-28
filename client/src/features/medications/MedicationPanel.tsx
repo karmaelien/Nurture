@@ -1,3 +1,8 @@
+import { Link } from 'react-router'
+import { buttonClasses } from '../../components/ui/buttonClasses.ts'
+import { circleLink } from '../circles/selection.ts'
+import { assistancePath } from '../assistance/useAssistanceAttention.tsx'
+import { AssistanceReportForm } from '../assistance/AssistanceReportForm.tsx'
 import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
 import { PanelHeader } from '../../components/ui/PanelHeader.tsx'
 import { useQuery } from '@tanstack/react-query'
@@ -51,6 +56,7 @@ export function MedicationPanel({
   const [selection, setSelection] = useState({ id: '', resetKey })
   const selectedMedication = selection.resetKey === resetKey ? selection.id : ''
   const setSelectedMedication = (id: string) => setSelection({ id, resetKey })
+  const [assistanceMedication, setAssistanceMedication] = useState<Medication | null>(null)
   const [notice, setNotice] = useState('')
   const medicationId = medications.data?.some((item) => item.id === selectedMedication) ? selectedMedication : ''
   const detail = useQuery({
@@ -67,6 +73,15 @@ export function MedicationPanel({
   const actions = (
     <>
       <MedicationNotifications />
+      {!heading && (
+        <Link
+          className={buttonClasses({ variant: 'outline' })}
+          to={circleLink(assistancePath, circle.id)}
+          aria-label="Patient Assistance"
+        >
+          Patient Assistance
+        </Link>
+      )}
       <Button disabled={!detail.data || detail.isError || !circle.recipients.length} onClick={() => setEditor({})}>
         Add medication
       </Button>
@@ -116,6 +131,14 @@ export function MedicationPanel({
           onSaved={() => {
             setNotice(editor.deleting ? 'Medication deleted.' : 'Medication saved. Clear filters if it is not shown.')
           }}
+        />
+      )}
+      {assistanceMedication && (
+        <AssistanceReportForm
+          circle={circle}
+          initialMedication={assistanceMedication}
+          onClose={() => setAssistanceMedication(null)}
+          onSaved={() => setNotice('Assistance report saved.')}
         />
       )}
       {notice && <Alert tone="success">{notice}</Alert>}
@@ -211,6 +234,9 @@ export function MedicationPanel({
                             </Button>
                           </>
                         )}
+                        <Button variant="outline" onClick={() => setAssistanceMedication(medication)}>
+                          Patient Assistance
+                        </Button>
                         <Button
                           variant="danger"
                           disabled={!detail.data}
@@ -229,6 +255,7 @@ export function MedicationPanel({
       </div>
       {expanded && (
         <MedicationCalendar
+          onAssistance={setAssistanceMedication}
           circle={circle}
           recipientId={recipientId}
           medicationId={medicationId}

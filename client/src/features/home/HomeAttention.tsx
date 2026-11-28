@@ -1,3 +1,4 @@
+import { useAssistanceAttention } from '../assistance/useAssistanceAttention.tsx'
 import { AttentionNeeded } from '../../components/ui/AttentionNeeded.tsx'
 import { TaskListItem } from '../tasks/TaskListItem.tsx'
 import { MedicationDoseList } from '../medications/MedicationDoseList.tsx'
@@ -43,6 +44,7 @@ export function HomeAttention({
   onTaskDelete: (task: CareTask) => void
   onAppointmentSaved: (action: 'saved' | 'deleted') => void
 }) {
+  const assistance = useAssistanceAttention(circle, recipientId)
   const appointments = useAppointments(
     circle.id,
     recipientId ? { ...appointmentCalendarRange, recipientId } : appointmentCalendarRange,
@@ -115,127 +117,130 @@ export function HomeAttention({
         items={
           accessLost
             ? []
-            : rows.map((row) => ({
-                id: row.path,
-                label: row.count === 1 ? row.single : row.label,
-                count: row.count,
-                title:
-                  row.path === '/app/tasks'
-                    ? 'Overdue tasks'
-                    : row.path === '/app/appointments'
-                      ? 'Overdue appointments'
-                      : 'Missed doses',
-                tone: 'danger' as const,
-                partial: row.partial,
-                loading: row.query.isPending,
-                error: row.query.isError ? errorMessage(row.query.error) : undefined,
-                retry: () => void row.query.refetch(),
-                retryLabel: `Retry ${row.label}`,
-                content: (close) => (
-                  <>
-                    {row.path === '/app/tasks' ? (
-                      <>
-                        {tasks.historyPending && (
-                          <p role="status" className="mb-3 text-muted">
-                            Loading older repeating tasks…
-                          </p>
-                        )}
-                        {!lateTasks.length ? (
-                          <p>No overdue tasks.</p>
-                        ) : (
-                          <ul className="divide-y divide-line">
-                            {lateTasks.map((task) => (
-                              <TaskListItem
-                                key={task.id}
-                                task={task}
-                                circleId={circle.id}
-                                now={now}
-                                person={personName(task.recipientId)}
-                                caregiver={caregiverName(task.assignedCaregiverId)}
-                                onEdit={
-                                  onTaskEdit
-                                    ? () => {
-                                        close()
-                                        onTaskEdit(task)
-                                      }
-                                    : undefined
-                                }
-                                onDelete={() => {
-                                  close()
-                                  onTaskDelete(task)
-                                }}
-                              />
-                            ))}
-                          </ul>
-                        )}
-                      </>
-                    ) : row.path === '/app/appointments' ? (
-                      <>
-                        {!lateAppointments.length ? (
-                          <p>No overdue appointments.</p>
-                        ) : (
-                          <ul className="divide-y divide-line">
-                            {lateAppointments.map((appointment) => (
-                              <li key={appointment.id} className="py-4 first:pt-0 last:pb-0">
-                                <AppointmentListItem
-                                  appointment={appointment}
-                                  profileName={personName(appointment.recipientId)}
-                                  overdue
-                                  onComplete={() => setCompletion(appointment, 'completed')}
+            : [
+                ...rows.map((row) => ({
+                  id: row.path,
+                  label: row.count === 1 ? row.single : row.label,
+                  count: row.count,
+                  title:
+                    row.path === '/app/tasks'
+                      ? 'Overdue tasks'
+                      : row.path === '/app/appointments'
+                        ? 'Overdue appointments'
+                        : 'Missed doses',
+                  tone: 'danger' as const,
+                  partial: row.partial,
+                  loading: row.query.isPending,
+                  error: row.query.isError ? errorMessage(row.query.error) : undefined,
+                  retry: () => void row.query.refetch(),
+                  retryLabel: `Retry ${row.label}`,
+                  content: (close: () => void) => (
+                    <>
+                      {row.path === '/app/tasks' ? (
+                        <>
+                          {tasks.historyPending && (
+                            <p role="status" className="mb-3 text-muted">
+                              Loading older repeating tasks…
+                            </p>
+                          )}
+                          {!lateTasks.length ? (
+                            <p>No overdue tasks.</p>
+                          ) : (
+                            <ul className="divide-y divide-line">
+                              {lateTasks.map((task) => (
+                                <TaskListItem
+                                  key={task.id}
+                                  task={task}
+                                  circleId={circle.id}
+                                  now={now}
+                                  person={personName(task.recipientId)}
+                                  caregiver={caregiverName(task.assignedCaregiverId)}
+                                  onEdit={
+                                    onTaskEdit
+                                      ? () => {
+                                          close()
+                                          onTaskEdit(task)
+                                        }
+                                      : undefined
+                                  }
                                   onDelete={() => {
-                                    const record = appointments.data?.find((record) => record.id === appointment.id)
-                                    if (record) {
-                                      close()
-                                      setEditing({ appointment: record, deleting: true })
-                                    }
-                                  }}
-                                  onEdit={() => {
-                                    const record = appointments.data?.find((record) => record.id === appointment.id)
-                                    if (record) {
-                                      close()
-                                      setEditing({ appointment: record })
-                                    }
+                                    close()
+                                    onTaskDelete(task)
                                   }}
                                 />
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        {doses.data?.length ? (
-                          <MedicationDoseList
-                            circleId={circle.id}
-                            doses={doses.data}
-                            showDate
-                            scrollable={false}
-                            totalOverdueCount={doses.totalOverdueCount}
-                            overdueCountIsPartial={doses.historyPending}
-                            personName={personName}
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      ) : row.path === '/app/appointments' ? (
+                        <>
+                          {!lateAppointments.length ? (
+                            <p>No overdue appointments.</p>
+                          ) : (
+                            <ul className="divide-y divide-line">
+                              {lateAppointments.map((appointment) => (
+                                <li key={appointment.id} className="py-4 first:pt-0 last:pb-0">
+                                  <AppointmentListItem
+                                    appointment={appointment}
+                                    profileName={personName(appointment.recipientId)}
+                                    overdue
+                                    onComplete={() => setCompletion(appointment, 'completed')}
+                                    onDelete={() => {
+                                      const record = appointments.data?.find((record) => record.id === appointment.id)
+                                      if (record) {
+                                        close()
+                                        setEditing({ appointment: record, deleting: true })
+                                      }
+                                    }}
+                                    onEdit={() => {
+                                      const record = appointments.data?.find((record) => record.id === appointment.id)
+                                      if (record) {
+                                        close()
+                                        setEditing({ appointment: record })
+                                      }
+                                    }}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {doses.data?.length ? (
+                            <MedicationDoseList
+                              circleId={circle.id}
+                              doses={doses.data}
+                              showDate
+                              scrollable={false}
+                              totalOverdueCount={doses.totalOverdueCount}
+                              overdueCountIsPartial={doses.historyPending}
+                              personName={personName}
+                            />
+                          ) : (
+                            <p>No missed doses loaded.</p>
+                          )}
+                          <OverdueDoseControls
+                            historyPending={doses.historyPending}
+                            hasNextPage={doses.hasNextPage}
+                            busy={doses.isFetchingNextPage}
+                            onMore={() => void doses.fetchNextPage()}
                           />
-                        ) : (
-                          <p>No missed doses loaded.</p>
-                        )}
-                        <OverdueDoseControls
-                          historyPending={doses.historyPending}
-                          hasNextPage={doses.hasNextPage}
-                          busy={doses.isFetchingNextPage}
-                          onMore={() => void doses.fetchNextPage()}
-                        />
-                      </>
-                    )}
-                    <Link className="link mt-4 inline-block" to={circleLink(row.path, circle.id)}>
-                      Open{' '}
-                      {row.path === '/app/tasks'
-                        ? 'Tasks'
-                        : row.path === '/app/appointments'
-                          ? 'Appointments'
-                          : 'Medications'}
-                    </Link>
-                  </>
-                ),
-              }))
+                        </>
+                      )}
+                      <Link className="link mt-4 inline-block" to={circleLink(row.path, circle.id)}>
+                        Open{' '}
+                        {row.path === '/app/tasks'
+                          ? 'Tasks'
+                          : row.path === '/app/appointments'
+                            ? 'Appointments'
+                            : 'Medications'}
+                      </Link>
+                    </>
+                  ),
+                })),
+                assistance,
+              ]
         }
       >
         {accessLost && (

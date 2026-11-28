@@ -13,6 +13,7 @@ it.each([
   ['/app/tasks', 'Add task'],
   ['/app/appointments', 'Add appointment'],
   ['/app/medications', 'Add medication'],
+  ['/app/medications/assistance', 'Report cost or coverage'],
   ['/app/expenses', 'Add expense'],
   ['/app/documents', 'Upload document'],
 ])('discards open editors on a family switch without losing saved person filters on %s', async (path, actionName) => {
@@ -100,7 +101,14 @@ it('keeps the same person across every feature and Home, and clears the shared s
   const user = userEvent.setup()
   const router = renderApp('/app/tasks')
   await user.selectOptions(await screen.findByLabelText('Care profile'), 'r_frank')
-  for (const path of ['/app/appointments', '/app/medications', '/app/expenses', '/app/documents', '/app']) {
+  for (const path of [
+    '/app/appointments',
+    '/app/medications',
+    '/app/medications/assistance',
+    '/app/expenses',
+    '/app/documents',
+    '/app',
+  ]) {
     await act(() => router.navigate(path))
     const filter = await screen.findByRole('combobox', { name: 'Care profile' })
     expect(filter).toHaveValue('r_frank')

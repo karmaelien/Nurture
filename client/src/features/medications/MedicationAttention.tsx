@@ -1,3 +1,4 @@
+import { useAssistanceAttention } from '../assistance/useAssistanceAttention.tsx'
 import type { CircleSummary } from '../../api/types.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
 import { useMedicationOccurrences, useOverdueMedicationDoses } from '../care/queries.ts'
@@ -11,6 +12,7 @@ import { Button } from '../../components/ui/Button.tsx'
 import { AttentionNeeded } from '../../components/ui/AttentionNeeded.tsx'
 
 export function MedicationAttention({ circle, recipientId }: { circle: CircleSummary; recipientId: string }) {
+  const assistance = useAssistanceAttention(circle, recipientId)
   const now = useMinute()
   const overdue = useOverdueMedicationDoses(circle.id, dashboardWindow(now).tomorrowStart, recipientId || undefined)
   const reminders = useMedicationOccurrences(circle.id, {
@@ -30,7 +32,16 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
           ? []
           : (reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? [])),
       ]
-  if (!doses.length && !overdue.historyPending && !overdue.isError && !reminders.isError) return null
+  if (
+    !doses.length &&
+    !overdue.historyPending &&
+    !overdue.isError &&
+    !reminders.isError &&
+    !assistance.count &&
+    !assistance.loading &&
+    !assistance.error
+  )
+    return null
   const missed = overdue.isError || accessLost ? [] : (overdue.data ?? [])
   const upcoming =
     reminders.isError || accessLost
@@ -88,6 +99,7 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
                 retryLabel: 'Retry reminders',
                 content: () => renderDoses(upcoming),
               },
+              assistance,
             ]
       }
     >

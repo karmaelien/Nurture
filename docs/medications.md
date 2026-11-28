@@ -1,5 +1,9 @@
 # Medications
 
+Medication cost/coverage reporting and shared assistance notifications are documented
+in [Patient Assistance](patient-assistance.md). These do not change dose schedules
+or record expenses.
+
 The page at `/app/medications` shows medications for the selected family.
 
 ## Shared Page Design

@@ -20,6 +20,7 @@ function Dose({
   showDate,
   onEdit,
   onDelete,
+  onAssistance,
 }: {
   circleId: string
   dose: MedicationOccurrence
@@ -28,6 +29,7 @@ function Dose({
   showDate: boolean
   onEdit?: () => void
   onDelete?: () => void
+  onAssistance?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -93,6 +95,11 @@ function Dose({
             Edit medication
           </Button>
         )}
+        {onAssistance && (
+          <Button variant="outline" disabled={busy} onClick={onAssistance}>
+            Patient Assistance
+          </Button>
+        )}
         {onDelete && (
           <Button variant="danger" onClick={onDelete}>
             Delete medication
@@ -125,6 +132,7 @@ export function MedicationDoseList({
   scrollable = true,
   onEdit,
   onDelete,
+  onAssistance,
   editableMedicationIds,
   deletableMedicationIds,
 }: {
@@ -138,6 +146,7 @@ export function MedicationDoseList({
   scrollable?: boolean
   onEdit?: (medicationId: string) => void
   onDelete?: (medicationId: string) => void
+  onAssistance?: (medicationId: string) => void
   deletableMedicationIds?: string[]
   editableMedicationIds?: string[]
 }) {
@@ -172,6 +181,11 @@ export function MedicationDoseList({
             person={personName(dose.recipientId)}
             now={now}
             showDate={showDate}
+            onAssistance={
+              onAssistance && deletableMedicationIds?.includes(dose.medicationId)
+                ? () => onAssistance(dose.medicationId)
+                : undefined
+            }
             onDelete={
               onDelete && deletableMedicationIds?.includes(dose.medicationId)
                 ? () => onDelete(dose.medicationId)

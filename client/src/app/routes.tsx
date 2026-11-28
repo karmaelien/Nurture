@@ -91,6 +91,12 @@ export const routes: RouteObject[] = [
                     }),
                   },
                   {
+                    path: 'medications/assistance',
+                    lazy: async () => ({
+                      Component: (await import('../features/assistance/AssistancePage.tsx')).AssistancePage,
+                    }),
+                  },
+                  {
                     path: 'medications',
                     lazy: async () => ({
                       Component: (await import('../features/medications/MedicationsPage.tsx')).MedicationsPage,

@@ -69,7 +69,8 @@ it('combines overdue categories once, counts individual missed takes, and follow
     'dialog',
   )
   expect(screen.getAllByRole('region', { name: 'Attention Needed' })).toHaveLength(1)
-  expect(within(summary).getAllByRole('button')).toHaveLength(3)
+  expect(await within(summary).findByRole('button', { name: '0 assistance notifications' })).toBeInTheDocument()
+  expect(within(summary).getAllByRole('button')).toHaveLength(4)
   expect(screen.queryByRole('button', { name: 'View task reminders' })).not.toBeInTheDocument()
 
   await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')

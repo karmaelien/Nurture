@@ -24,6 +24,7 @@ export function MedicationCalendar({
   onAdd,
   onEdit,
   onDelete,
+  onAssistance,
 }: {
   circle: CircleSummary
   recipientId: string
@@ -32,6 +33,7 @@ export function MedicationCalendar({
   onAdd?: (date: string) => void
   onEdit?: (medication: Medication) => void
   onDelete?: (medication: Medication) => void
+  onAssistance?: (medication: Medication) => void
 }) {
   const now = useMinute()
   const [view, setView] = useState<View>('monthly')
@@ -321,6 +323,17 @@ export function MedicationCalendar({
           <MedicationDoseList
             circleId={circle.id}
             doses={selected}
+            onAssistance={
+              onAssistance
+                ? (id) => {
+                    const medication = medications.find((item) => item.id === id)
+                    if (medication) {
+                      closeForEditor()
+                      onAssistance(medication)
+                    }
+                  }
+                : undefined
+            }
             scrollable={false}
             personName={personName}
             showDate

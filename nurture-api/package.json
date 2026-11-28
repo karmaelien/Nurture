@@ -11,7 +11,8 @@
     "db:reset": "node src/db/reset.js",
     "test": "vitest run",
     "test:medications": "node --test tests/medications/medications.unit.test.cjs tests/medications/medication-push.unit.test.cjs tests/medications/medications.integration.test.cjs",
-    "test:tasks": "node --test tests/tasks/tasks.unit.test.cjs tests/tasks/tasks.integration.test.cjs"
+    "test:tasks": "node --test tests/tasks/tasks.unit.test.cjs tests/tasks/tasks.integration.test.cjs",
+    "test:assistance": "node --test tests/assistance/assistance.unit.test.cjs tests/assistance/assistance.integration.test.cjs"
   },
   "keywords": [],
   "author": "",
