@@ -24,4 +24,6 @@ router.patch('/:circleId', requirePermission('circle:edit'), circles.update);
 
 router.post('/:circleId/recipients', requirePermission('content:edit'), recipients.add);
 router.put('/:circleId/recipients/:recipientId/relationship', requirePermission('circle:view'), recipients.updateRelationship);
+router.patch('/:circleId/recipients/:recipientId', requirePermission('circle:view'), recipients.update)
+
 module.exports = router;

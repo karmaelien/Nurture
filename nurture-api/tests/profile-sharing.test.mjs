@@ -161,8 +161,8 @@ describe('recipient profiles', () => {
 
     const detail = await getCircle(ann.token, created.id);
 
-    expect(created.recipients[0]).toEqual({ id: expect.any(String), ...rose });
-    expect(detail.body.circle.recipients).toEqual([{ id: created.recipients[0].id, ...rose }]);
+    expect(created.recipients[0]).toEqual({ id: expect.any(String), ...rose, version: 1 });
+    expect(detail.body.circle.recipients).toEqual([{ id: created.recipients[0].id, ...rose, version: 1 }]);
   });
 
   it('come back from a member-added recipient too', async () => {
@@ -175,7 +175,7 @@ describe('recipient profiles', () => {
     });
 
     expect(res.status).toBe(201);
-    expect(res.body.recipient).toEqual({ id: expect.any(String), ...rose, name: 'Frank', relationship: null });
+    expect(res.body.recipient).toEqual({ id: expect.any(String), ...rose, name: 'Frank', relationship: null, version: 1 });
   });
 
   it('store empty optional fields as null', async () => {
