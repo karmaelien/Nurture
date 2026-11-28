@@ -120,6 +120,60 @@ function firstTaskOccurrence(series) {
   }
   return null;
 }
+/** Merge scanned dates, not viewed query keys. Evicted coverage can safely be
+ * rescanned: occurrence IDs, edits, and deletion exceptions remain authoritative.
+ */
+function mergeCoverage(ranges) {
+  const merged = [];
+  for (const range of ranges
+    .filter((range) => range.from < range.to)
+    .sort((a, b) => a.from.localeCompare(b.from))) {
+    const previous = merged.at(-1);
+    if (previous && range.from <= previous.to)
+      previous.to = previous.to > range.to ? previous.to : range.to;
+    else merged.push({ ...range });
+  }
+  return merged;
+}
+function savedCoverage(series) {
+  const ranges = [...(series.coverage ?? [])];
+  const zone = series.recurrence.timeZone;
+  if (series.through)
+    ranges.push({
+      from:
+        series.startsOn > dateInZone(new Date(series.createdAt), zone)
+          ? series.startsOn
+          : dateInZone(new Date(series.createdAt), zone),
+      to: series.through,
+    });
+  // Legacy cursors identify scanned prefixes, including unfinished batches.
+  for (const [key, to] of Object.entries(series.ranges ?? {})) {
+    const from = Date.parse(key.split('|')[0]);
+    if (!Number.isFinite(from)) continue;
+    const start = dateInZone(new Date(from - day), zone);
+    ranges.push({
+      from: start < series.startsOn ? series.startsOn : start,
+      to,
+    });
+  }
+  delete series.ranges;
+  return mergeCoverage(ranges);
+}
+function capCoverage(ranges, start, cursor) {
+  const merged = mergeCoverage(ranges);
+  if (merged.length <= 64) return merged;
+  // Always retain this request's contiguous progress so an unfinished range cannot
+  // restart forever when the cache is full. Other coverage is only an optimization.
+  const active = merged.find(
+    (range) => range.from <= start && range.to >= cursor,
+  );
+  return [
+    ...(active ? [active] : []),
+    ...merged.filter((range) => range !== active).slice(-(active ? 63 : 64)),
+  ].sort((a, b) => a.from.localeCompare(b.from));
+}
+
+/** Bounded generation with shared coverage across overlapping calendar views. */
 function materializeTaskSeries(store, circleId, from, to, now = Date.now()) {
   const existing = new Set(store.care.tasks.map((task) => task.id));
   const deleted = new Set(store.deletedTaskOccurrences ?? []);
@@ -127,16 +181,15 @@ function materializeTaskSeries(store, circleId, from, to, now = Date.now()) {
   for (const series of store.taskSeries ?? []) {
     if (series.circleId !== circleId) continue;
     const zone = series.recurrence.timeZone;
-    const rangeKey = `${from}|${to}`;
+    const coverage = savedCoverage(series);
     const requestedFrom = from
-      ? (series.ranges?.[rangeKey] ??
-        dateInZone(new Date(Date.parse(from) - day), zone))
+      ? dateInZone(new Date(Date.parse(from) - day), zone)
       : (series.through ?? dateInZone(new Date(series.createdAt), zone));
+    const start =
+      requestedFrom < series.startsOn ? series.startsOn : requestedFrom;
     const goal = to
       ? dateInZone(new Date(Date.parse(to) + day), zone)
       : nextTaskDate(dateInZone(new Date(now), zone), 31);
-    let date =
-      requestedFrom < series.startsOn ? series.startsOn : requestedFrom;
     const stopDate = series.stoppedAt
       ? dateInZone(new Date(series.stoppedAt), zone)
       : goal;
@@ -146,24 +199,33 @@ function materializeTaskSeries(store, circleId, from, to, now = Date.now()) {
       lastTaskDate(series),
       '9999-12-31',
     ].sort()[0];
+    let date = start;
     let scanned = 0;
-    for (
-      ;
-      date <= final && scanned < 366;
-      date = nextTaskDate(date, 1), scanned++
-    ) {
+    while (date <= final) {
+      const covered = coverage.find(
+        (range) => range.from <= date && date < range.to,
+      );
+      if (covered) {
+        date = covered.to;
+        continue;
+      }
+      if (scanned >= 366) break;
       const task = taskOccurrence(series, date);
       if (task && !existing.has(task.id) && !deleted.has(task.id)) {
         store.care.tasks.push(task);
         existing.add(task.id);
       }
+      scanned++;
+      date = nextTaskDate(date, 1);
     }
     if (!from) series.through = date;
-    else (series.ranges ??= {})[rangeKey] = date;
+    if (start < date) coverage.push({ from: start, to: date });
+    series.coverage = capCoverage(coverage, start, date);
     if (date <= final) pending = true;
   }
   return pending;
 }
+
 function withTaskSeries(task, store, descriptions) {
   const series = store.taskSeries?.find((item) => item.id === task.seriesId);
   if (!series) return task;

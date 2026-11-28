@@ -164,6 +164,7 @@ module.exports = (db) => ({
           const progress = (definition) =>
             JSON.stringify({
               through: definition.through,
+              coverage: definition.coverage,
               ranges: definition.ranges,
             });
           let historyPending = false;

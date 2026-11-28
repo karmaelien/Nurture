@@ -88,3 +88,22 @@ it('keeps read generation bounded, preserves edits/deletions, and advances histo
   materializeTaskSeries(futureStore, 'c_demo', '2099-03-01T00:00:00Z', '2099-04-01T00:00:00Z', now)
   expect(futureStore.care.tasks.length).toBeLessThan(35)
 })
+
+it('reuses overlapping month/week/day coverage and discards legacy view keys', () => {
+  const course = series({
+    startsOn: '2026-01-01',
+    createdAt: '2025-12-31T00:00:00Z',
+    recurrence: { unit: 'days', interval: 1, daysOfWeek: [], timeZone: 'UTC', end: { kind: 'never' } },
+    ranges: { '2026-03-01T00:00:00Z|2026-04-01T00:00:00Z': '2026-04-03' },
+  })
+  const store = { taskSeries: [course], care: { tasks: [] } }
+  materializeTaskSeries(store, 'c_demo', '2026-03-10T00:00:00Z', '2026-03-11T00:00:00Z')
+  expect(course.ranges).toBeUndefined()
+  expect(course.coverage).toEqual([{ from: '2026-02-28', to: '2026-04-03' }])
+  expect(store.care.tasks).toHaveLength(0)
+  materializeTaskSeries(store, 'c_demo', '2026-04-01T00:00:00Z', '2026-05-01T00:00:00Z')
+  expect(course.coverage).toEqual([{ from: '2026-02-28', to: '2026-05-03' }])
+  const count = store.care.tasks.length
+  materializeTaskSeries(store, 'c_demo', '2026-04-05T00:00:00Z', '2026-04-12T00:00:00Z')
+  expect(store.care.tasks).toHaveLength(count)
+})

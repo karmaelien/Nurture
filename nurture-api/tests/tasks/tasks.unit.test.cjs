@@ -133,3 +133,86 @@ test('task validation keeps create, occurrence edits, date filters, and versions
   ])
     assert.equal(listSchema.safeParse(query).success, false);
 });
+
+test('browser and server merge viewed ranges, migrate legacy cursors, and cap disjoint coverage without losing progress', () => {
+  const makeStore = () => ({
+    taskSeries: [
+      {
+        ...definition,
+        startsOn: '2020-01-01',
+        createdAt: '2019-12-31T00:00:00Z',
+        recurrence: {
+          ...definition.recurrence,
+          timeZone: 'UTC',
+          end: { kind: 'never' },
+        },
+      },
+    ],
+    care: { tasks: [] },
+    deletedTaskOccurrences: [],
+  });
+  const serverStore = makeStore();
+  const browserStore = makeStore();
+  function run(from, to) {
+    const pending = schedule.materializeTaskSeries(serverStore, '2', from, to);
+    assert.equal(
+      client.materializeTaskSeries(browserStore, '2', from, to),
+      pending,
+    );
+    assert.deepEqual(browserStore, serverStore);
+    assert.ok(serverStore.taskSeries[0].coverage.length <= 64);
+    assert.equal(serverStore.taskSeries[0].ranges, undefined);
+    return pending;
+  }
+  const instant = (date) => `${date}T00:00:00Z`;
+  for (let index = 0; index < 100; index++) {
+    const date = schedule.nextTaskDate('2026-01-01', index);
+    run(instant(date), instant(schedule.nextTaskDate(date, 1)));
+  }
+  assert.equal(serverStore.taskSeries[0].coverage.length, 1);
+  // Migrate an unfinished legacy range, retaining its already-scanned prefix.
+  for (const store of [serverStore, browserStore]) {
+    store.taskSeries[0].ranges = {
+      '2020-01-01T00:00:00Z|2030-01-01T00:00:00Z': '2021-01-01',
+    };
+  }
+  assert.equal(run('2020-01-01T00:00:00Z', '2030-01-01T00:00:00Z'), true);
+  assert.ok(
+    serverStore.care.tasks.some((task) => task.dueAt.startsWith('2021-01-01')),
+  );
+  for (let index = 0; index < 80; index++) {
+    const date = schedule.nextTaskDate('2050-01-01', index * 40);
+    run(instant(date), instant(schedule.nextTaskDate(date, 1)));
+  }
+  // Even an old, unfinished range must keep progressing when coverage is full.
+  let batches = 0;
+  while (run('2020-01-01T00:00:00Z', '2030-01-01T00:00:00Z')) {
+    assert.ok(++batches < 15);
+  }
+  assert.equal(
+    new Set(serverStore.care.tasks.map((task) => task.id)).size,
+    serverStore.care.tasks.length,
+  );
+  for (const store of [serverStore, browserStore]) {
+    store.care.tasks.find((task) => task.id === '1:2020-01-01').title =
+      'Individual edit';
+    store.care.tasks = store.care.tasks.filter(
+      (task) => task.id !== '1:2020-01-02',
+    );
+    store.deletedTaskOccurrences.push('1:2020-01-02');
+  }
+  // Evict historical coverage and revisit it: saved edits and deletion exceptions win.
+  for (let index = 0; index < 80; index++) {
+    const date = schedule.nextTaskDate('2070-01-01', index * 40);
+    run(instant(date), instant(schedule.nextTaskDate(date, 1)));
+  }
+  run('2020-01-01T00:00:00Z', '2020-01-04T00:00:00Z');
+  assert.equal(
+    serverStore.care.tasks.find((task) => task.id === '1:2020-01-01').title,
+    'Individual edit',
+  );
+  assert.equal(
+    serverStore.care.tasks.some((task) => task.id === '1:2020-01-02'),
+    false,
+  );
+});

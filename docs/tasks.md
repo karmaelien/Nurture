@@ -260,3 +260,21 @@ runs against the application's configured database.
 
 Task background push/email delivery remains a separate step; current task reminders
 are in-page only.
+
+
+## Bounded Generation Progress
+
+Calendar browsing stores merged, half-open local-date coverage intervals rather
+than one cursor for every exact request. Overlapping and adjacent monthly, weekly,
+and daily views reuse scanned coverage. Each schedule keeps at most 64 disjoint
+intervals; the active request's scanned prefix is retained so incomplete history
+continues advancing in batches of at most 366 unscanned dates. The separate global
+history cursor remains available for Home/list reads.
+
+Legacy `progress.ranges` cursors convert into their scanned prefixes on the next
+read and are removed from saved progress, including in PostgreSQL. The JSON column
+needs no schema migration. Evicted coverage may be rescanned on a later visit;
+existing occurrence IDs, saved edits, and deletion exceptions prevent duplicate
+or restored tasks. Browser and server generation use the same rules. PostgreSQL
+keeps migration, generation, and progress writes under the existing per-series
+transaction locks; covered reads still avoid unnecessary exclusive locks.
