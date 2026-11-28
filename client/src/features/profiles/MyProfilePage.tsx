@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
 import { useLogout, useRequiredSession } from '../auth/session.ts'
 import { linkCardClasses } from './cardClasses.ts'
 import { useUpdateProfile } from './mutations.ts'
@@ -42,11 +43,14 @@ export function MyProfilePage() {
 
   return (
     <PageMain narrow>
-      <h1 className="font-display text-h1 font-bold">My profile</h1>
-      <p className="mt-2 text-muted">People in your care circles see these details.</p>
+      <PageHeader title="My profile" description="People in your care circles see these details." />
 
       <FormProvider {...form}>
-        <form noValidate onSubmit={onSubmit} className="mt-8 grid gap-5">
+        <form
+          noValidate
+          onSubmit={onSubmit}
+          className="grid gap-5 rounded-panel border border-line bg-surface p-5 sm:p-6"
+        >
           {errors.root && <Alert tone="danger">{errors.root.message}</Alert>}
           <ProfileFields
             initialZone={initialZone}

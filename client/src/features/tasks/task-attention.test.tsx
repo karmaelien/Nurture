@@ -70,14 +70,16 @@ it('keeps reminders independent of task status and applies the care-profile filt
   const user = userEvent.setup()
   renderApp('/app/tasks')
   const attention = await screen.findByRole('region', { name: 'Task Attention Needed' })
-  expect(await within(attention).findByText('1 overdue task')).toBeInTheDocument()
-  expect(attention).toHaveTextContent('1 due within 1 hour')
+  expect(await within(attention).findByRole('button', { name: '1 overdue task' })).toBeInTheDocument()
+  expect(within(attention).getByRole('button', { name: '1 tasks due within 1 hour' })).toBeInTheDocument()
   await user.selectOptions(screen.getByLabelText('Status'), 'completed')
-  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
+  await user.click(within(attention).getByRole('button', { name: '1 overdue task' }))
   expect(await within(attention).findByRole('heading', { name: 'Late task' })).toBeInTheDocument()
-  expect(within(attention).getAllByRole('listitem')).toHaveLength(2)
+  expect(within(attention).getAllByRole('listitem')).toHaveLength(1)
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
   await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
-  await waitFor(() => expect(within(attention).queryByRole('heading', { name: 'Late task' })).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.queryByRole('button', { name: '1 overdue task' })).not.toBeInTheDocument())
+  await user.click(await screen.findByRole('button', { name: '1 tasks due within 1 hour' }))
   await waitFor(() =>
     expect(
       within(screen.getByRole('region', { name: 'Task Attention Needed' })).getByRole('heading', { name: 'Soon task' }),
@@ -89,16 +91,17 @@ it('clears completed reminders on Home and Tasks and preserves the saved complet
   await seed()
   const user = userEvent.setup()
   renderApp('/app')
-  const attention = await screen.findByRole('region', { name: 'Task Attention Needed' })
-  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
-  await user.click(within(attention).getByRole('button', { name: 'Mark Completed: Late task' }))
+  const attention = await screen.findByRole('region', { name: 'Attention Needed' })
+  expect(await within(attention).findByRole('button', { name: '1 overdue task' })).toBeInTheDocument()
+  const list = screen.getByRole('region', { name: 'Tasks' })
+  await user.click(within(list).getByRole('button', { name: 'Mark Completed: Late task' }))
   await waitFor(() => expect(within(attention).queryByRole('heading', { name: 'Late task' })).not.toBeInTheDocument())
   expect(readDb().care.tasks.find((task) => task.id === 'late')?.status).toBe('completed')
   cleanup()
   renderApp('/app/tasks')
   const tasksAttention = await screen.findByRole('region', { name: 'Task Attention Needed' })
-  expect(await within(tasksAttention).findByText('0 overdue tasks')).toBeInTheDocument()
-  expect(tasksAttention).toHaveTextContent('1 due within 1 hour')
+  expect(await within(tasksAttention).findByRole('button', { name: '0 overdue tasks' })).toBeInTheDocument()
+  expect(within(tasksAttention).getByRole('button', { name: '1 tasks due within 1 hour' })).toBeInTheDocument()
 })
 
 it('hides task details on failed refresh and retries a 502 error', async () => {
@@ -117,18 +120,16 @@ it('hides task details on failed refresh and retries a 502 error', async () => {
   expect(within(attention).queryByRole('list')).not.toBeInTheDocument()
   failing = false
   await user.click(retry)
-  await waitFor(() =>
-    expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toHaveTextContent('1 overdue task'),
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: '1 overdue task' })).toBeInTheDocument())
 })
 
-it('keeps expanded reminders visible during a slow minute refresh and never reuses another profile data', async () => {
+it('keeps the reminder popup visible during a slow minute refresh and never reuses another profile data', async () => {
   await seed()
   const minute = vi.spyOn(clock, 'useMinute').mockReturnValue(new Date(now))
   const user = userEvent.setup()
   renderApp('/app/tasks')
   const attention = await screen.findByRole('region', { name: 'Task Attention Needed' })
-  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
+  await user.click(await within(attention).findByRole('button', { name: '1 overdue task' }))
   await within(attention).findByRole('heading', { name: 'Late task' })
   let release!: () => void
   const held = new Promise<void>((resolve) => {
@@ -151,9 +152,10 @@ it('keeps expanded reminders visible during a slow minute refresh and never reus
     await waitFor(() => expect(requested).toBe(true))
     expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toBe(attention)
     expect(within(attention).getByRole('heading', { name: 'Late task' })).toBeInTheDocument()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
     await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(within(attention).queryByRole('heading', { name: 'Late task' })).not.toBeInTheDocument())
-    expect(within(attention).getByText('Loading task reminders…')).toBeInTheDocument()
+    expect(within(attention).getByRole('button', { name: 'Loading overdue tasks' })).toBeDisabled()
   } finally {
     release()
     minute.mockRestore()

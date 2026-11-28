@@ -1,11 +1,11 @@
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { careApi } from '../../api/care.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
 import type { CareTask } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useRequiredSession } from '../auth/session.ts'
 
 export function TaskDeleteDialog({
@@ -24,9 +24,6 @@ export function TaskDeleteDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const heading = useId()
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
 
   async function remove() {
     if (saving.current) return
@@ -48,27 +45,14 @@ export function TaskDeleteDialog({
     }
   }
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={heading}
-      aria-describedby={`${heading}-description`}
+    <FormDialog
+      title="Delete task?"
+      dialogRef={dialog}
+      busy={busy}
+      isBusy={() => saving.current}
       onClose={onClose}
-      onCancel={(event) => {
-        if (saving.current) event.preventDefault()
-      }}
-      onClick={(event) => {
-        if (!saving.current) closeOnBackdropClick(event)
-      }}
-      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
+      descriptionId={`${heading}-description`}
     >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={heading} className="font-display text-h2 font-semibold">
-          Delete task?
-        </h2>
-        <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </div>
       <p id={`${heading}-description`}>
         Delete “{task.title}”? This permanently removes the task
         {task.status === 'completed' ? ' and its completion record' : ''}.
@@ -86,9 +70,9 @@ export function TaskDeleteDialog({
           Delete task
         </Button>
         <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Keep task
+          Cancel
         </Button>
       </div>
-    </dialog>
+    </FormDialog>
   )
 }

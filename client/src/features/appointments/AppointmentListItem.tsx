@@ -1,7 +1,11 @@
+import { Alert } from '../../components/ui/Alert.tsx'
+import { useAppointmentCompletion } from './appointment-completion.ts'
 import { CircleCheck, MapPin, Users } from 'lucide-react'
 import type { AppointmentDetailData } from './AppointmentDetails.tsx'
 import { AppointmentStatus } from './AppointmentStatus.tsx'
 import { Button } from '../../components/ui/Button.tsx'
+
+import { StatusBadge } from '../../components/ui/StatusBadge.tsx'
 
 function formatAppointmentRange(startsAt: string, endsAt?: string) {
   const start = new Date(startsAt)
@@ -19,24 +23,31 @@ export function AppointmentListItem({
   appointment,
   profileName,
   overdue = false,
+  showDuration = false,
   onComplete,
   onMarkTodo,
   onEdit,
+  onDelete,
 }: {
   appointment: AppointmentDetailData
   profileName: string
   overdue?: boolean
+  showDuration?: boolean
   onComplete?: () => void
   onMarkTodo?: () => void
   onEdit?: () => void
+  onDelete?: () => void
 }) {
+  const completion = useAppointmentCompletion()
+  const busy = completion.isPending(appointment)
+  const error = completion.completionError(appointment)
   return (
     <>
       <span className="block font-display text-h3 font-semibold">
         {appointment.title}
         {overdue && (
-          <span className="ml-2 inline-block rounded-control border border-danger/30 bg-danger/8 px-2 py-0.5 text-small font-semibold text-danger">
-            Overdue
+          <span className="ml-2 inline-block">
+            <StatusBadge tone="danger">Overdue</StatusBadge>
           </span>
         )}
         {appointment.status === 'completed' && (
@@ -48,7 +59,17 @@ export function AppointmentListItem({
         )}
       </span>
       <span className="mt-1 block">{profileName}</span>
-      <span className="mt-2 block text-muted">{formatAppointmentRange(appointment.startsAt, appointment.endsAt)}</span>
+      <span className="mt-2 block text-muted">
+        <time dateTime={appointment.startsAt}>{formatAppointmentRange(appointment.startsAt, appointment.endsAt)}</time>
+        {appointment.endsAt && (
+          <time className="sr-only" dateTime={appointment.endsAt}>
+            Ends {new Date(appointment.endsAt).toLocaleString()}
+          </time>
+        )}
+        {showDuration && appointment.endsAt && (
+          <> · {(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes</>
+        )}
+      </span>
       <span className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-muted">
         <span className="inline-flex min-w-0 items-start gap-2">
           <MapPin className="mt-1 size-4 shrink-0" aria-hidden />
@@ -75,21 +96,33 @@ export function AppointmentListItem({
           </span>
         </span>
       </span>
-      {appointment.status === 'scheduled' && onComplete ? (
-        <Button variant="primary" size="sm" className="mt-2" onClick={onComplete}>
-          Mark completed
-        </Button>
-      ) : appointment.status === 'completed' && onMarkTodo ? (
-        <Button variant="primary" size="sm" className="mt-2" onClick={onMarkTodo}>
-          Mark as to do
-        </Button>
-      ) : (
-        <AppointmentStatus status={appointment.status} />
-      )}
-      {onEdit && (
-        <Button variant="secondary" size="sm" className="mt-2 ml-2" onClick={onEdit}>
-          Edit appointment
-        </Button>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {appointment.status === 'scheduled' && onComplete ? (
+          <Button variant="outline" loading={busy} onClick={onComplete}>
+            Mark completed
+          </Button>
+        ) : appointment.status === 'completed' && onMarkTodo ? (
+          <Button variant="outline" loading={busy} onClick={onMarkTodo}>
+            Mark as to do
+          </Button>
+        ) : (
+          <AppointmentStatus status={appointment.status} />
+        )}
+        {onEdit && (
+          <Button variant="outline" disabled={busy} onClick={onEdit}>
+            Edit appointment
+          </Button>
+        )}
+        {onDelete && (
+          <Button variant="danger" disabled={busy} onClick={onDelete}>
+            Delete appointment
+          </Button>
+        )}
+      </div>
+      {error && (
+        <div className="mt-3">
+          <Alert tone="danger">{error}</Alert>
+        </div>
       )}
     </>
   )

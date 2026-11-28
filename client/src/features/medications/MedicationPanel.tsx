@@ -1,7 +1,8 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { PanelHeader } from '../../components/ui/PanelHeader.tsx'
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, Medication } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -16,6 +17,8 @@ import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { useCareSelection } from '../care/selection.ts'
 import { MedicationCalendar } from './MedicationCalendar.tsx'
 import { MedicationNotifications } from './MedicationNotifications.tsx'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { MedicationNameFilter } from './MedicationNameFilter.tsx'
 
 // Both pages use the same person/date state, scoped to the signed-in user and family.
 export function MedicationPanel({
@@ -25,45 +28,80 @@ export function MedicationPanel({
   id,
   showCaregiverError = true,
   expanded = false,
+  showAttention = true,
 }: {
   circle: CircleSummary
   showProfileFilter?: boolean
-  heading?: ReactNode
+  heading?: { title: string; icon: ReactNode; to: string }
   id?: string
   showCaregiverError?: boolean
   expanded?: boolean
+  showAttention?: boolean
 }) {
   const { user } = useRequiredSession()
-  const { recipientId, setRecipientId } = useCareSelection(circle)
+  const { recipientId, setRecipientId, resetFilters, resetKey } = useCareSelection(circle)
   const [editor, setEditor] = useState<{
     medication?: Medication
     deleting?: boolean
     stopping?: boolean
     restarting?: boolean
     startsOn?: string
-    fromCalendar?: boolean
   } | null>(null)
   const medications = useMedications(circle.id)
+  const [selection, setSelection] = useState({ id: '', resetKey })
+  const selectedMedication = selection.resetKey === resetKey ? selection.id : ''
+  const setSelectedMedication = (id: string) => setSelection({ id, resetKey })
+  const [notice, setNotice] = useState('')
+  const medicationId = medications.data?.some((item) => item.id === selectedMedication) ? selectedMedication : ''
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
     queryFn: () => circlesApi.detail(circle.id),
     retry: false,
   })
-  const visible = medications.data?.filter((medication) => !recipientId || medication.recipientId === recipientId) ?? []
+  const visible =
+    medications.data?.filter(
+      (medication) =>
+        (!recipientId || medication.recipientId === recipientId) && (!medicationId || medication.id === medicationId),
+    ) ?? []
 
+  const actions = (
+    <>
+      <MedicationNotifications />
+      <Button disabled={!detail.data || detail.isError || !circle.recipients.length} onClick={() => setEditor({})}>
+        Add medication
+      </Button>
+    </>
+  )
   return (
     <section
       id={id}
       aria-label="Medications"
       className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6"
     >
-      <div className={`mb-4 flex flex-wrap items-center gap-3 ${heading ? 'justify-between' : 'justify-end'}`}>
-        {heading}
-        <MedicationNotifications />
-        <Button disabled={!detail.data || !circle.recipients.length} onClick={() => setEditor({})}>
-          Add medication
-        </Button>
-      </div>
+      {heading && <PanelHeader {...heading} action={actions} />}
+      <FeatureToolbar
+        actions={heading ? undefined : actions}
+        onClear={
+          showProfileFilter
+            ? () => {
+                resetFilters()
+                setSelectedMedication('')
+              }
+            : undefined
+        }
+      >
+        {showProfileFilter && (
+          <div className="w-64 max-w-full">
+            <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
+          </div>
+        )}
+        <MedicationNameFilter
+          medications={medications.isError ? [] : (medications.data ?? [])}
+          circle={circle}
+          value={medicationId}
+          onChange={setSelectedMedication}
+        />
+      </FeatureToolbar>
       {editor && detail.data && (
         <MedicationEditor
           circle={detail.data.circle}
@@ -73,18 +111,17 @@ export function MedicationPanel({
           stopping={editor.stopping}
           restarting={editor.restarting}
           initialStartsOn={editor.startsOn}
-          allowDelete={!editor.fromCalendar}
+          allowDelete
           onClose={() => setEditor(null)}
+          onSaved={() => {
+            setNotice(editor.deleting ? 'Medication deleted.' : 'Medication saved. Clear filters if it is not shown.')
+          }}
         />
       )}
-      {showProfileFilter && (
-        <div className="mb-6 max-w-sm">
-          <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
-        </div>
-      )}
-      <MedicationAttention circle={circle} recipientId={recipientId} />
+      {notice && <Alert tone="success">{notice}</Alert>}
+      {showAttention && <MedicationAttention circle={circle} recipientId={recipientId} />}
       <div className={expanded ? 'grid items-start gap-5 lg:grid-cols-2' : ''}>
-        <MedicationDoses circle={circle} recipientId={recipientId} fillColumn={expanded} />
+        <MedicationDoses circle={circle} recipientId={recipientId} medicationId={medicationId} fillColumn={expanded} />
         <section
           aria-label="Medication List"
           className={`min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6 ${expanded ? 'flex flex-col lg:h-[38rem]' : ''}`}
@@ -93,25 +130,11 @@ export function MedicationPanel({
           <div className={expanded ? 'min-h-0 flex-1 overflow-y-auto pr-2' : ''}>
             {showCaregiverError && detail.isError && (
               <div className="mb-5">
-                <Alert tone="danger">
-                  Caregiver names could not load.{' '}
-                  <Button variant="secondary" onClick={() => void detail.refetch()}>
-                    Retry caregiver names
-                  </Button>
-                </Alert>
+                <QueryFeedback query={detail} message="Caregiver names could not load." />
               </div>
             )}
-            {medications.isPending ? (
-              <p role="status" className="text-muted">
-                Loading medications…
-              </p>
-            ) : medications.isError ? (
-              <Alert tone="danger">
-                {errorMessage(medications.error)}{' '}
-                <Button variant="secondary" onClick={() => void medications.refetch()}>
-                  Try again
-                </Button>
-              </Alert>
+            {medications.isPending || medications.isError ? (
+              <QueryFeedback query={medications} loading="Loading medications…" />
             ) : visible.length === 0 ? (
               <p className="text-muted">No medications for {recipientId ? 'this care profile' : 'this family'}.</p>
             ) : (
@@ -126,7 +149,7 @@ export function MedicationPanel({
                       : (detail.data?.circle.members.find((member) => member.user.id === medication.assignedCaregiverId)
                           ?.user.name ?? (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
                   return (
-                    <li key={medication.id} className="rounded-panel border border-line-strong bg-wash/30 p-4">
+                    <li key={medication.id} className="rounded-panel border border-line bg-surface p-4">
                       <h2 className="font-display text-h3 font-semibold">{medication.name}</h2>
                       {medication.stoppedAt && (
                         <p className="mt-1 text-small text-muted">
@@ -208,15 +231,17 @@ export function MedicationPanel({
         <MedicationCalendar
           circle={circle}
           recipientId={recipientId}
+          medicationId={medicationId}
           medications={medications.isError ? [] : (medications.data ?? [])}
           onAdd={
             detail.data && !detail.isError && circle.recipients.length
-              ? (startsOn) => setEditor({ startsOn, fromCalendar: true })
+              ? (startsOn) => setEditor({ startsOn })
               : undefined
           }
-          onEdit={
-            detail.data && !detail.isError ? (medication) => setEditor({ medication, fromCalendar: true }) : undefined
+          onDelete={
+            detail.data && !detail.isError ? (medication) => setEditor({ medication, deleting: true }) : undefined
           }
+          onEdit={detail.data && !detail.isError ? (medication) => setEditor({ medication }) : undefined}
         />
       )}
     </section>

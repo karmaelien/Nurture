@@ -1,11 +1,11 @@
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { TaskSeriesSummary } from '../../api/types.ts'
 import { careApi } from '../../api/care.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useRequiredSession } from '../auth/session.ts'
 
 export function TaskStopSeriesDialog({
@@ -23,10 +23,6 @@ export function TaskStopSeriesDialog({
   const saving = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const heading = useId()
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
   async function stop() {
     if (saving.current) return
     saving.current = true
@@ -46,26 +42,7 @@ export function TaskStopSeriesDialog({
     }
   }
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={heading}
-      onClose={onClose}
-      onCancel={(event) => {
-        if (saving.current) event.preventDefault()
-      }}
-      onClick={(event) => {
-        if (!saving.current) closeOnBackdropClick(event)
-      }}
-      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
-    >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={heading} className="font-display text-h2 font-semibold">
-          Stop repeating?
-        </h2>
-        <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </div>
+    <FormDialog title="Stop repeating?" dialogRef={dialog} busy={busy} isBusy={() => saving.current} onClose={onClose}>
       <p>
         Stop repeating “{series.title}”? Future pending occurrences are removed. Past tasks, undated tasks, and
         completed occurrences stay saved.
@@ -80,9 +57,9 @@ export function TaskStopSeriesDialog({
           Confirm stop
         </Button>
         <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Keep repeating
+          Cancel
         </Button>
       </div>
-    </dialog>
+    </FormDialog>
   )
 }

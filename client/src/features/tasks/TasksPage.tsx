@@ -1,7 +1,9 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, CareTask, TaskSeriesSummary } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -20,10 +22,13 @@ import { TaskStopSeriesDialog } from './TaskStopSeriesDialog.tsx'
 import { TaskAttention } from './TaskAttention.tsx'
 import { dashboardWindow } from '../home/dashboard.ts'
 import { matchesTask } from './task-filter.ts'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
-  const [recipientId, setRecipientId] = useState('')
+  const { recipientId, setRecipientId, resetFilters } = useCareSelection(circle)
+  const [notice, setNotice] = useState('')
   const [status, setStatus] = useState<CareTask['status'] | ''>('')
   const [search, setSearch] = useState('')
   const [caregiver, setCaregiver] = useState('')
@@ -57,25 +62,38 @@ function TaskList({ circle }: { circle: CircleSummary }) {
       : (detail.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
         (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
   return (
-    <>
+    <section className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6">
       {stopping && <TaskStopSeriesDialog circleId={circle.id} series={stopping} onClose={() => setStopping(null)} />}
       {deleting && <TaskDeleteDialog task={deleting} circleId={circle.id} onClose={() => setDeleting(null)} />}
-      <div className="mb-6 flex flex-wrap items-end gap-4">
-        <TextField
-          label="Search tasks"
-          type="search"
-          placeholder="Task title"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <SelectField label="Care profile" value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>
-          <option value="">All care profiles</option>
-          {circle.recipients.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </SelectField>
+      <FeatureToolbar
+        onClear={() => {
+          resetFilters()
+          setSearch('')
+          setCaregiver('')
+          setStatus('')
+        }}
+        actions={
+          <Button
+            disabled={!detail.data || detail.isError || !circle.recipients.length}
+            onClick={() => {
+              setAddDate(undefined)
+              setAdding(true)
+            }}
+          >
+            Add task
+          </Button>
+        }
+      >
+        <div className="w-48">
+          <TextField
+            label="Search tasks"
+            type="search"
+            placeholder="Task title"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
         <SelectField label="Caregiver" value={caregiver} onChange={(event) => setCaregiver(event.target.value)}>
           <option value="">All caregivers</option>
           <option value="unassigned">Unassigned</option>
@@ -98,30 +116,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
           <option value="pending">To Do</option>
           <option value="completed">Completed</option>
         </SelectField>
-        {(search || caregiver || recipientId || status) && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setSearch('')
-              setCaregiver('')
-              setRecipientId('')
-              setStatus('')
-            }}
-          >
-            Clear filters
-          </Button>
-        )}
-        <Button
-          className="sm:ml-auto"
-          disabled={!detail.data || detail.isError || !circle.recipients.length}
-          onClick={() => {
-            setAddDate(undefined)
-            setAdding(true)
-          }}
-        >
-          Add task
-        </Button>
-      </div>
+      </FeatureToolbar>
       {(adding || editing) && detail.data && !detail.isError && (
         <TaskEditor
           circle={detail.data.circle}
@@ -133,24 +128,13 @@ function TaskList({ circle }: { circle: CircleSummary }) {
             setEditing(null)
             setAddDate(undefined)
           }}
-          onSaved={() => {
-            if (!editing) {
-              setRecipientId('')
-              setStatus('pending')
-              setSearch('')
-              setCaregiver('')
-            }
-          }}
+          onSaved={() => setNotice('Task saved. Clear filters if it is not shown.')}
         />
       )}
+      {notice && <Alert tone="success">{notice}</Alert>}
       {detail.isError && (
         <div className="mb-5">
-          <Alert tone="danger">
-            Caregiver names could not load.{' '}
-            <Button variant="secondary" onClick={() => void detail.refetch()}>
-              Retry caregiver names
-            </Button>
-          </Alert>
+          <QueryFeedback query={detail} message="Caregiver names could not load." />
         </div>
       )}
       <div className="grid gap-5">
@@ -172,15 +156,8 @@ function TaskList({ circle }: { circle: CircleSummary }) {
               Loading older repeating tasks…
             </p>
           )}
-          {tasks.isPending ? (
-            <p role="status">Loading tasks…</p>
-          ) : tasks.isError ? (
-            <Alert tone="danger">
-              {errorMessage(tasks.error)}{' '}
-              <Button variant="secondary" onClick={() => void tasks.refetch()}>
-                Retry tasks
-              </Button>
-            </Alert>
+          {tasks.isPending || tasks.isError ? (
+            <QueryFeedback query={tasks} loading="Loading tasks…" />
           ) : !sorted.length ? (
             !tasks.historyPending && <p className="text-muted">No tasks for the selected filters.</p>
           ) : (
@@ -252,7 +229,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         onEdit={detail.data && !detail.isError ? (task) => setEditing(task) : undefined}
         onDelete={setDeleting}
       />
-    </>
+    </section>
   )
 }
 
@@ -260,14 +237,12 @@ export function TasksPage() {
   const { circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
-        <div>
-          <h1 className="font-display text-h1 font-bold">Tasks</h1>
-          <p className="mt-2 text-muted">Care tasks and caregiver assignments for your family.</p>
-        </div>
-        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-      </div>
+    <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+      <PageHeader
+        title="Tasks"
+        description="Care tasks and caregiver assignments for your family."
+        aside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
+      />
       {circle ? (
         <TaskList key={circle.id} circle={circle} />
       ) : (

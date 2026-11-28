@@ -1,91 +1,38 @@
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
-import { Button } from '../../components/ui/Button.tsx'
+import { AppointmentListItem } from './AppointmentListItem.tsx'
 
-// Shared by calendar, upcoming-list, and today's dialogs so fields and completion stay consistent.
 export type AppointmentDetailData = Omit<AppointmentSummary, 'endsAt'> & { endsAt?: string }
 
+/** Calendar details reuse the list's time range, map link, warnings, and actions. */
 export function AppointmentDetails<T extends AppointmentDetailData>({
   appointment,
   profile,
-  headingId,
+  overdue = false,
   onComplete,
   onMarkTodo,
   onEdit,
+  onDelete,
 }: {
   appointment: T
   profile: CareProfile
-  headingId: string
+  overdue?: boolean
   onComplete?: (appointment: T) => void
   onMarkTodo?: (appointment: T) => void
   onEdit?: (appointment: T) => void
+  onDelete?: (appointment: T) => void
 }) {
-  const formatDate = (value: string) =>
-    new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
   return (
     <>
-      <h2 id={headingId} className="font-display text-h2 font-bold">
-        {appointment.title}
-      </h2>
-      <p className="mt-2 text-muted">{profile.name}</p>
-      <dl className="mt-5 grid gap-4">
-        <div>
-          <dt className="font-semibold">Starts</dt>
-          <dd>
-            <time dateTime={appointment.startsAt}>{formatDate(appointment.startsAt)}</time>
-          </dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Ends</dt>
-          <dd>
-            {appointment.endsAt ? (
-              <time dateTime={appointment.endsAt}>{formatDate(appointment.endsAt)}</time>
-            ) : (
-              'Not provided'
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Duration</dt>
-          <dd>
-            {appointment.endsAt
-              ? `${(Date.parse(appointment.endsAt) - Date.parse(appointment.startsAt)) / 60_000} minutes`
-              : 'Not provided'}
-          </dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Care circle</dt>
-          <dd>{profile.circleName}</dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Caregiver</dt>
-          <dd>{appointment.assignedCaregiver?.name || 'Unassigned'}</dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Location</dt>
-          <dd>{appointment.location || 'Not provided'}</dd>
-        </div>
-        <div>
-          <dt className="font-semibold">Status</dt>
-          <dd className="capitalize" role="status">
-            {appointment.status}
-          </dd>
-        </div>
-      </dl>
-      {appointment.status === 'scheduled' && onComplete && (
-        <Button className="mt-6" onClick={() => onComplete(appointment)}>
-          Mark completed
-        </Button>
-      )}
-      {appointment.status === 'completed' && onMarkTodo && (
-        <Button className="mt-6" onClick={() => onMarkTodo(appointment)}>
-          Mark as to do
-        </Button>
-      )}
-      {onEdit && (
-        <Button variant="secondary" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
-          Edit appointment
-        </Button>
-      )}
+      <AppointmentListItem
+        appointment={appointment}
+        profileName={profile.name}
+        showDuration
+        overdue={overdue}
+        onComplete={onComplete && (() => onComplete(appointment))}
+        onMarkTodo={onMarkTodo && (() => onMarkTodo(appointment))}
+        onEdit={onEdit && (() => onEdit(appointment))}
+        onDelete={onDelete && (() => onDelete(appointment))}
+      />
     </>
   )
 }

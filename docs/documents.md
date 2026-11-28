@@ -7,7 +7,13 @@ uses the same URL parameter as Dashboard and Expenses. Shared navigation lives i
 Appointments route wrapper. The existing appointment preview component remains independent.
 
 The page supports title/filename search, recipient/category filters, PDF/JPEG/PNG uploads
-(up to 10 MiB), file viewing/downloading, metadata and sharing edits, and confirmed deletion.
+in the shared filter/add toolbar. Upload, edit, and delete use centered popups with
+Close/Escape/click-away dismissal while idle and dismissal blocked during a save.
+The list remains beside the preview/details panel and has capped scrolling. Shared
+page headers, controls, and cards follow the [page design](medications.md#shared-page-design).
+
+Uploads remain limited to PDF/JPEG/PNG files up to 10 MiB. File viewing/downloading,
+metadata and sharing edits, and confirmed deletion retain their existing behavior.
 Only uploaders and current owners receive editing controls; other authorized members
 receive read-only controls. Sharing may include everyone or selected circle members.
 The uploader and owners always have access. Restricted documents are omitted from lists
@@ -95,3 +101,7 @@ The frontend API and permissions are unchanged. The frontend currently still use
 Database backups now include the file contents. This simple approach suits the class
 project; files contribute to database size, and uploads/downloads are buffered in memory
 with a 10 MiB per-file limit.
+
+## Shared controls and save feedback
+
+Care profile uses the shared Everyone/single-person selection across Home and the feature pages. Clear filters resets person, search, and category. Uploads and edits preserve those filters and show a workspace notice even when an edited title no longer matches the search. The preview uses the shared inline loading/error/Try again controls. Delete document and Cancel use the shared confirmation shell; duplicate requests and every dismissal path are blocked while a write is pending.

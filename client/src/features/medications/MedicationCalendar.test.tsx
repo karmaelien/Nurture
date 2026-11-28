@@ -8,8 +8,24 @@ import { setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
 import { createTrackedMedication } from '../../test/medication-fixtures.ts'
 import { renderApp } from '../../test/renderApp.tsx'
+import { server } from '../../test/setup.ts'
+import { http, HttpResponse } from 'msw'
 
 afterEach(() => vi.useRealTimers())
+
+it('closes stale dose details after a failed refresh and keeps them closed after retry', async () => {
+  const { calendar, user } = await open()
+  await user.click(within(calendar).getAllByRole('button', { name: /Calendar medicine for Rose/ })[0])
+  expect(screen.getByRole('dialog', { name: 'Dose Details' })).toBeInTheDocument()
+  server.use(http.get('/api/circles/:circleId/medication-occurrences', () => new HttpResponse(null, { status: 502 })))
+  fireEvent.focus(window)
+  await within(calendar).findByRole('alert')
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  server.resetHandlers()
+  await user.click(within(calendar).getByRole('button', { name: 'Try again' }))
+  await within(calendar).findAllByRole('button', { name: /Calendar medicine for Rose/ })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
 
 async function open(date = new Date(2026, 10, 25, 12), times = ['08:00', '09:00', '10:00', '11:00']) {
   vi.setSystemTime(date)
@@ -66,7 +82,7 @@ it('switches to hourly day/week views and applies the selected profile', async (
   await waitFor(() =>
     expect(within(calendar).getAllByRole('button', { name: /Calendar medicine for Rose/ })).toHaveLength(4),
   )
-  await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
   const filtered = screen.getByRole('region', { name: 'Medication Calendar' })
   await within(filtered).findByText('No doses scheduled this week.')
   expect(within(filtered).queryByRole('button', { name: /Calendar medicine for Rose/ })).not.toBeInTheDocument()
@@ -113,7 +129,7 @@ it('retries a 502 calendar error and restores the requested period', async () =>
     await user.click(within(calendar).getByRole('button', { name: 'Next month' }))
     expect(await within(calendar).findByRole('alert')).toHaveTextContent('502')
     load.mockRestore()
-    await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
+    await user.click(within(calendar).getByRole('button', { name: 'Try again' }))
     await within(calendar).findByRole('table', { name: 'December 2026 medication doses' })
     expect(within(calendar).queryByRole('alert')).not.toBeInTheDocument()
   } finally {
@@ -144,7 +160,7 @@ it('opens empty dates and respects the profile filter in date popups', async () 
   let dialog = screen.getByRole('dialog', { name: 'Medications' })
   expect(within(dialog).getByText('No medications scheduled for this date.')).toBeInTheDocument()
   await user.click(within(dialog).getByRole('button', { name: 'Close' }))
-  await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
   await within(calendar).findByText('No doses scheduled this month.')
   const doseDate = new Date(2026, 10, 25).toLocaleDateString(undefined, { dateStyle: 'full' })
   await user.click(within(calendar).getByRole('button', { name: `View medications for ${doseDate}` }))
@@ -156,13 +172,13 @@ it('opens empty dates and respects the profile filter in date popups', async () 
 
 it('adds a medication from an empty calendar date with the date and profile prefilled', async () => {
   const { calendar, user } = await open()
-  await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
   await within(calendar).findByText('No doses scheduled this month.')
   const date = new Date(2026, 10, 26).toLocaleDateString(undefined, { dateStyle: 'full' })
   await user.click(within(calendar).getByRole('button', { name: `View medications for ${date}` }))
   const popup = screen.getByRole('dialog', { name: 'Medications' })
   await user.click(await within(popup).findByRole('button', { name: 'Add medication' }))
-  const editor = screen.getByRole('dialog', { name: 'Add Medication' })
+  const editor = screen.getByRole('dialog', { name: 'Add medication' })
   expect(popup).not.toHaveAttribute('open')
   expect(within(editor).getByLabelText('Start date')).toHaveValue('2026-11-26')
   expect(within(editor).getByLabelText('Care profile')).toHaveValue('r_frank')
@@ -180,16 +196,16 @@ it('adds a medication from an empty calendar date with the date and profile pref
   ).toBeGreaterThan(0)
 })
 
-it('edits the current medication from a dose without offering permanent deletion', async () => {
+it('edits the current medication from a dose with the shared deletion option', async () => {
   const { calendar, user } = await open()
   await user.click(within(calendar).getAllByRole('button', { name: /Calendar medicine for Rose/ })[0])
   const popup = screen.getByRole('dialog', { name: 'Dose Details' })
   await user.click(await within(popup).findByRole('button', { name: 'Edit medication' }))
-  const editor = screen.getByRole('dialog', { name: 'Edit Medication' })
+  const editor = screen.getByRole('dialog', { name: 'Edit medication' })
   expect(popup).not.toHaveAttribute('open')
   expect(within(editor).getByLabelText('Medication name')).toHaveValue('Calendar medicine')
   expect(within(editor).getByLabelText('Start date')).toHaveValue('2026-11-25')
-  expect(within(editor).queryByRole('button', { name: 'Delete permanently' })).not.toBeInTheDocument()
+  expect(within(editor).getByRole('button', { name: 'Delete permanently' })).toBeInTheDocument()
   await user.clear(within(editor).getByLabelText('Dosage'))
   await user.type(within(editor).getByLabelText('Dosage'), '2 tablets')
   await user.click(within(editor).getByRole('button', { name: 'Save medication' }))
@@ -203,7 +219,7 @@ it('retains stopped medication history without offering an edit action', async (
   await careApi.stopMedication('c_demo', medication.id, medication.version)
   // Reload the definitions through navigation, as another tab's saved stop would be observed.
   await user.click(screen.getByRole('link', { name: 'Overview' }))
-  await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+  await screen.findByRole('heading', { name: 'Overview' })
   await user.click(screen.getByRole('link', { name: 'Medications' }))
   await screen.findByRole('heading', { name: 'Medications', level: 1 })
   await within(screen.getByRole('region', { name: 'Medication List' })).findByText(/^Stopped on /)

@@ -146,16 +146,34 @@ it('completes a task once, moves it below pending tasks, and undoes it from Home
       version: 2,
     })
     await user.click(screen.getByRole('link', { name: 'Overview' }))
-    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    await screen.findByRole('heading', { name: 'Overview' })
     const homeEntry = (await screen.findByText('Pick up prescription')).closest('li')!
-    expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
-      /2$/,
-    )
+    await waitFor(() => {
+      const count = readDb().care.tasks.filter(
+        (task) =>
+          ['r_rose', 'r_frank'].includes(task.recipientId) &&
+          task.status === 'pending' &&
+          task.dueAt &&
+          Date.parse(task.dueAt) < Date.now(),
+      ).length
+      expect(
+        screen.getByRole('button', { name: `${count} overdue ${count === 1 ? 'task' : 'tasks'}` }),
+      ).toBeInTheDocument()
+    })
     await user.click(within(homeEntry).getByRole('button', { name: 'Mark To Do: Pick up prescription' }))
     await within(homeEntry).findByRole('button', { name: 'Mark Completed: Pick up prescription' })
-    expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
-      /3$/,
-    )
+    const restoredOverdue = readDb().care.tasks.filter(
+      (task) =>
+        ['r_rose', 'r_frank'].includes(task.recipientId) &&
+        task.status === 'pending' &&
+        task.dueAt &&
+        Date.parse(task.dueAt) < Date.now(),
+    ).length
+    expect(
+      await screen.findByRole('button', {
+        name: `${restoredOverdue} overdue ${restoredOverdue === 1 ? 'task' : 'tasks'}`,
+      }),
+    ).toBeInTheDocument()
     expect(within(homeEntry).queryByText(/^Completed on /)).not.toBeInTheDocument()
     expect(readDb().care.tasks.find((task) => task.id === 't_overdue')).toMatchObject({
       status: 'pending',
@@ -380,7 +398,7 @@ it.each(['/app/tasks', '/app'])(
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await openDelete()
     dialog = screen.getByRole('dialog', { name: 'Delete task?' })
-    await user.click(within(dialog).getByRole('button', { name: 'Keep task' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await openDelete()
     dialog = screen.getByRole('dialog', { name: 'Delete task?' })
@@ -398,7 +416,7 @@ it.each(['/app/tasks', '/app'])(
       fireEvent.click(confirm)
       fireEvent.click(confirm)
       expect(remove).toHaveBeenCalledTimes(1)
-      expect(within(dialog).getByRole('button', { name: 'Keep task' })).toBeDisabled()
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled()
       const cancel = new Event('cancel', { cancelable: true })
       fireEvent(dialog, cancel)
       expect(cancel.defaultPrevented).toBe(true)
@@ -410,9 +428,18 @@ it.each(['/app/tasks', '/app'])(
       expect(readDb().care.tasks.some((task) => task.id === 't_overdue')).toBe(false)
       expect(screen.queryByRole('button', { name: 'Delete task: Pick up prescription' })).not.toBeInTheDocument()
       if (path === '/app')
-        expect(screen.getByText('Outstanding tasks · next 7 days + overdue + undated').parentElement).toHaveTextContent(
-          /2$/,
-        )
+        await waitFor(() => {
+          const count = readDb().care.tasks.filter(
+            (task) =>
+              ['r_rose', 'r_frank'].includes(task.recipientId) &&
+              task.status === 'pending' &&
+              task.dueAt &&
+              Date.parse(task.dueAt) < Date.now(),
+          ).length
+          expect(
+            screen.getByRole('button', { name: `${count} overdue ${count === 1 ? 'task' : 'tasks'}` }),
+          ).toBeInTheDocument()
+        })
     } finally {
       release()
       remove.mockRestore()

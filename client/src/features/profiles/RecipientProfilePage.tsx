@@ -50,10 +50,7 @@ export function RecipientProfilePage() {
             {summary.length > 0 && <p className="mt-1 text-muted">{summary.join(' · ')}</p>}
           </div>
         </div>
-        <Link
-          to={profilePaths.editPerson(circle.id, recipient.id)}
-          className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-        >
+        <Link to={profilePaths.editPerson(circle.id, recipient.id)} className={buttonClasses({ variant: 'outline' })}>
           <Pencil className="size-4" aria-hidden />
           Edit
         </Link>

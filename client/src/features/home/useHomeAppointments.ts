@@ -16,16 +16,9 @@ export function useHomeAppointments(
     .map((appointment) => applyCompletion(toAppointmentSummary(appointment, circle.id, caregiverName)))
     .sort(compareAppointmentListOrder)
 
-  const upcomingCountLabel = query.isError
-    ? 'Unavailable'
-    : query.isPending
-      ? '…'
-      : String(entries.filter((appointment) => appointment.status === 'scheduled').length)
-
   return {
     query,
     entries,
-    upcomingCountLabel,
     markCompleted: (appointment: AppointmentSummary) => setCompletion(appointment, 'completed'),
     markTodo: (appointment: AppointmentSummary) => setCompletion(appointment, 'scheduled'),
   }

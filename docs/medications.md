@@ -1,7 +1,59 @@
 # Medications
 
 The page at `/app/medications` shows medications for the selected family.
-The Showing dropdown defaults to Everyone on a new session and filters the list.
+
+## Shared Page Design
+
+Medications is the visual reference for the collection pages. PageHeader supplies
+the title, description, and care-circle selector; FeatureToolbar keeps grouped
+labeled filters on the left and primary add/upload actions on the right. Tasks and
+Documents retain their search/dropdown filter organization. Filters use the shared
+Field controls, and collection content sits in padded bordered panels with capped
+scrolling lists. The medication profile filter and Add medication button now share
+one toolbar instead of stacking separate rows with an empty area at the top.
+
+Appointments shares the Everyone/single-person dropdown while retaining family-wide warning counts;
+Expenses retains period/category filtering and spending totals; Documents retains
+its list/preview layout and permission controls. Their layouts use the same header,
+toolbar, card spacing, and primary/outline/danger action styles. Home and Family
+use the shared headers and card treatment without changing their navigation or data.
+
+Expenses and Documents use FormDialog for add/upload, edit, and delete flows,
+matching the existing care editors. Close, Cancel, Escape, and clicking outside
+dismiss an idle popup; pending saves block dismissal. Failed saves stay open with
+their errors inside the popup. Document form snapshots still retain their original
+version and sharing choices. These are presentation changes, not storage/API changes.
+
+Headers use compact spacing above the controls. Overview uses its page name and
+current date; Add a Person is available on Family rather than duplicated on Home.
+
+## Medication Name Filter
+
+The Medication dropdown has a case-insensitive name search, an All medications
+option, and profile names to distinguish matching medication names. Selecting a
+medication filters Medication List, the date-selected Medication Schedule (including
+its taken count), and the calendar. Profile and medication filters combine.
+Typing narrows dropdown choices; selecting one applies the filter. Escape, clicking
+outside, or moving focus away closes the dropdown. Choosing All medications restores
+the full view. Calendar popups close when the name selection changes. Adding or
+restarting a medication preserves the name and person filters after a successful
+save and shows a notice. Clear filters resets the person, medication, and dose date. Attention Needed retains its existing profile-wide warning
+scope; Home's cross-feature attention summary is unaffected by this panel filter.
+
+## Medication Content
+
+Warnings, status badges, and calendar blocks share semantic colors from
+`components/ui/statusStyles.ts`, with the compact spacing used by Expenses.
+Overdue/missed states use red, due-soon reminders use amber, completed/taken states
+use green, and ordinary content uses neutral surfaces. Home's attention counts are
+compact count buttons using the shared AttentionNeeded component. All care calendars use
+the same block colors and completed strikethrough treatment. Routine completion
+and edit actions use green outlines that fill on hover; Delete actions use red
+outlines that fill on hover. Add/Save remain primary filled actions, and Close,
+Cancel, navigation, and retry controls remain neutral. No warning scope, status
+rules, storage, or mutation behavior changes with this style update.
+
+The Care profile dropdown defaults to Everyone on a new session and filters the list.
 Each entry shows the medication name, person, dosage, schedule and course dates with their time zone,
 and the assigned caregiver. Loading, retry, and empty states are included.
 
@@ -26,13 +78,13 @@ Edit medication, which opens the latest medication definition and changes its
 schedule rather than a single occurrence. Historical doses do not restore old
 definitions, and stopped medications cannot be edited from the calendar.
 The dose popup closes before the editor opens. Existing save validation, version
-checks, and query refreshes apply. Permanent deletion remains available from
-Medication List and its editor; the calendar editor does not offer it.
+checks, and query refreshes apply. Permanent deletion is also available from calendar dose details and the calendar editor, through the same confirmation that explains removal of the medication and all dose history.
 Clicking a dose opens its existing dose controls. Monthly overflow opens that day's
 doses; day/week overflow opens only the selected hour's doses.
 Mark taken/pending refreshes the calendar, schedule, attention panel, and Home.
+CalendarDetailsDialog supplies the same date/person context, Add placement, capped scrolling body, and Close controls as Appointments and Tasks.
 Close, Escape, and clicking outside dismiss the popup. Refetches close the popup
-if its doses disappear or the calendar request fails, including loss of access.
+if its doses disappear or the calendar request fails, including loss of access. A successful retry does not reopen the old selection.
 
 `GET /api/circles/:circleId/medications` has a browser mock and a staged PostgreSQL backend. The mock checks
 family membership before returning sample medications for Rose and Frank. Other
@@ -96,7 +148,7 @@ remain visible with their stop timestamp and the permanent deletion action. Edit
 same dialog, prefilled with all saved fields, including AM/PM times, selected days,
 course ending, time zone, and caregiver. Close, Escape, Cancel, and click-away
 dismiss it without saving. The delete action opens a confirmation with Keep medication
-and Confirm delete. A failed save or deletion leaves the dialog open with an error.
+and Delete medication. A failed save or deletion leaves the dialog open with an error.
 
 `PATCH /api/circles/:circleId/medications/:medicationId` accepts the full definition
 plus its `version`. Existing medications begin at version 1; each edit increments it.
@@ -147,13 +199,13 @@ revisions. Schedule edits preserve past doses, while deletion removes them.
 
 ## Shared Home and Medications controls
 
-Both pages render `MedicationPanel`, including Add medication, Attention Needed,
+Both pages render `MedicationPanel`, including Add medication,
 date-selected Medication Schedule/history, and the medication list with Edit, Stop, Restart, and
 Delete permanently actions. They use the same editor and confirmations, including
-click-away dismissal. Both pages use the shared Showing selector with an Everyone option and preserve
+click-away dismissal. Both pages use the shared Care profile selector with an Everyone option and preserve
 the selected profile after adding or restarting a medication. Home's selection still
-controls its other dashboard sections without adding a duplicate selector. Home's
-summary count continues to describe today's doses when a historical date is viewed.
+controls its other dashboard sections without adding a duplicate selector. The dose count within Medication Schedule follows the selected date. Home no longer
+shows a separate top-level today’s-dose metric card.
 Changes invalidate the same cached family data and appear on either page.
 The selected profile and schedule date persist when navigating between these pages.
 This in-memory selection is scoped to the signed-in user and family; another family
@@ -161,14 +213,19 @@ starts with Everyone and today's date. Today clears the saved date so both pages
 follow the current day across midnight. Home shows a caregiver-loading failure only
 once, using its shared retry action.
 
+Detailed Attention Needed dose/reminder controls appear on Medications. Home uses
+one combined Attention Needed summary for missed doses, overdue tasks, and overdue
+appointments. Each count opens a capped popup with item controls and a link to its page. It does not show a second medication-only
+attention panel. Due-soon medication reminders remain available on Medications;
+Home's summary counts missed doses only and follows its Showing filter.
+
 Medication Schedule accepts past, present, and future calendar dates on both pages.
 Future selections show the planned doses and survive navigation between pages;
 Today restores the current day. Medication dialog headings use title case.
 
-Attention Needed scrolls within a capped body, including its loading and paging controls.
+Attention Needed shows count buttons, missed first and reminders second. Each opens the shared capped scrolling popup, including loading and paging controls. Close, Escape, and clicking outside dismiss it; there is no inline detail list or View/Hide toggle.
 Dose lists and the medication list also have capped heights and internal scrolling.
-Home's medication card spans the full content width, matching the standalone page.
-Its other dashboard columns flow independently.
+Home places Medications directly below Expenses in the right column, while Tasks and Appointments stack in the left column. Both columns flow independently, and the medication lists retain capped internal scrolling.
 
 The medication UI uses **Missed** consistently. Existing API paths and field names
 containing `overdue` remain unchanged.
@@ -197,7 +254,7 @@ an error. The count and list follow the selected care profile.
 
 ### Missed doses
 
-Both pages combine missed doses and reminders in **Attention Needed**
+Medications groups missed doses and reminders in **Attention Needed**
 for all pending doses that have passed
 their grace period, including today's doses and doses from earlier days. Each row shows
 the full scheduled date and time, plus a red tag such as Missed yesterday
@@ -336,8 +393,7 @@ existing definitions without this setting remain disabled. Use 0 for a reminder
 at the scheduled dose time. The schedule and generated occurrences store this as
 nullable `reminderBeforeMinutes`.
 
-Both pages combine reminders and missed doses in **Attention Needed**, with missed doses first and reminders below in one
-scrollable list. This panel is hidden when neither needs attention, and each
+Medications shows missed-dose and reminder counts in **Attention Needed**, missed first. Each opens its own category in the shared scrolling popup. Home shows missed doses in its combined summary. This panel is hidden when neither needs attention, and each
 failed request has its own retry action. Reminders begin at the selected lead
 time. Rows show Due in N min or Due now and support Mark
 taken. A reminder clears when taken or when the dose becomes missed, at which
@@ -466,3 +522,42 @@ configured, the integration case is explicitly skipped.
 The integration test covers migration up/down, CRUD, foreign-family access, caregiver
 removal, version conflicts between concurrent caregivers, idempotent dose writes,
 history preservation, never-viewed missed doses, course edits, stopping, and permanent deletion cascades.
+
+
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.
+
+
+The missed-dose count inside Medication Schedule is scoped to its selected date
+and medication/profile filters. It reads “N missed doses today” for the current
+local date, or “N missed doses on [date]” for a historical date. Attention Needed
+continues to count missed doses across dates within its profile scope, so its
+total can be larger than the selected day's count. Home uses the same labels.
+
+
+## Home Card Headers and Actions
+
+Home's Tasks, Appointments, Expenses, and Medications cards use the shared
+`PanelHeader`: a matching-size icon immediately before the linked title on the
+left, and the same primary Add button at the top right. Titles open their feature
+page for the selected family. Filters such as Medication appear below the header.
+Tasks no longer places Add below its list, and Expenses uses its title for navigation
+rather than a separate View all button. Each Add action opens the existing feature
+form directly on Home, prefilling the selected care profile. The existing save,
+validation, click-away, and query-refresh behavior is shared with feature pages.
+Appointment rows also expose their existing confirmed deletion action on Home.
