@@ -10,6 +10,8 @@ import { formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
 import { isDoseOverdue, isDoseReminderActive, overdueDoseLabel } from './medication-schedule.ts'
 
+import { StatusBadge } from '../../components/ui/StatusBadge.tsx'
+
 function Dose({
   circleId,
   dose,
@@ -63,9 +65,7 @@ function Dose({
         {dose.name} · {dose.dosage}
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <span
-          className={`inline-flex h-11 items-center rounded-control border px-4 text-[15px] ${taken ? 'border-primary text-primary' : overdue ? 'border-danger text-danger' : reminder ? 'border-warning text-warning' : 'border-line text-muted'}`}
-        >
+        <StatusBadge tone={taken ? 'positive' : overdue ? 'danger' : reminder ? 'warning' : 'neutral'}>
           {taken
             ? 'Taken'
             : overdue
@@ -75,7 +75,7 @@ function Dose({
                   ? `Due in ${minutesUntil} min`
                   : 'Due now'
                 : 'Pending'}
-        </span>
+        </StatusBadge>
         <Button
           variant="outline"
           loading={busy}

@@ -1,16 +1,20 @@
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { CircleSummary, Expense, ExpenseCategory } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
-import { TextField } from '../../components/ui/Field.tsx'
+import { SelectField, TextField } from '../../components/ui/Field.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { useExpenses } from '../care/queries.ts'
 import { formatMoney } from '../home/dashboard.ts'
 import { useCreateExpense, useDeleteExpense, useUpdateExpense } from './mutations.ts'
 import { createExpenseSchema } from './schemas.ts'
+
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 
 const categories: Record<ExpenseCategory, string> = {
   medication: 'Medication',
@@ -35,17 +39,9 @@ function Select({
   children: ReactNode
 }) {
   return (
-    <label className="grid gap-2 font-medium">
-      {label}
-      <select
-        aria-label={label}
-        className="min-w-0 rounded-control border border-field bg-surface px-3 py-3 text-body"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {children}
-      </select>
-    </label>
+    <SelectField label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+      {children}
+    </SelectField>
   )
 }
 function ExpenseForm({
@@ -66,9 +62,11 @@ function ExpenseForm({
   const [today] = useState(() => dateString(new Date()))
   const [date, setDate] = useState(() => expense?.incurredOn ?? today)
   const [error, setError] = useState('')
+  const saving = useRef(false)
   const pending = create.isPending || update.isPending
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (saving.current) return
     const parsed = createExpenseSchema.safeParse({
       description,
       recipientId,
@@ -85,72 +83,76 @@ function ExpenseForm({
       return
     }
     setError('')
+    saving.current = true
     try {
       if (expense) await update.mutateAsync({ expenseId: expense.id, body: parsed.data })
       else await create.mutateAsync(parsed.data)
       onClose(true)
     } catch (cause) {
       setError(errorMessage(cause))
+    } finally {
+      saving.current = false
     }
   }
   return (
-    <form onSubmit={submit} className={panel} aria-label={expense ? 'Edit expense' : 'Add expense'}>
-      <h2 className="mb-5 font-display text-h2 font-semibold">{expense ? 'Edit expense' : 'Add expense'}</h2>
-      <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          autoFocus
-          label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-          maxLength={200}
-        />
-        <TextField
-          label="Amount (USD)"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          required
-          placeholder="0.00"
-        />
-        <Select label="Care recipient" value={recipientId} onChange={setRecipientId}>
-          {circle.recipients.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
-        <Select label="Category" value={category} onChange={(v) => setCategory(v as ExpenseCategory)}>
-          {Object.entries(categories).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <TextField
-          label="Expense date"
-          type="date"
-          max={today}
-          hint="Today or earlier (UTC)."
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required
-        />
-      </fieldset>
-      {error && (
-        <div className="mt-4">
-          <Alert tone="danger">{error}</Alert>
+    <FormDialog title={expense ? 'Edit expense' : 'Add expense'} busy={pending} onClose={() => onClose(false)}>
+      <form onSubmit={submit} aria-label={expense ? 'Edit expense' : 'Add expense'}>
+        <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            autoFocus
+            label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            required
+            maxLength={200}
+          />
+          <TextField
+            label="Amount (USD)"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            required
+            placeholder="0.00"
+          />
+          <Select label="Care recipient" value={recipientId} onChange={setRecipientId}>
+            {circle.recipients.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </Select>
+          <Select label="Category" value={category} onChange={(v) => setCategory(v as ExpenseCategory)}>
+            {Object.entries(categories).map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </Select>
+          <TextField
+            label="Expense date"
+            type="date"
+            max={today}
+            hint="Today or earlier (UTC)."
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </fieldset>
+        {error && (
+          <div className="mt-4">
+            <Alert tone="danger">{error}</Alert>
+          </div>
+        )}
+        <div className="mt-5 flex gap-3">
+          <Button type="submit" loading={pending}>
+            Save expense
+          </Button>
+          <Button variant="secondary" disabled={pending} onClick={() => onClose(false)}>
+            Cancel
+          </Button>
         </div>
-      )}
-      <div className="mt-5 flex gap-3">
-        <Button type="submit" loading={pending}>
-          Save expense
-        </Button>
-        <Button variant="secondary" disabled={pending} onClick={() => onClose(false)}>
-          Cancel
-        </Button>
-      </div>
-    </form>
+      </form>
+    </FormDialog>
   )
 }
 function CircleExpenses({ circle }: { circle: CircleSummary }) {
@@ -174,22 +176,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
   const total = expenses.reduce((sum, item) => sum + item.amountCents, 0)
   const period = months === '1' ? 'This month' : `Last ${months} months`
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-h1 font-bold">Care expenses</h1>
-          <p className="mt-2 text-muted">Keep track of what caring costs.</p>
-        </div>
-        <Button
-          disabled={editor !== undefined || !circle.recipients.length}
-          onClick={() => {
-            setNotice('')
-            setEditor(null)
-          }}
-        >
-          + Add expense
-        </Button>
-      </div>
+    <section className={panel}>
       {!circle.recipients.length && <Alert>Add a care recipient before recording expenses.</Alert>}
       {editor !== undefined && (
         <ExpenseForm
@@ -203,7 +190,19 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
         />
       )}
       {notice && <Alert tone="success">{notice}</Alert>}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <FeatureToolbar
+        actions={
+          <Button
+            disabled={editor !== undefined || !circle.recipients.length}
+            onClick={() => {
+              setNotice('')
+              setEditor(null)
+            }}
+          >
+            Add expense
+          </Button>
+        }
+      >
         <Select label="Period" value={months} onChange={setMonths}>
           <option value="1">This month</option>
           <option value="6">Last 6 months</option>
@@ -225,7 +224,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
             </option>
           ))}
         </Select>
-      </div>
+      </FeatureToolbar>
       {query.isPending ? (
         <p role="status">Loading expenses…</p>
       ) : query.isError ? (
@@ -236,8 +235,8 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
           </Button>
         </Alert>
       ) : (
-        <>
-          <section className={`${panel} grid gap-8 md:grid-cols-[1fr_2fr]`} aria-label="Spending summary">
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <section className={`${panel} grid gap-5`} aria-label="Spending summary">
             <div>
               <p className="text-muted">{period} · filtered total</p>
               <p className="mt-3 font-display text-h1 font-bold">{formatMoney(total)}</p>
@@ -264,13 +263,13 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
             </div>
           </section>
           <section className={panel} aria-label="Recorded expenses">
-            <h2 className="mb-4 font-display text-h2 font-semibold">Recorded expenses</h2>
+            <h2 className="mb-4 font-display text-h3 font-semibold">Recorded expenses</h2>
             {!expenses.length && (
               <p className="py-6 text-muted">No expenses match these filters. Add an expense or change your filters.</p>
             )}
-            <ul className="divide-y divide-line">
+            <ul className="max-h-[32rem] divide-y divide-line overflow-y-auto pr-2">
               {expenses.map((expense) => (
-                <li key={expense.id} className="py-5">
+                <li key={expense.id} className="py-5 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h3 className="font-semibold">{expense.description}</h3>
@@ -287,7 +286,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                     <div className="flex items-center gap-3">
                       <span className="font-semibold">{formatMoney(expense.amountCents)}</span>
                       <Button
-                        variant="secondary"
+                        variant="outline"
                         disabled={editor !== undefined || remove.isPending}
                         aria-label={`Edit ${expense.description}`}
                         onClick={() => {
@@ -311,8 +310,8 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                     </div>
                   </div>
                   {deleting === expense.id && (
-                    <div className="mt-4 space-y-3 rounded-control bg-wash p-4">
-                      <p>Delete “{expense.description}”? This cannot be undone.</p>
+                    <FormDialog title="Delete expense?" busy={remove.isPending} onClose={() => setDeleting(null)}>
+                      <p className="mb-4">Delete “{expense.description}”? This cannot be undone.</p>
                       {remove.isError && <Alert tone="danger">{errorMessage(remove.error)}</Alert>}
                       <div className="flex gap-3">
                         <Button
@@ -335,15 +334,15 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                           Cancel
                         </Button>
                       </div>
-                    </div>
+                    </FormDialog>
                   )}
                 </li>
               ))}
             </ul>
           </section>
-        </>
+        </div>
       )}
-    </div>
+    </section>
   )
 }
 /** Rendered inside AppLayout, which supplies the shared header and navigation. */
@@ -352,13 +351,16 @@ export function ExpensesPage() {
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
-      <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
+      <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+        <PageHeader
+          title="Care expenses"
+          description="Keep track of what caring costs."
+          aside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
+        />
         {circle ? (
           <CircleExpenses key={circle.id} circle={circle} />
         ) : (
           <section className={panel}>
-            <h1 className="font-display text-h1 font-bold">Care expenses</h1>
             <p className="mt-3 text-muted">
               {circles.length
                 ? 'Choose an available circle above to view its expenses.'

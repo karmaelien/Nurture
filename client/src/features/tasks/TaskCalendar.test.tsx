@@ -55,7 +55,7 @@ it('shares case-insensitive title search and assignment filters across the list 
   await user.selectOptions(screen.getByLabelText('Caregiver'), 'u_demo')
   expect(within(list).getByText('No tasks for the selected filters.')).toBeInTheDocument()
   expect(within(calendar).getByText('No tasks due this month.')).toBeInTheDocument()
-  expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toHaveTextContent('4 overdue tasks')
+  expect(screen.getByRole('button', { name: '4 overdue tasks' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Clear filters' }))
   expect(screen.getByLabelText('Search tasks')).toHaveValue('')
   expect(screen.getByLabelText('Caregiver')).toHaveValue('')

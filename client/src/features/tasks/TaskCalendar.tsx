@@ -1,3 +1,4 @@
+import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { CareTask, CircleSummary } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
@@ -161,7 +162,7 @@ export function TaskCalendar({
                   aria-haspopup="dialog"
                   aria-label={description}
                   title={description}
-                  className={`relative z-[1] h-8 w-full cursor-pointer truncate rounded-control bg-wash px-1.5 py-1 text-left text-small hover:bg-sage ${overdue ? 'border border-danger text-danger' : ''} ${task.status === 'completed' ? 'line-through' : ''}`}
+                  className={`relative z-[1] h-8 truncate ${calendarBlockClasses(overdue, task.status === 'completed')}`}
                   onClick={() => setSelection({ date: dateKey(date), taskId: task.id, filterKey })}
                 >
                   {formatTime(task.dueAt!)} · {task.title}

@@ -203,7 +203,7 @@ it('retains stopped medication history without offering an edit action', async (
   await careApi.stopMedication('c_demo', medication.id, medication.version)
   // Reload the definitions through navigation, as another tab's saved stop would be observed.
   await user.click(screen.getByRole('link', { name: 'Overview' }))
-  await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+  await screen.findByRole('heading', { name: 'Overview' })
   await user.click(screen.getByRole('link', { name: 'Medications' }))
   await screen.findByRole('heading', { name: 'Medications', level: 1 })
   await within(screen.getByRole('region', { name: 'Medication List' })).findByText(/^Stopped on /)

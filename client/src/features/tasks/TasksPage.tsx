@@ -19,6 +19,8 @@ import { TaskCalendar } from './TaskCalendar.tsx'
 import { TaskStopSeriesDialog } from './TaskStopSeriesDialog.tsx'
 import { TaskAttention } from './TaskAttention.tsx'
 import { matchesTask } from './task-filter.ts'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
@@ -45,17 +47,31 @@ function TaskList({ circle }: { circle: CircleSummary }) {
       : (detail.data?.circle.members.find((member) => member.user.id === id)?.user.name ??
         (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
   return (
-    <>
+    <section className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6">
       {stopping && <TaskStopSeriesDialog circleId={circle.id} series={stopping} onClose={() => setStopping(null)} />}
       {deleting && <TaskDeleteDialog task={deleting} circleId={circle.id} onClose={() => setDeleting(null)} />}
-      <div className="mb-6 flex flex-wrap items-end gap-4">
-        <TextField
-          label="Search tasks"
-          type="search"
-          placeholder="Task title"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+      <FeatureToolbar
+        actions={
+          <Button
+            disabled={!detail.data || detail.isError || !circle.recipients.length}
+            onClick={() => {
+              setAddDate(undefined)
+              setAdding(true)
+            }}
+          >
+            Add task
+          </Button>
+        }
+      >
+        <div className="w-48">
+          <TextField
+            label="Search tasks"
+            type="search"
+            placeholder="Task title"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
         <SelectField label="Care profile" value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>
           <option value="">All care profiles</option>
           {circle.recipients.map((person) => (
@@ -99,17 +115,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
             Clear filters
           </Button>
         )}
-        <Button
-          className="sm:ml-auto"
-          disabled={!detail.data || detail.isError || !circle.recipients.length}
-          onClick={() => {
-            setAddDate(undefined)
-            setAdding(true)
-          }}
-        >
-          Add task
-        </Button>
-      </div>
+      </FeatureToolbar>
       {(adding || editing) && detail.data && !detail.isError && (
         <TaskEditor
           circle={detail.data.circle}
@@ -236,7 +242,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
         onEdit={detail.data && !detail.isError ? (task) => setEditing(task) : undefined}
         onDelete={setDeleting}
       />
-    </>
+    </section>
   )
 }
 
@@ -244,14 +250,12 @@ export function TasksPage() {
   const { circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
-        <div>
-          <h1 className="font-display text-h1 font-bold">Tasks</h1>
-          <p className="mt-2 text-muted">Care tasks and caregiver assignments for your family.</p>
-        </div>
-        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-      </div>
+    <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+      <PageHeader
+        title="Tasks"
+        description="Care tasks and caregiver assignments for your family."
+        aside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
+      />
       {circle ? (
         <TaskList key={circle.id} circle={circle} />
       ) : (

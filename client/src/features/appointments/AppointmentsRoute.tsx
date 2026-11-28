@@ -6,6 +6,7 @@ import type { Appointment } from '../../api/types.ts'
 import { FullPageError, FullPageSpinner } from '../../components/ui/FullPageStatus.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { useAppointments } from '../care/queries.ts'
+import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { AppointmentEditor } from './AppointmentEditor.tsx'
 import { AppointmentsPage } from './AppointmentsPage.tsx'
@@ -13,7 +14,7 @@ import { appointmentCalendarRange, toAppointmentSummary } from './appointment-re
 
 export function AppointmentsRoute() {
   const { user, circles } = useRequiredSession()
-  const { circle } = useCircleSelection(circles)
+  const { circle, selectCircle } = useCircleSelection(circles)
   const [editor, setEditor] = useState<{ circleId: string; appointment?: Appointment } | null>(null)
   const appointments = useAppointments(circle?.id ?? null, appointmentCalendarRange)
   const details = useQuery({
@@ -50,6 +51,7 @@ export function AppointmentsRoute() {
     <>
       <AppointmentsPage
         key={circle.id}
+        headerAside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
         careProfiles={profiles}
         appointments={entries}
         onAdd={() => setEditor({ circleId: circle.id })}

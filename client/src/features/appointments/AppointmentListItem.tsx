@@ -3,6 +3,8 @@ import type { AppointmentDetailData } from './AppointmentDetails.tsx'
 import { AppointmentStatus } from './AppointmentStatus.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 
+import { StatusBadge } from '../../components/ui/StatusBadge.tsx'
+
 function formatAppointmentRange(startsAt: string, endsAt?: string) {
   const start = new Date(startsAt)
   const date = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
@@ -35,8 +37,8 @@ export function AppointmentListItem({
       <span className="block font-display text-h3 font-semibold">
         {appointment.title}
         {overdue && (
-          <span className="ml-2 inline-block rounded-control border border-danger/30 bg-danger/8 px-2 py-0.5 text-small font-semibold text-danger">
-            Overdue
+          <span className="ml-2 inline-block">
+            <StatusBadge tone="danger">Overdue</StatusBadge>
           </span>
         )}
         {appointment.status === 'completed' && (
@@ -76,18 +78,18 @@ export function AppointmentListItem({
         </span>
       </span>
       {appointment.status === 'scheduled' && onComplete ? (
-        <Button variant="primary" size="sm" className="mt-2" onClick={onComplete}>
+        <Button variant="outline" className="mt-2" onClick={onComplete}>
           Mark completed
         </Button>
       ) : appointment.status === 'completed' && onMarkTodo ? (
-        <Button variant="primary" size="sm" className="mt-2" onClick={onMarkTodo}>
+        <Button variant="outline" className="mt-2" onClick={onMarkTodo}>
           Mark as to do
         </Button>
       ) : (
         <AppointmentStatus status={appointment.status} />
       )}
       {onEdit && (
-        <Button variant="secondary" size="sm" className="mt-2 ml-2" onClick={onEdit}>
+        <Button variant="outline" className="mt-2 ml-2" onClick={onEdit}>
           Edit appointment
         </Button>
       )}

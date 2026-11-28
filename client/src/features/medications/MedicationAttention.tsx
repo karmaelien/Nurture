@@ -1,13 +1,14 @@
 import type { CircleSummary } from '../../api/types.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
-import { Alert } from '../../components/ui/Alert.tsx'
-import { Button } from '../../components/ui/Button.tsx'
 import { useMedicationOccurrences, useOverdueMedicationDoses } from '../care/queries.ts'
 import { dashboardWindow } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
 import { MedicationDoseList } from './MedicationDoseList.tsx'
 import { OverdueDoseControls } from './OverdueDoseControls.tsx'
 import { doseReminderWindow, isDoseReminderActive } from './medication-schedule.ts'
+import { Alert } from '../../components/ui/Alert.tsx'
+import { Button } from '../../components/ui/Button.tsx'
+import { AttentionNeeded } from '../../components/ui/AttentionNeeded.tsx'
 
 export function MedicationAttention({ circle, recipientId }: { circle: CircleSummary; recipientId: string }) {
   const now = useMinute()
@@ -30,48 +31,96 @@ export function MedicationAttention({ circle, recipientId }: { circle: CircleSum
           : (reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? [])),
       ]
   if (!doses.length && !overdue.historyPending && !overdue.isError && !reminders.isError) return null
+  const missed = overdue.isError || accessLost ? [] : (overdue.data ?? [])
+  const upcoming =
+    reminders.isError || accessLost
+      ? []
+      : (reminders.data?.filter((dose) => isDoseReminderActive(dose, now.getTime())) ?? [])
+  const missedCount = overdue.totalOverdueCount ?? missed.length
   return (
-    <section aria-label="Attention Needed" className="mb-4 rounded-panel border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-h3 font-semibold">Attention Needed</h2>
-      <div className="mt-3 max-h-64 overflow-y-auto pr-2">
-        <p className="mb-3 text-small text-muted">
-          Missed doses first, then dose reminders · Times shown in your local time zone.
-        </p>
-        {[overdue, reminders].map(
-          (query, index) =>
-            query.isError && (
-              <div key={index} className="mb-4">
-                <Alert tone="danger">
-                  {errorMessage(query.error)}{' '}
-                  <Button variant="secondary" onClick={() => void query.refetch()}>
-                    {index === 0 ? 'Retry missed doses' : 'Retry reminders'}
-                  </Button>
-                </Alert>
-              </div>
-            ),
-        )}
-        {doses.length > 0 && (
-          <MedicationDoseList
-            circleId={circle.id}
-            doses={doses}
-            totalOverdueCount={overdue.isError ? undefined : overdue.totalOverdueCount}
-            overdueCountIsPartial={!overdue.isError && overdue.historyPending}
-            showDate
-            scrollable={false}
-            personName={(id) =>
-              circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'
-            }
-          />
-        )}
-        {!overdue.isError && !accessLost && (
-          <OverdueDoseControls
-            historyPending={overdue.historyPending}
-            hasNextPage={overdue.hasNextPage}
-            busy={overdue.isFetchingNextPage}
-            onMore={() => void overdue.fetchNextPage()}
-          />
-        )}
-      </div>
-    </section>
+    <AttentionNeeded
+      scope={JSON.stringify([circle.id, recipientId])}
+      className="mb-4"
+      items={
+        accessLost
+          ? []
+          : [
+              {
+                id: 'missed',
+                label: missedCount === 1 ? 'missed dose' : 'missed doses',
+                count: missedCount,
+                title: 'Missed doses',
+                tone: 'danger',
+                partial: overdue.historyPending,
+                loading: overdue.isPending,
+                error: accessLost
+                  ? 'Medication access unavailable.'
+                  : overdue.isError
+                    ? errorMessage(overdue.error)
+                    : undefined,
+                retry: () => void overdue.refetch(),
+                retryLabel: 'Retry missed doses',
+                content: () => (
+                  <>
+                    {renderDoses(missed)}
+                    <OverdueDoseControls
+                      historyPending={overdue.historyPending}
+                      hasNextPage={overdue.hasNextPage}
+                      busy={overdue.isFetchingNextPage}
+                      onMore={() => void overdue.fetchNextPage()}
+                    />
+                  </>
+                ),
+              },
+              {
+                id: 'reminders',
+                label: 'dose reminders',
+                count: upcoming.length,
+                title: 'Dose reminders',
+                tone: 'warning',
+                loading: reminders.isPending,
+                error: accessLost
+                  ? 'Medication access unavailable.'
+                  : reminders.isError
+                    ? errorMessage(reminders.error)
+                    : undefined,
+                retry: () => void reminders.refetch(),
+                retryLabel: 'Retry reminders',
+                content: () => renderDoses(upcoming),
+              },
+            ]
+      }
+    >
+      {accessLost && (
+        <Alert tone="danger">
+          Medication access unavailable.{' '}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void overdue.refetch()
+              void reminders.refetch()
+            }}
+          >
+            Retry medication attention
+          </Button>
+        </Alert>
+      )}
+    </AttentionNeeded>
   )
+
+  function renderDoses(items: typeof doses) {
+    return items.length ? (
+      <MedicationDoseList
+        circleId={circle.id}
+        doses={items}
+        showDate
+        scrollable={false}
+        totalOverdueCount={items === missed ? overdue.totalOverdueCount : undefined}
+        overdueCountIsPartial={items === missed && overdue.historyPending}
+        personName={(id) => circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'}
+      />
+    ) : (
+      <p className="text-muted">No doses need attention in this category.</p>
+    )
+  }
 }

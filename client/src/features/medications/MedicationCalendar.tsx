@@ -1,3 +1,4 @@
+import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { CircleSummary, Medication, MedicationOccurrence } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
@@ -19,12 +20,14 @@ export function MedicationCalendar({
   circle,
   recipientId,
   medications,
+  medicationId = '',
   onAdd,
   onEdit,
 }: {
   circle: CircleSummary
   recipientId: string
   medications: Medication[]
+  medicationId?: string
   onAdd?: (date: string) => void
   onEdit?: (medication: Medication) => void
 }) {
@@ -38,9 +41,13 @@ export function MedicationCalendar({
     hour?: number
     wholeDay?: boolean
     recipientId: string
+    medicationId: string
   } | null>(null)
   // A profile change hides the previous profile's dialog without resetting the viewed period.
-  const selection = storedSelection?.recipientId === recipientId ? storedSelection : null
+  const selection =
+    storedSelection?.recipientId === recipientId && storedSelection.medicationId === medicationId
+      ? storedSelection
+      : null
   const dialog = useRef<HTMLDialogElement>(null)
   const year = anchor.getFullYear()
   const month = anchor.getMonth()
@@ -64,6 +71,7 @@ export function MedicationCalendar({
     circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'
   const byDay = new Map<string, MedicationOccurrence[]>()
   for (const dose of doses.data ?? []) {
+    if (medicationId && dose.medicationId !== medicationId) continue
     const key = dateKey(new Date(dose.scheduledAt))
     const entries = byDay.get(key) ?? []
     entries.push(dose)
@@ -120,7 +128,7 @@ export function MedicationCalendar({
     }
   }
   function openDay(date: Date) {
-    setSelection({ date: dateKey(date), recipientId, wholeDay: true })
+    setSelection({ date: dateKey(date), recipientId, medicationId, wholeDay: true })
   }
   function closeForEditor() {
     dialog.current?.close()
@@ -143,8 +151,8 @@ export function MedicationCalendar({
                   aria-haspopup="dialog"
                   aria-label={`${dose.name} for ${personName(dose.recipientId)}, ${formatTime(dose.scheduledAt)}, ${status}`}
                   title={`${dose.name} · ${personName(dose.recipientId)} · ${formatTime(dose.scheduledAt)} · ${status}`}
-                  className={`relative z-[1] h-8 w-full cursor-pointer truncate rounded-control bg-wash px-1.5 py-1 text-left text-small hover:bg-sage ${missed ? 'border border-danger text-danger' : ''} ${dose.status === 'completed' ? 'line-through' : ''}`}
-                  onClick={() => setSelection({ date: dateKey(date), doseId: dose.id, recipientId })}
+                  className={`relative z-[1] h-8 truncate ${calendarBlockClasses(missed, dose.status === 'completed')}`}
+                  onClick={() => setSelection({ date: dateKey(date), doseId: dose.id, recipientId, medicationId })}
                 >
                   {formatTime(dose.scheduledAt)} · {dose.name}
                 </button>
@@ -158,7 +166,7 @@ export function MedicationCalendar({
             aria-haspopup="dialog"
             aria-label={`Show all doses${hour === undefined ? '' : ` at ${new Date(2000, 0, 1, hour).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`} on ${date.toLocaleDateString()}`}
             className="relative z-[1] mt-1 rounded-control px-1.5 text-small font-semibold hover:bg-wash"
-            onClick={() => setSelection({ date: dateKey(date), hour, recipientId })}
+            onClick={() => setSelection({ date: dateKey(date), hour, recipientId, medicationId })}
           >
             {entries.length - 3} more
           </button>

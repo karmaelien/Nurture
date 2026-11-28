@@ -16,6 +16,8 @@ import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { useCareSelection } from '../care/selection.ts'
 import { MedicationCalendar } from './MedicationCalendar.tsx'
 import { MedicationNotifications } from './MedicationNotifications.tsx'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { MedicationNameFilter } from './MedicationNameFilter.tsx'
 
 // Both pages use the same person/date state, scoped to the signed-in user and family.
 export function MedicationPanel({
@@ -25,6 +27,7 @@ export function MedicationPanel({
   id,
   showCaregiverError = true,
   expanded = false,
+  showAttention = true,
 }: {
   circle: CircleSummary
   showProfileFilter?: boolean
@@ -32,6 +35,7 @@ export function MedicationPanel({
   id?: string
   showCaregiverError?: boolean
   expanded?: boolean
+  showAttention?: boolean
 }) {
   const { user } = useRequiredSession()
   const { recipientId, setRecipientId } = useCareSelection(circle)
@@ -44,12 +48,18 @@ export function MedicationPanel({
     fromCalendar?: boolean
   } | null>(null)
   const medications = useMedications(circle.id)
+  const [selectedMedication, setSelectedMedication] = useState('')
+  const medicationId = medications.data?.some((item) => item.id === selectedMedication) ? selectedMedication : ''
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
     queryFn: () => circlesApi.detail(circle.id),
     retry: false,
   })
-  const visible = medications.data?.filter((medication) => !recipientId || medication.recipientId === recipientId) ?? []
+  const visible =
+    medications.data?.filter(
+      (medication) =>
+        (!recipientId || medication.recipientId === recipientId) && (!medicationId || medication.id === medicationId),
+    ) ?? []
 
   return (
     <section
@@ -57,13 +67,32 @@ export function MedicationPanel({
       aria-label="Medications"
       className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6"
     >
-      <div className={`mb-4 flex flex-wrap items-center gap-3 ${heading ? 'justify-between' : 'justify-end'}`}>
+      <FeatureToolbar
+        actions={
+          <>
+            <MedicationNotifications />
+            <Button
+              disabled={!detail.data || detail.isError || !circle.recipients.length}
+              onClick={() => setEditor({})}
+            >
+              Add medication
+            </Button>
+          </>
+        }
+      >
         {heading}
-        <MedicationNotifications />
-        <Button disabled={!detail.data || !circle.recipients.length} onClick={() => setEditor({})}>
-          Add medication
-        </Button>
-      </div>
+        {showProfileFilter && (
+          <div className="w-64 max-w-full">
+            <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
+          </div>
+        )}
+        <MedicationNameFilter
+          medications={medications.isError ? [] : (medications.data ?? [])}
+          circle={circle}
+          value={medicationId}
+          onChange={setSelectedMedication}
+        />
+      </FeatureToolbar>
       {editor && detail.data && (
         <MedicationEditor
           circle={detail.data.circle}
@@ -75,16 +104,14 @@ export function MedicationPanel({
           initialStartsOn={editor.startsOn}
           allowDelete={!editor.fromCalendar}
           onClose={() => setEditor(null)}
+          onSaved={() => {
+            if (!editor.medication || editor.restarting) setSelectedMedication('')
+          }}
         />
       )}
-      {showProfileFilter && (
-        <div className="mb-6 max-w-sm">
-          <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
-        </div>
-      )}
-      <MedicationAttention circle={circle} recipientId={recipientId} />
+      {showAttention && <MedicationAttention circle={circle} recipientId={recipientId} />}
       <div className={expanded ? 'grid items-start gap-5 lg:grid-cols-2' : ''}>
-        <MedicationDoses circle={circle} recipientId={recipientId} fillColumn={expanded} />
+        <MedicationDoses circle={circle} recipientId={recipientId} medicationId={medicationId} fillColumn={expanded} />
         <section
           aria-label="Medication List"
           className={`min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6 ${expanded ? 'flex flex-col lg:h-[38rem]' : ''}`}
@@ -126,7 +153,7 @@ export function MedicationPanel({
                       : (detail.data?.circle.members.find((member) => member.user.id === medication.assignedCaregiverId)
                           ?.user.name ?? (detail.isPending ? 'Loading caregiver…' : 'Caregiver unavailable'))
                   return (
-                    <li key={medication.id} className="rounded-panel border border-line-strong bg-wash/30 p-4">
+                    <li key={medication.id} className="rounded-panel border border-line bg-surface p-4">
                       <h2 className="font-display text-h3 font-semibold">{medication.name}</h2>
                       {medication.stoppedAt && (
                         <p className="mt-1 text-small text-muted">
@@ -208,6 +235,7 @@ export function MedicationPanel({
         <MedicationCalendar
           circle={circle}
           recipientId={recipientId}
+          medicationId={medicationId}
           medications={medications.isError ? [] : (medications.data ?? [])}
           onAdd={
             detail.data && !detail.isError && circle.recipients.length

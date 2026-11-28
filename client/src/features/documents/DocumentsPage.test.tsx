@@ -1,4 +1,6 @@
-import { screen, within, waitFor } from '@testing-library/react'
+import { fireEvent, screen, within, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../test/setup.ts'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 import { authApi } from '../../api/auth.ts'
@@ -42,10 +44,12 @@ it('shows layout C, filters documents, edits sharing and deletes a document', as
 it('opens an upload form and validates missing file selection', async () => {
   const user = userEvent.setup()
   renderApp('/app/documents')
-  await waitFor(() => expect(screen.getByRole('button', { name: '+ Upload document' })).toBeEnabled())
-  await user.click(screen.getByRole('button', { name: '+ Upload document' }))
-  await user.type(screen.getByLabelText('Document title'), 'Test upload')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload document' })).toBeEnabled())
   await user.click(screen.getByRole('button', { name: 'Upload document' }))
+  await user.type(screen.getByLabelText('Document title'), 'Test upload')
+  await user.click(
+    within(screen.getByRole('dialog', { name: 'Upload a document' })).getByRole('button', { name: 'Upload document' }),
+  )
   expect(screen.getByRole('alert')).toHaveTextContent('Choose a file to upload.')
   expect(screen.getByLabelText('Who can access')).toHaveValue('selected')
 })
@@ -69,4 +73,55 @@ it('shows a conflict without replacing a stale form or restoring access', async 
   const saved = (await documentsApi.list('c_demo')).documents.find((d) => d.id === original.id)!
   expect(saved.title).toBe(original.title)
   expect(saved.sharing.memberIds).toEqual([])
+})
+
+it('closes upload/edit popups on click-away without changing documents', async () => {
+  const user = userEvent.setup()
+  renderApp('/app/documents')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload document' })).toBeEnabled())
+  await user.click(screen.getByRole('button', { name: 'Upload document' }))
+  fireEvent.click(screen.getByRole('dialog', { name: 'Upload a document' }), { clientX: -10, clientY: -10 })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Edit details & sharing' }))
+  const edit = screen.getByRole('dialog', { name: 'Edit document' })
+  await user.clear(within(edit).getByLabelText('Document title'))
+  await user.type(within(edit).getByLabelText('Document title'), 'Unsaved title')
+  fireEvent.click(edit, { clientX: -10, clientY: -10 })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.queryByText('Unsaved title')).not.toBeInTheDocument()
+})
+
+it('keeps document upload open while saving and shows a failed upload inside the popup', async () => {
+  let release!: () => void
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  server.use(
+    http.post('/api/circles/:circleId/documents', async () => {
+      await waiting
+      return HttpResponse.json({ error: { code: 'unavailable', message: 'Upload unavailable.' } }, { status: 503 })
+    }),
+  )
+  const user = userEvent.setup()
+  renderApp('/app/documents')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Upload document' })).toBeEnabled())
+  await user.click(screen.getByRole('button', { name: 'Upload document' }))
+  const dialog = screen.getByRole('dialog', { name: 'Upload a document' })
+  await user.type(within(dialog).getByLabelText('Document title'), 'Upload test')
+  await user.upload(
+    within(dialog).getByLabelText('File'),
+    new File(['%PDF sample'], 'sample.pdf', { type: 'application/pdf' }),
+  )
+  try {
+    await user.click(within(dialog).getByRole('button', { name: 'Upload document' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Close' })).toBeDisabled())
+    fireEvent.click(dialog, { clientX: -10, clientY: -10 })
+    expect(fireEvent(dialog, new Event('cancel', { cancelable: true }))).toBe(false)
+    expect(dialog).toBeInTheDocument()
+    release()
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Upload unavailable.')
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Close' })).toBeEnabled())
+  } finally {
+    release()
+  }
 })

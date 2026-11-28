@@ -52,7 +52,7 @@ describe('setup flow', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Added Frank Alvarez.')
     await user.click(screen.getByRole('link', { name: 'Go to your dashboard' }))
 
-    expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
     expect(screen.getByText('Alvarez family')).toBeInTheDocument()
     const me = await authApi.me()
     expect(me.user).toMatchObject({ phone: '(555) 123-4567', timeZone: 'America/Chicago' })
@@ -120,12 +120,13 @@ describe('setup flow', () => {
     expect(screen.getByLabelText('Phone (optional)')).toHaveValue('555 010 2030')
   })
 
-  it('lets an existing caregiver add someone from the dashboard', async () => {
+  it('lets an existing caregiver add someone from Family', async () => {
     const { token } = await authApi.login(DEMO_ACCOUNT)
     setToken(token)
     const user = userEvent.setup()
     const router = renderApp('/app')
 
+    await user.click(await screen.findByRole('link', { name: 'Family' }))
     await user.click(await screen.findByRole('link', { name: 'Add a person' }))
     expect(await screen.findByRole('heading', { name: 'Add someone you care for' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/app/circles/c_demo/people/new')
@@ -133,7 +134,7 @@ describe('setup flow', () => {
     await user.click(screen.getByRole('radio', { name: 'parent' }))
     await user.click(screen.getByRole('button', { name: 'Add person' }))
 
-    expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Lucia Alvarez' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Alvarez family', level: 1 })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Lucia Alvarez/ })).toBeInTheDocument()
   })
 })

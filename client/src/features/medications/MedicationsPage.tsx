@@ -2,19 +2,18 @@ import { useRequiredSession } from '../auth/session.ts'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { MedicationPanel } from './MedicationPanel.tsx'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
 
 export function MedicationsPage() {
   const { circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-5">
-        <div>
-          <h1 className="font-display text-h1 font-bold">Medications</h1>
-          <p className="mt-2 text-muted">Dosages, schedules, and caregivers for the people in your care.</p>
-        </div>
-        <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-      </div>
+    <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+      <PageHeader
+        title="Medications"
+        description="Dosages, schedules, and caregivers for the people in your care."
+        aside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
+      />
       {circle ? (
         <MedicationPanel key={circle.id} circle={circle} expanded />
       ) : (

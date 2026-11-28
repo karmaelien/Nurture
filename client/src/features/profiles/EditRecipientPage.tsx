@@ -119,7 +119,11 @@ function EditRecipientForm({ circleId, recipient }: { circleId: string; recipien
       <h1 className="mt-6 font-display text-h1 font-bold">Edit {displayName(recipient)}</h1>
       <p className="mt-2 text-muted">Everyone in the care circle sees these details.</p>
       <FormProvider {...form}>
-        <form noValidate onSubmit={onSubmit} className="mt-8 grid gap-5">
+        <form
+          noValidate
+          onSubmit={onSubmit}
+          className="mt-8 grid gap-5 rounded-panel border border-line bg-surface p-5 sm:p-6"
+        >
           {errors.root && <Alert tone="danger">{errors.root.message}</Alert>}
           {conflict && (
             <div ref={notice} tabIndex={-1} className="rounded-control outline-none">

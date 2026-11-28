@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type {
   CareDocument,
   CircleDetail,
@@ -7,7 +7,7 @@ import type {
   DocumentSharing,
 } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
-import { TextField } from '../../components/ui/Field.tsx'
+import { SelectField, TextField } from '../../components/ui/Field.tsx'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { errorMessage } from '../../api/client.ts'
 import { createDocumentSchema, documentCategories, documentFileError } from './schemas.ts'
@@ -24,17 +24,9 @@ export function DocumentSelect({
   children: ReactNode
 }) {
   return (
-    <label className="grid min-w-0 gap-2">
-      {label}
-      <select
-        aria-label={label}
-        className="min-w-0 rounded-control border border-field bg-surface px-3 py-2 text-body"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        {children}
-      </select>
-    </label>
+    <SelectField label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+      {children}
+    </SelectField>
   )
 }
 export function DocumentForm({
@@ -43,12 +35,14 @@ export function DocumentForm({
   document,
   save,
   cancel,
+  onPendingChange,
 }: {
   circle: CircleDetail
   userId: string
   document?: CareDocument
   save: (metadata: CreateDocumentRequest, file?: File, version?: number) => Promise<void>
   cancel: () => void
+  onPendingChange?: (pending: boolean) => void
 }) {
   // Keep the version of the form snapshot even if query data refreshes behind it.
   const [version] = useState(document?.version)
@@ -59,9 +53,11 @@ export function DocumentForm({
   const [file, setFile] = useState<File>()
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
+  const saving = useRef(false)
   const uploaderId = document?.uploadedBy ?? userId
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (saving.current) return
     const parsed = createDocumentSchema.safeParse({ title, recipientId, category, sharing })
     if (!parsed.success) {
       setError('Enter a title, recipient, category, and sharing choice.')
@@ -75,13 +71,17 @@ export function DocumentForm({
       }
     }
     setError('')
+    saving.current = true
     setPending(true)
+    onPendingChange?.(true)
     try {
       await save(parsed.data, file, version)
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
+      saving.current = false
       setPending(false)
+      onPendingChange?.(false)
     }
   }
   return (

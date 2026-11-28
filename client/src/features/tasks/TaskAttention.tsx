@@ -1,12 +1,10 @@
-import { useId, useState } from 'react'
 import type { CareTask, CircleSummary } from '../../api/types.ts'
 import { errorMessage } from '../../api/client.ts'
-import { Alert } from '../../components/ui/Alert.tsx'
-import { Button } from '../../components/ui/Button.tsx'
 import { useTasks } from '../care/queries.ts'
 import { TaskListItem } from './TaskListItem.tsx'
 import { compareTasks } from './task-order.ts'
 import { taskAttention, taskReminderMinutes } from './task-attention.ts'
+import { AttentionNeeded } from '../../components/ui/AttentionNeeded.tsx'
 
 /** Shared in-page reminders. Status filtering must not conceal pending deadlines. */
 export function TaskAttention({
@@ -24,8 +22,6 @@ export function TaskAttention({
   onEdit?: (task: CareTask) => void
   onDelete: (task: CareTask) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const contentId = useId()
   const query = useTasks(circle.id, {
     recipientId: recipientId || undefined,
     status: 'pending',
@@ -38,63 +34,77 @@ export function TaskAttention({
   const soon = tasks.length - overdue
   if (!tasks.length && !query.historyPending && !query.isError) return null
   return (
-    <section aria-label="Task Attention Needed" className="rounded-panel border border-line bg-surface p-5 sm:p-6">
-      <h2 className="font-display text-h3 font-semibold">Attention Needed</h2>
-      {query.isError ? (
-        <div className="mt-3">
-          <Alert tone="danger">
-            {errorMessage(query.error)}{' '}
-            <Button variant="secondary" onClick={() => void query.refetch()}>
-              Retry task reminders
-            </Button>
-          </Alert>
-        </div>
-      ) : (
-        <>
-          <p className="mt-2" role="status">
-            {query.historyPending ? 'At least ' : ''}
-            <span className={overdue ? 'text-danger' : undefined}>
-              {overdue} overdue {overdue === 1 ? 'task' : 'tasks'}
-            </span>
-            {' · '}
-            {soon} due within 1 hour
-          </p>
-          {query.historyPending && <p className="mt-2 text-small text-muted">Loading older repeating tasks…</p>}
-          {tasks.length > 0 && (
-            <Button
-              className="mt-3"
-              variant="outline"
-              aria-expanded={expanded}
-              aria-controls={contentId}
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? 'Hide task reminders' : 'View task reminders'}
-            </Button>
-          )}
-          <div id={contentId}>
-            {expanded && (
-              <ul className="mt-4 max-h-64 divide-y divide-line overflow-y-auto pr-2">
-                {tasks.map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    circleId={circle.id}
-                    person={
-                      circle.recipients.find((person) => person.id === task.recipientId)?.name ??
-                      'Care profile unavailable'
-                    }
-                    caregiver={caregiverName(task.assignedCaregiverId)}
-                    now={now}
-                    compact
-                    onEdit={onEdit ? () => onEdit(task) : undefined}
-                    onDelete={() => onDelete(task)}
-                  />
-                ))}
-              </ul>
-            )}
-          </div>
-        </>
-      )}
-    </section>
+    <AttentionNeeded
+      label="Task Attention Needed"
+      scope={JSON.stringify([circle.id, recipientId])}
+      items={[
+        {
+          id: 'overdue',
+          label: overdue === 1 ? 'overdue task' : 'overdue tasks',
+          count: overdue,
+          title: 'Overdue tasks',
+          tone: 'danger',
+          partial: query.historyPending,
+          loading: query.isPending,
+          error: query.isError ? errorMessage(query.error) : undefined,
+          retry: () => void query.refetch(),
+          retryLabel: 'Retry task reminders',
+          content: (close) => renderTasks('overdue', close),
+        },
+        {
+          id: 'soon',
+          label: 'tasks due within 1 hour',
+          count: soon,
+          title: 'Tasks due within 1 hour',
+          tone: 'warning',
+          loading: query.isPending,
+          content: (close) => renderTasks('soon', close),
+        },
+      ]}
+    />
   )
+
+  function renderTasks(kind: 'overdue' | 'soon', close: () => void) {
+    const matches = tasks.filter((task) => taskAttention(task, now) === kind)
+    return (
+      <>
+        {query.historyPending && (
+          <p role="status" className="mb-3 text-muted">
+            Loading older repeating tasks…
+          </p>
+        )}
+        {!matches.length ? (
+          <p className="text-muted">No {kind === 'overdue' ? 'overdue tasks' : 'tasks due within 1 hour'}.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {matches.map((task) => (
+              <TaskListItem
+                key={task.id}
+                task={task}
+                circleId={circle.id}
+                person={
+                  circle.recipients.find((person) => person.id === task.recipientId)?.name ?? 'Care profile unavailable'
+                }
+                caregiver={caregiverName(task.assignedCaregiverId)}
+                now={now}
+                compact
+                onEdit={
+                  onEdit
+                    ? () => {
+                        close()
+                        onEdit(task)
+                      }
+                    : undefined
+                }
+                onDelete={() => {
+                  close()
+                  onDelete(task)
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </>
+    )
+  }
 }

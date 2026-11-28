@@ -72,17 +72,17 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
         </div>
       </dl>
       {appointment.status === 'scheduled' && onComplete && (
-        <Button className="mt-6" onClick={() => onComplete(appointment)}>
+        <Button variant="outline" className="mt-6" onClick={() => onComplete(appointment)}>
           Mark completed
         </Button>
       )}
       {appointment.status === 'completed' && onMarkTodo && (
-        <Button className="mt-6" onClick={() => onMarkTodo(appointment)}>
+        <Button variant="outline" className="mt-6" onClick={() => onMarkTodo(appointment)}>
           Mark as to do
         </Button>
       )}
       {onEdit && (
-        <Button variant="secondary" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
+        <Button variant="outline" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
           Edit appointment
         </Button>
       )}

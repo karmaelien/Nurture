@@ -1,6 +1,9 @@
 # Tasks
 
 The initial Tasks page at `/app/tasks` lists the selected family's saved tasks.
+Its header, grouped search/dropdown toolbar, right-aligned Add task action, and
+workspace cards follow the [shared page design](medications.md#shared-page-design).
+Task filters and their behavior are unchanged by the layout update.
 The shared header links to it from every page using AppLayout. Care-profile and
 status filters apply to the list; pending tasks appear before completed tasks,
 with dated tasks ordered by due time and undated tasks afterward. Pending tasks
@@ -41,14 +44,13 @@ times as UTC and displays them in local time.
 
 Each task has Mark Completed / Mark To Do controls shared by Tasks and Home.
 Completion records the save time; undo clears it. Completed tasks stay visible
-below pending tasks when the status filter includes them. Home counts only pending
-tasks and retains today's completed tasks in its date-bounded panel for undo.
+below pending tasks when the status filter includes them. Home retains today's completed tasks in its date-bounded panel for undo.
 Both lists have capped scrolling areas.
 
 Home's Tasks panel also has Add Task, using the same editor, repeat controls, and
 save/cancel behavior as Tasks. Creation prefills the selected care profile; after
 saving, Home shows all profiles so a task assigned to another profile is not hidden
-by the old selection. Its list and outstanding count include pending undated tasks,
+by the old selection. Its list includes pending undated tasks,
 overdue tasks, and dated tasks within its existing next-seven-days window. Today's
 completed undated tasks remain visible for undo; earlier completions stay on Tasks.
 Undated tasks appear after dated pending tasks and do not create calendar entries
@@ -140,7 +142,7 @@ series version with 409, and is idempotent with the already-stopped current vers
 
 ## Task Reminders
 
-Home and Tasks share an Attention Needed panel for pending tasks past their deadline
+The Tasks page has an Attention Needed panel for pending tasks past their deadline
 or due within the next hour (inclusive). A task due exactly now is Due soon; after
 its deadline it is Overdue. Completed tasks and tasks without deadlines do not alert.
 The panel follows each page's care-profile selection, independently of the Tasks
@@ -148,9 +150,7 @@ status filter, so selecting Completed cannot hide pending deadlines. It uses the
 existing authenticated task API and saved occurrence records, including separate
 occurrences of repeating tasks; it does not create reminder copies of tasks.
 
-The panel shows overdue and due-soon counts. View task reminders expands a capped
-scrolling list, ordered overdue first, then due soon. Hide task reminders collapses
-it. The shared rows support completion, edit, and delete with the same confirmations,
+The panel shows compact count buttons, overdue first and due soon second. Each opens the shared capped, scrolling popup; Close, Escape, and clicking outside dismiss it. The shared rows support completion, edit, and delete with the same confirmations,
 click-away behavior, version checks, and persistence as the main lists. Completing,
 deleting, or moving a deadline out of the window removes it from attention after
 the successful save; marking it To Do makes it eligible again. Main list rows also
@@ -162,6 +162,19 @@ focus. A failed reminder request hides its cached details and provides Retry tas
 reminders, including for 502 errors. These reminders appear while the website is
 open; browser push, email, and background delivery are not implemented for tasks.
 
+Home has a single summary: the full-width Attention Needed section. The former
+Outstanding Tasks, Today’s Doses Completed, and Upcoming Appointments metric cards
+are removed. Attention Needed shows counts for overdue tasks,
+overdue appointments, and missed medication doses. It follows Home's Showing
+filter. Each count opens its category in the same shared popup used by feature pages, with a link to open that feature page in the selected family. It excludes
+due-soon tasks and medication reminders, completed items, and undated tasks. Missed
+doses count individual occurrences (including multiple missed takes of one medication)
+and use the API's total across pages. Unfinished history is labeled At least;
+unavailable counts show an error and Retry rather than zero. An access failure hides
+all cached summary counts. The section disappears when all three feeds finish with
+zero overdue items. Home no longer duplicates the individual task, appointment, or
+medication attention panels. Its ordinary lists and their existing controls remain.
+
 ## Individual Task Changes
 
 Delete task is available on Tasks and Home. Its red-outline action opens a shared
@@ -171,7 +184,7 @@ saving. While deleting, repeat clicks and dismissal are blocked. The confirmatio
 keeps the version from when it opened, so another caregiver's edit or completion
 causes 409 instead of deleting the changed task. Failed saves leave the task stored
 and the confirmation retryable. Successful deletion refreshes every task list and
-Home's outstanding count and survives page refresh.
+Home's attention summary and survives page refresh.
 
 `DELETE /api/circles/:circleId/tasks/:taskId` accepts `{ version }` and returns 204.
 It checks the session, current family membership, task ownership, and version under

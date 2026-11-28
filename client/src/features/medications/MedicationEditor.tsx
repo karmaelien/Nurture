@@ -35,6 +35,7 @@ export function MedicationEditor({
   initialStartsOn,
   allowDelete = true,
   onClose,
+  onSaved,
 }: {
   circle: CircleDetail
   recipientId: string
@@ -45,6 +46,7 @@ export function MedicationEditor({
   initialStartsOn?: string
   allowDelete?: boolean
   onClose: () => void
+  onSaved?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -123,6 +125,7 @@ export function MedicationEditor({
     try {
       await action()
       await cache.invalidateQueries({ queryKey: ['care', user.id, circle.id] })
+      onSaved?.()
       dialog.current?.close()
     } catch (cause) {
       if (cause instanceof ApiError && [404, 409].includes(cause.status)) {

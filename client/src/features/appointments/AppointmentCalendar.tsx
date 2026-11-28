@@ -1,3 +1,4 @@
+import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
@@ -252,7 +253,7 @@ export function AppointmentCalendar({
                                   <button
                                     type="button"
                                     aria-haspopup="dialog"
-                                    className="h-full w-full cursor-pointer overflow-hidden rounded-control border border-surface bg-wash px-1.5 py-1 text-left align-top text-small leading-4 hover:bg-sage"
+                                    className={`h-full align-top ${calendarBlockClasses(isAppointmentOverdue(appointment, now), appointment.status === 'completed')}`}
                                     aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
                                     title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                     onClick={() =>
@@ -338,7 +339,7 @@ export function AppointmentCalendar({
                                       <button
                                         type="button"
                                         aria-haspopup="dialog"
-                                        className={`${view === 'monthly' ? 'h-8' : 'h-10'} w-full min-w-0 cursor-pointer overflow-hidden rounded-control bg-wash px-1.5 py-1 text-left text-small leading-4 hover:bg-sage`}
+                                        className={`${view === 'monthly' ? 'h-8' : 'h-10'} min-w-0 ${calendarBlockClasses(isAppointmentOverdue(appointment, now), appointment.status === 'completed')}`}
                                         aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
                                         title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                         onClick={() =>

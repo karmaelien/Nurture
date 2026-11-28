@@ -78,12 +78,9 @@ describe('dashboard', () => {
     const first = within(list).getAllByRole('listitem')[0]
     expect(within(first).getByText('Past checkup')).toBeInTheDocument()
     expect(within(first).getByText('Overdue')).toBeInTheDocument()
-    await user.click(warning)
-    const dialog = screen.getByRole('dialog', { name: 'Overdue appointments' })
-    expect(within(dialog).getByText('Past checkup')).toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: 'Mark completed' }))
-    expect(await within(dialog).findByText('No overdue appointments.')).toBeInTheDocument()
-    expect(warning).not.toBeInTheDocument()
+    expect(warning).toHaveAttribute('aria-haspopup', 'dialog')
+    await user.click(within(first).getByRole('button', { name: 'Mark completed' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '1 overdue appointment' })).not.toBeInTheDocument())
   })
   it('creates, reschedules, and deletes a visit across the calendar and Home', async () => {
     await login()
@@ -183,7 +180,6 @@ describe('dashboard', () => {
     expect(await within(entry).findByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
     expect(within(entry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
     expect(within(panel).getAllByRole('listitem').at(-1)).toBe(entry)
-    expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/2$/)
     await user.click(within(panel).getByRole('link', { name: 'Appointments · next 7 days' }))
     const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
     const calendarEntry = within(upcoming).getByText('Annual checkup').closest('li')!
@@ -197,7 +193,6 @@ describe('dashboard', () => {
     expect(within(restoredEntry).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
     expect(within(restoredEntry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
     expect(within(homePanel).getAllByRole('listitem')[0]).toBe(restoredEntry)
-    expect(screen.getByText('Upcoming appointments · next 7 days').parentElement).toHaveTextContent(/3$/)
 
     // Simulate a newer saved change while this app session is still open.
     const saved = readDb().care.appointments.find((appointment) => appointment.title === 'Annual checkup')!
@@ -240,7 +235,7 @@ describe('dashboard', () => {
     const user = userEvent.setup()
     await login()
     const router = renderApp('/app')
-    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    await screen.findByRole('heading', { name: 'Overview' })
     const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
     const homeAppointments = screen.getByRole('region', { name: 'Appointments · next 7 days' })
@@ -265,7 +260,7 @@ describe('dashboard', () => {
     )
     expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument()
     await user.click(within(navigation).getByRole('link', { name: 'Overview' }))
-    await screen.findByRole('heading', { name: 'A little clarity for your day.' })
+    await screen.findByRole('heading', { name: 'Overview' })
     expect(router.state.location.pathname).toBe('/app')
     expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
   })

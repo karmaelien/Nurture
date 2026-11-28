@@ -3,7 +3,6 @@ import { useState } from 'react'
 import type { Appointment, CircleSummary, User } from '../../api/types.ts'
 import { AppointmentEditor } from '../appointments/AppointmentEditor.tsx'
 import { AppointmentListItem } from '../appointments/AppointmentListItem.tsx'
-import { OverdueAppointmentsWarning } from '../appointments/OverdueAppointmentsWarning.tsx'
 import { useAppointmentCompletion } from '../appointments/appointment-completion.ts'
 import { compareAppointmentListOrder } from '../appointments/appointment-order.ts'
 import { isAppointmentOverdue } from '../appointments/appointment-overdue.ts'
@@ -54,16 +53,6 @@ export function HomeAppointmentsPanel({
 
   return (
     <div className="min-w-0">
-      <div className={overdue.length ? 'mb-4' : undefined}>
-        <OverdueAppointmentsWarning
-          appointments={overdue}
-          profileName={(appointment) =>
-            circle.recipients.find((person) => person.id === appointment.recipientId)?.name ?? 'Care recipient'
-          }
-          onComplete={appointments.markCompleted}
-          onEdit={(appointment) => edit(history.data?.find((record) => record.id === appointment.id))}
-        />
-      </div>
       <DashboardPanel
         id="appointments"
         to={circleLink('/app/appointments', circle.id)}

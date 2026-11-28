@@ -1,15 +1,17 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { AppointmentCalendar } from './AppointmentCalendar.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
-import { OverdueAppointmentsWarning } from './OverdueAppointmentsWarning.tsx'
+import { AppointmentAttention } from './AppointmentAttention.tsx'
 import { isAppointmentOverdue } from './appointment-overdue.ts'
-import { appointmentKey, useAppointmentCompletion } from './appointment-completion.ts'
+import { useAppointmentCompletion } from './appointment-completion.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
 import { appointmentUpcomingEnd } from './appointment-window.ts'
-import { closeOnBackdropClick } from './dialog.ts'
 import { hasValidAppointmentTime } from './calendar-layout.ts'
+
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
 
 export type CareProfile = { id: string; circleId: string; name: string; circleName: string }
 export type AppointmentSummary = {
@@ -33,9 +35,11 @@ export function AppointmentsPage({
   appointments: providedAppointments,
   onAdd,
   onEdit,
+  headerAside,
 }: {
   careProfiles: CareProfile[]
   appointments: AppointmentSummary[]
+  headerAside?: ReactNode
   onAdd?: () => void
   onEdit?: (appointment: AppointmentSummary) => void
 }) {
@@ -44,16 +48,6 @@ export function AppointmentsPage({
   const [profileSearch, setProfileSearch] = useState('')
   const selectionId = useId()
   const profileDropdown = useRef<HTMLDetailsElement>(null)
-  const todayDialog = useRef<HTMLDialogElement>(null)
-  const todayHeadingId = useId()
-  const profileAppointmentsDialog = useRef<HTMLDialogElement>(null)
-  const profileAppointmentsHeadingId = useId()
-  const [openProfileKey, setOpenProfileKey] = useState<string | null>(null)
-  const openProfile = careProfiles.find((profile) => profileKey(profile) === openProfileKey)
-  useEffect(() => {
-    if (openProfile && !profileAppointmentsDialog.current?.open) profileAppointmentsDialog.current?.showModal()
-    else if (!openProfile && profileAppointmentsDialog.current?.open) profileAppointmentsDialog.current.close()
-  }, [openProfile])
   const [now, setNow] = useState(Date.now)
   const { applyCompletion, setCompletion } = useAppointmentCompletion()
   const appointments = providedAppointments.map(applyCompletion)
@@ -104,7 +98,6 @@ export function AppointmentsPage({
         careProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
     )
     .sort(compareAppointmentListOrder)
-  const scheduledTodayCount = appointmentsToday.filter((appointment) => appointment.status === 'scheduled').length
   const overdueAppointments = appointments
     .filter(
       (appointment) =>
@@ -119,7 +112,7 @@ export function AppointmentsPage({
   const matchingProfiles = careProfiles.filter((item) =>
     `${item.name} ${item.circleName}`.toLocaleLowerCase().includes(profileSearch.trim().toLocaleLowerCase()),
   )
-  // Keep the overall totals separate from the selection-filtered list below.
+  // Build the upcoming window before applying the selected care profiles.
   const appointmentsInWindow = appointments
     .filter(
       (appointment) =>
@@ -137,326 +130,180 @@ export function AppointmentsPage({
   const visibleAppointments = [...overdueAppointments, ...appointmentsInWindow].filter((appointment) =>
     visibleProfiles.some((item) => item.id === appointment.recipientId && item.circleId === appointment.circleId),
   )
-  // Reuse the same seven-day window as the clicked count; opening it does not change profile selection.
-  const profileAppointments = appointmentsInWindow.filter(
-    (appointment) => appointment.recipientId === openProfile?.id && appointment.circleId === openProfile?.circleId,
-  )
 
   return (
-    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-h1 font-bold">Appointments</h1>
-        {onAdd && (
-          <Button disabled={!careProfiles.length} onClick={onAdd}>
-            Add appointment
-          </Button>
-        )}
-      </div>
-      <p className="mt-2 text-muted">An overview of upcoming appointments for the people in your care.</p>
-      <dl className="mt-8 grid gap-4 sm:grid-cols-2" aria-live="polite">
-        <div className="rounded-panel bg-wash p-5">
-          <dt className="text-muted">Total care profiles</dt>
-          <dd className="mt-2 font-display text-h1 font-bold">{careProfiles.length}</dd>
-        </div>
-        <div className="rounded-panel bg-wash p-5">
-          <dt className="text-muted">Total upcoming appointments</dt>
-          <dd className="mt-2 font-display text-h1 font-bold">{allUpcoming.length}</dd>
-        </div>
-      </dl>
-
-      <button
-        type="button"
-        aria-haspopup="dialog"
-        onClick={() => todayDialog.current?.showModal()}
-        className="mt-4 w-full cursor-pointer rounded-control border border-amber-300 bg-amber-50 p-4 text-left text-amber-950 hover:bg-amber-100"
-      >
-        <span>
-          {scheduledTodayCount === 0
-            ? 'No scheduled appointments today.'
-            : `You have ${scheduledTodayCount} scheduled ${scheduledTodayCount === 1 ? 'appointment' : 'appointments'} today across all care profiles.`}
-        </span>
-      </button>
-
-      <div className={overdueAppointments.length ? 'mt-4' : undefined}>
-        <OverdueAppointmentsWarning
-          appointments={overdueAppointments}
-          profileName={(appointment) =>
-            careProfiles.find(
-              (profile) => profile.id === appointment.recipientId && profile.circleId === appointment.circleId,
-            )!.name
+    <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+      <PageHeader
+        title="Appointments"
+        description="An overview of upcoming appointments for the people in your care."
+        aside={headerAside}
+      />
+      <section className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6">
+        <FeatureToolbar
+          actions={
+            onAdd && (
+              <Button disabled={!careProfiles.length} onClick={onAdd}>
+                Add appointment
+              </Button>
+            )
           }
+        >
+          <div className="w-72 max-w-full">
+            <p className="mb-1.5 text-small font-semibold">Care profiles</p>
+            <details ref={profileDropdown} className="relative">
+              <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-field h-12 bg-surface px-3.5 text-body font-normal">
+                Select care profiles
+                <span aria-hidden="true">▾</span>
+              </summary>
+              <div className="absolute inset-x-0 top-full z-20 mt-2 max-h-[30rem] overflow-y-auto rounded-control border border-line-strong bg-surface p-4 shadow-lg">
+                <TextField
+                  label="Search care profiles"
+                  type="search"
+                  value={profileSearch}
+                  onChange={(event) => setProfileSearch(event.target.value)}
+                />
+                <fieldset>
+                  <legend className="sr-only">Care profiles to show</legend>
+                  {careProfiles.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <Button variant="secondary" onClick={() => setExcludedProfiles([])}>
+                        Select all
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        className="h-auto min-h-11 whitespace-normal py-2"
+                        onClick={() =>
+                          setExcludedProfiles(
+                            careProfiles
+                              .filter(
+                                (item) =>
+                                  !allUpcoming.some(
+                                    (appointment) =>
+                                      appointment.recipientId === item.id && appointment.circleId === item.circleId,
+                                  ),
+                              )
+                              .map(profileKey),
+                          )
+                        }
+                      >
+                        Select with upcoming appointments
+                      </Button>
+                      <Button variant="secondary" onClick={() => setExcludedProfiles(careProfiles.map(profileKey))}>
+                        Clear selection
+                      </Button>
+                    </div>
+                  )}
+                  <ul className="mt-4 max-h-60 divide-y divide-line overflow-y-auto">
+                    {matchingProfiles.map((item, index) => {
+                      const key = profileKey(item)
+                      return (
+                        <li key={key} className="py-3">
+                          <label htmlFor={`${selectionId}-${index}`} className="flex cursor-pointer items-start gap-3">
+                            <input
+                              id={`${selectionId}-${index}`}
+                              type="checkbox"
+                              checked={!excludedProfiles.includes(key)}
+                              className="mt-1 size-5 shrink-0 cursor-pointer accent-primary"
+                              onChange={() =>
+                                setExcludedProfiles((current) =>
+                                  current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
+                                )
+                              }
+                            />
+                            <span>
+                              <span className="block font-semibold">{item.name}</span>
+                              <span className="block text-muted">{item.circleName}</span>
+                            </span>
+                          </label>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {matchingProfiles.length === 0 && (
+                    <p className="mt-4 text-muted">
+                      {careProfiles.length === 0 ? 'No care profiles available.' : 'No matching care profiles.'}
+                    </p>
+                  )}
+                </fieldset>
+              </div>
+            </details>
+          </div>
+        </FeatureToolbar>
+        <AppointmentAttention
+          today={appointmentsToday}
+          overdue={overdueAppointments}
+          profiles={careProfiles}
           onComplete={completeAppointment}
+          onMarkTodo={markAppointmentTodo}
           onEdit={onEdit}
         />
-      </div>
 
-      <dialog
-        ref={todayDialog}
-        aria-labelledby={todayHeadingId}
-        onClick={closeOnBackdropClick}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
-      >
-        <h2 id={todayHeadingId} className="font-display text-h2 font-bold">
-          Today’s appointments
-        </h2>
-        <p className="mt-2 text-muted">Across all care profiles · Times shown in your local timezone.</p>
-        {appointmentsToday.length === 0 ? (
-          <p className="mt-5 text-muted">No scheduled appointments today.</p>
-        ) : (
-          <ul className="mt-5 divide-y divide-line">
-            {appointmentsToday.map((appointment) => {
-              const profile = careProfiles.find(
-                (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
-              )!
-              return (
-                <li
-                  key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
-                  className="py-4 break-words first:pt-0"
-                >
-                  <AppointmentListItem
-                    appointment={appointment}
-                    profileName={profile.name}
-                    onComplete={() => completeAppointment(appointment)}
-                    onMarkTodo={() => markAppointmentTodo(appointment)}
-                    onEdit={onEdit && (() => onEdit(appointment))}
-                  />
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        <Button variant="secondary" className="mt-6" onClick={() => todayDialog.current?.close()}>
-          Close
-        </Button>
-      </dialog>
-
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
-        <section
-          className="flex h-[34rem] min-w-0 flex-col rounded-panel border border-line bg-surface p-5 sm:p-6"
-          aria-labelledby="care-profiles-heading"
-        >
-          <h2 id="care-profiles-heading" className="font-display text-h2 font-bold">
-            Care profiles
-          </h2>
-          <p className="mt-2 text-muted">Choose the profiles whose appointments you want to see.</p>
-          <details ref={profileDropdown} className="relative mt-5">
-            <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-field px-4 py-3 font-semibold">
-              Select care profiles
-              <span aria-hidden="true">▾</span>
-            </summary>
-            <div className="absolute inset-x-0 top-full z-20 mt-2 max-h-[30rem] overflow-y-auto rounded-control border border-line-strong bg-surface p-4 shadow-lg">
-              <TextField
-                label="Search care profiles"
-                type="search"
-                value={profileSearch}
-                onChange={(event) => setProfileSearch(event.target.value)}
-              />
-              <fieldset>
-                <legend className="sr-only">Care profiles to show</legend>
-                {careProfiles.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <Button variant="secondary" onClick={() => setExcludedProfiles([])}>
-                      Select all
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      className="h-auto min-h-11 whitespace-normal py-2"
-                      onClick={() =>
-                        setExcludedProfiles(
-                          careProfiles
-                            .filter(
-                              (item) =>
-                                !allUpcoming.some(
-                                  (appointment) =>
-                                    appointment.recipientId === item.id && appointment.circleId === item.circleId,
-                                ),
-                            )
-                            .map(profileKey),
-                        )
-                      }
-                    >
-                      Select with upcoming appointments
-                    </Button>
-                    <Button variant="secondary" onClick={() => setExcludedProfiles(careProfiles.map(profileKey))}>
-                      Clear selection
-                    </Button>
-                  </div>
-                )}
-                <ul className="mt-4 max-h-60 divide-y divide-line overflow-y-auto">
-                  {matchingProfiles.map((item, index) => {
-                    const key = profileKey(item)
+        <div className="mt-4">
+          <section
+            className="flex max-h-[38rem] min-w-0 flex-col rounded-panel border border-line bg-surface p-5 sm:p-6"
+            aria-labelledby="upcoming-appointments-heading"
+          >
+            <h2 id="upcoming-appointments-heading" className="font-display text-h3 font-semibold">
+              Upcoming appointments
+            </h2>
+            <p role="status" className="mt-2 text-small text-muted">
+              {visibleProfiles.length} {visibleProfiles.length === 1 ? 'profile' : 'profiles'} selected ·{' '}
+              {upcoming.length} upcoming {upcoming.length === 1 ? 'appointment' : 'appointments'} · Next 7 days
+            </p>
+            <p className="mt-1 text-small text-muted">
+              {visibleProfiles.length === 0
+                ? 'No care profiles selected'
+                : visibleProfiles.length === careProfiles.length
+                  ? 'Across all care profiles'
+                  : visibleProfiles.length === 1
+                    ? `For ${visibleProfiles[0].name}`
+                    : `Across ${visibleProfiles.length} selected care profiles`}{' '}
+              · Times shown in your local timezone.
+            </p>
+            <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
+              {visibleAppointments.length === 0 ? (
+                <p className="text-muted">
+                  {visibleProfiles.length === 0 && careProfiles.length > 0
+                    ? 'Select a care profile to view upcoming appointments.'
+                    : 'No upcoming appointments.'}
+                </p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {visibleAppointments.map((appointment) => {
+                    const person = visibleProfiles.find(
+                      (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
+                    )!
                     return (
-                      <li key={key} className="py-3">
-                        <label htmlFor={`${selectionId}-${index}`} className="flex cursor-pointer items-start gap-3">
-                          <input
-                            id={`${selectionId}-${index}`}
-                            type="checkbox"
-                            checked={!excludedProfiles.includes(key)}
-                            className="mt-1 size-5 shrink-0 cursor-pointer accent-primary"
-                            onChange={() =>
-                              setExcludedProfiles((current) =>
-                                current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
-                              )
-                            }
-                          />
-                          <span>
-                            <span className="block font-semibold">{item.name}</span>
-                            <span className="block text-muted">{item.circleName}</span>
-                          </span>
-                        </label>
+                      <li
+                        key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
+                        className="py-5 break-words first:pt-0 last:pb-0"
+                      >
+                        <AppointmentListItem
+                          appointment={appointment}
+                          profileName={person.name}
+                          overdue={isAppointmentOverdue(appointment, now)}
+                          onComplete={() => completeAppointment(appointment)}
+                          onMarkTodo={() => markAppointmentTodo(appointment)}
+                          onEdit={onEdit && (() => onEdit(appointment))}
+                        />
                       </li>
                     )
                   })}
                 </ul>
-                {matchingProfiles.length === 0 && (
-                  <p className="mt-4 text-muted">
-                    {careProfiles.length === 0 ? 'No care profiles available.' : 'No matching care profiles.'}
-                  </p>
-                )}
-              </fieldset>
+              )}
             </div>
-          </details>
-          <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-            <ul className="divide-y divide-line" aria-label="Selected care profiles">
-              {visibleProfiles.map((item) => {
-                const key = profileKey(item)
-                const count = allUpcoming.filter(
-                  (appointment) => appointment.recipientId === item.id && appointment.circleId === item.circleId,
-                ).length
-                return (
-                  <li key={key} className="py-5 first:pt-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-display text-h3 font-semibold">{item.name}</h3>
-                        <p className="mt-1 text-muted">{item.circleName}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Unselect ${item.name} in ${item.circleName}`}
-                        onClick={() => setExcludedProfiles((current) => [...current, key])}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                    <button
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-label={`View upcoming appointments for ${item.name}`}
-                      className="mt-4 cursor-pointer rounded-control text-left text-muted hover:text-primary hover:underline"
-                      onClick={() => setOpenProfileKey(key)}
-                    >
-                      {count === 0
-                        ? 'No upcoming appointments.'
-                        : `${count} upcoming appointment${count === 1 ? '' : 's'}.`}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-            {visibleProfiles.length === 0 && (
-              <p className="text-muted">No profiles selected. Choose profiles from the dropdown.</p>
-            )}
-          </div>
-          <p className="mt-5 border-t border-line pt-4 font-semibold" role="status">
-            {visibleProfiles.length} profile{visibleProfiles.length === 1 ? '' : 's'} selected · {upcoming.length}{' '}
-            upcoming appointment{upcoming.length === 1 ? '' : 's'}
-          </p>
-        </section>
+          </section>
+        </div>
 
-        <section
-          className="flex h-[34rem] min-w-0 flex-col rounded-panel border border-line bg-surface p-5 sm:p-6"
-          aria-labelledby="upcoming-appointments-heading"
-        >
-          <h2 id="upcoming-appointments-heading" className="font-display text-h2 font-bold">
-            Upcoming appointments
-          </h2>
-          <p className="mt-2 text-muted">Within the next 7 days.</p>
-          <p className="mt-2 text-muted">
-            {visibleProfiles.length === 0
-              ? 'No care profiles selected'
-              : visibleProfiles.length === careProfiles.length
-                ? 'Across all care profiles'
-                : visibleProfiles.length === 1
-                  ? `For ${visibleProfiles[0].name}`
-                  : `Across ${visibleProfiles.length} selected care profiles`}{' '}
-            · Times shown in your local timezone.
-          </p>
-          <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-            {visibleAppointments.length === 0 ? (
-              <p className="text-muted">
-                {visibleProfiles.length === 0 && careProfiles.length > 0
-                  ? 'Select a care profile to view upcoming appointments.'
-                  : 'No upcoming appointments.'}
-              </p>
-            ) : (
-              <ul className="divide-y divide-line">
-                {visibleAppointments.map((appointment) => {
-                  const person = visibleProfiles.find(
-                    (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
-                  )!
-                  return (
-                    <li
-                      key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
-                      className="py-5 break-words first:pt-0 last:pb-0"
-                    >
-                      <AppointmentListItem
-                        appointment={appointment}
-                        profileName={person.name}
-                        overdue={isAppointmentOverdue(appointment, now)}
-                        onComplete={() => completeAppointment(appointment)}
-                        onMarkTodo={() => markAppointmentTodo(appointment)}
-                        onEdit={onEdit && (() => onEdit(appointment))}
-                      />
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <AppointmentCalendar
-        profiles={visibleProfiles}
-        appointments={appointments}
-        now={now}
-        onComplete={completeAppointment}
-        onMarkTodo={markAppointmentTodo}
-        onEdit={onEdit}
-      />
-      <dialog
-        ref={profileAppointmentsDialog}
-        aria-labelledby={profileAppointmentsHeadingId}
-        onClose={() => setOpenProfileKey(null)}
-        onClick={closeOnBackdropClick}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
-      >
-        <h2 id={profileAppointmentsHeadingId} className="font-display text-h2 font-bold">
-          Upcoming appointments for {openProfile?.name}
-        </h2>
-        <p className="mt-2 text-muted">Within the next 7 days · Times shown in your local timezone.</p>
-        {profileAppointments.length === 0 ? (
-          <p className="mt-5 text-muted">No upcoming appointments.</p>
-        ) : (
-          <ul className="mt-5 divide-y divide-line">
-            {profileAppointments.map((appointment) => (
-              <li key={appointmentKey(appointment)} className="py-4 break-words first:pt-0">
-                <AppointmentListItem
-                  appointment={appointment}
-                  profileName={openProfile!.name}
-                  onComplete={() => completeAppointment(appointment)}
-                  onMarkTodo={() => markAppointmentTodo(appointment)}
-                  onEdit={onEdit && (() => onEdit(appointment))}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-        <Button variant="secondary" className="mt-6" onClick={() => profileAppointmentsDialog.current?.close()}>
-          Close
-        </Button>
-      </dialog>
+        <AppointmentCalendar
+          profiles={visibleProfiles}
+          appointments={appointments}
+          now={now}
+          onComplete={completeAppointment}
+          onMarkTodo={markAppointmentTodo}
+          onEdit={onEdit}
+        />
+      </section>
     </main>
   )
 }
