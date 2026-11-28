@@ -1,10 +1,13 @@
 # Tasks
 
-The initial Tasks page at `/app/tasks` lists the selected family's saved tasks.
-The shared header links to it from every page using AppLayout. Care-profile and
-status filters apply to the list; pending tasks appear before completed tasks,
-with dated tasks ordered by due time and undated tasks afterward. Pending tasks
-past their due time show Overdue. The display updates each minute.
+The initial Tasks page at `/app/tasks` lists the selected family's saved tasks. The
+shared header links to it from every page using AppLayout. Care-profile and status
+filters apply to the list; pending tasks appear before completed tasks, with dated tasks
+ordered by due time and undated tasks afterward. Pending tasks past their due time show
+Overdue. The display updates each minute. The main list includes tasks due before local
+midnight seven days ahead, plus undated tasks and earlier deadlines. The calendar has
+its own visible range; browsing future months does not add those occurrences to the
+current list.
 
 Search tasks matches task titles, ignoring case and surrounding whitespace. The
 Caregiver filter supports all caregivers, a named family member (with You beside
@@ -15,20 +18,20 @@ local to the returned list/visible calendar range and does not change saved task
 or require a request for each keystroke. Changing filters closes a calendar popup
 so its actions cannot target a task hidden by the new selection.
 
-Attention Needed remains based on the selected care profile's pending deadlines;
-title, caregiver, and status filters do not hide those reminders. Repeating Tasks
-management also keeps its existing profile-only scope so stopping a schedule
-remains available when individual occurrences do not match the list filters.
-Creating a task clears search and assignment filters along with the existing
-profile/status reset so the new pending task is visible. Editing preserves filters.
+Attention Needed remains based on the selected care profile's pending deadlines; title,
+caregiver, and status filters do not hide those reminders. Repeating Tasks management
+also keeps its existing profile-only scope so stopping a schedule remains available when
+individual occurrences do not match the list filters. Creating a task clears search and
+assignment filters along with the existing profile/status reset. Tasks beyond the main
+list date limit are available through the calendar. Editing preserves filters.
 
 Add task opens a dialog with a title, care profile, optional caregiver, optional
 due date, and optional typed 12-hour time with an AM/PM dropdown. No date means no
 deadline; a date without a time means 11:59 PM in the viewer's local time zone.
-Invalid calendar dates and nonexistent local times are rejected. Cancel, Close,
+Invalid calendar dates, year zero, and nonexistent local times are rejected consistently by the form, browser API, and backend. Cancel, Close,
 Escape, and clicking outside dismiss it without saving. Dismissal and repeated
 submissions are blocked while saving. After creation the list shows all profiles'
-To do tasks so the new task is visible.
+To Do tasks; later deadlines are available in their calendar period.
 
 `POST /api/circles/:circleId/tasks` accepts `{ recipientId, title, dueAt,
 assignedCaregiverId }` and returns `201 { task }`. Titles are trimmed and limited
@@ -117,7 +120,7 @@ blocked while saving. To change the repeat pattern, stop it and add a new schedu
 
 The mock stores series and deletion exceptions in the same browser database as tasks.
 Reads generate at most 366 calendar dates per series per request. Ordinary list/Home
-queries fill history and the next month (or their explicit due-before boundary),
+queries fill history through their explicit due-before boundary,
 while calendar queries generate only their selected ranges. Progress is persisted;
 partial history retries automatically in bounded batches and shows a loading message
 and an “At least” count on Home. All generation, task writes, deletion exceptions,
@@ -132,7 +135,7 @@ implementation is described below.
 contains the first remaining occurrence. Details PATCH still edits one occurrence
 and does not accept a recurrence definition. `GET .../tasks` adds `historyPending`
 and profile-filtered `series` summaries to its response. Occurrence responses carry
-`seriesId`, `seriesVersion`, `seriesStoppedAt`, `seriesTitle`, and `seriesDescription`.
+`seriesId`, `seriesVersion`, `seriesStoppedAt`, `seriesTitle`, and `seriesDescription`. Moving an individual occurrence to another care profile preserves this metadata on filtered reads. Only that occurrence moves; the original schedule and its management scope stay with the original profile. Reading the moved occurrence does not generate tasks for the original profile.
 
 `POST /api/circles/:circleId/task-series/:seriesId/stop` accepts `{ version }` and
 returns 204. It checks authentication and current family membership, rejects a stale
@@ -158,9 +161,13 @@ show Due soon during the one-hour window. When no tasks need attention the panel
 is hidden. Partial repeating-task history is labeled At least while loading.
 
 Time-dependent labels update each minute; requests refresh each minute and on window
-focus. A failed reminder request hides its cached details and provides Retry task
-reminders, including for 502 errors. These reminders appear while the website is
-open; browser push, email, and background delivery are not implemented for tasks.
+focus. Attention uses a stable daily query range covering the following midnight plus
+one hour, then applies the exact one-hour cutoff locally. Minute ticks reuse the
+existing data and expanded panel during background refresh. A new day or profile shows
+loading without exposing the previous profile’s rows; errors hide cached details. A
+failed reminder request hides its cached details and provides Retry task reminders,
+including for 502 errors. These reminders appear while the website is open; browser
+push, email, and background delivery are not implemented for tasks.
 
 ## Individual Task Changes
 
@@ -226,14 +233,21 @@ endpoints to the real API together. Browser mock data is not automatically impor
 Do not enable the flag alone and expect the mock frontend to use PostgreSQL.
 
 Each request checks current family membership inside a transaction and keeps that
-membership locked until commit. Task writes lock their parent series (if any) before
-the occurrence, compare the submitted version, and then save/delete. Concurrent stale
-edits return 409, and repeated status saves at the current version preserve timestamps.
+membership locked until commit. Task writes lock their parent series (if any) before the
+occurrence, compare the submitted version, and then save/delete. Concurrent stale edits
+return 409, and repeated status saves at the current version preserve timestamps.
 Generation and stop operations lock the same series, preventing duplicate occurrences
 and regeneration after a stop. Reads generate bounded batches (366 dates per series),
-persist progress, and preserve individually edited and deleted slots. List generation
-locks series in a consistent order; it does not take an exclusive lock on the family row.
-Database failures roll back the whole request and use the shared backend error handler.
+persist progress, and preserve individually edited and deleted slots. Ordinary reads do
+not lock every schedule. They check generation progress without a lock and only acquire
+a parent lock for an unfinished schedule, rechecking its progress after locking. Busy
+parents are skipped with `FOR UPDATE SKIP LOCKED`; the response sets `historyPending` so
+existing polling retries missing history. Completed ranges remain readable while their
+parent is locked. Profile-filtered requests inspect only that profile’s schedules. Other
+schedules continue generating while one is busy. Inserts, progress updates, and parent
+locking remain transactional, and writes retain their version checks and
+parent-before-occurrence order. Database failures roll back the whole request and use
+the shared backend error handler.
 
 Run `npm run test:tasks` from `nurture-api` after repository dependencies are installed.
 Unit tests cover schedule parity with the frontend, DST, history bounds, and strict

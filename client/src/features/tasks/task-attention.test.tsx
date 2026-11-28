@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -7,6 +7,7 @@ import { setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
 import { renderApp } from '../../test/renderApp.tsx'
 import { server } from '../../test/setup.ts'
+import * as clock from '../profiles/time.ts'
 import { taskAttention } from './task-attention.ts'
 
 afterEach(() => vi.useRealTimers())
@@ -72,7 +73,7 @@ it('keeps reminders independent of task status and applies the care-profile filt
   expect(await within(attention).findByText('1 overdue task')).toBeInTheDocument()
   expect(attention).toHaveTextContent('1 due within 1 hour')
   await user.selectOptions(screen.getByLabelText('Status'), 'completed')
-  await user.click(within(attention).getByRole('button', { name: 'View task reminders' }))
+  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
   expect(await within(attention).findByRole('heading', { name: 'Late task' })).toBeInTheDocument()
   expect(within(attention).getAllByRole('listitem')).toHaveLength(2)
   await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
@@ -89,7 +90,7 @@ it('clears completed reminders on Home and Tasks and preserves the saved complet
   const user = userEvent.setup()
   renderApp('/app')
   const attention = await screen.findByRole('region', { name: 'Task Attention Needed' })
-  await user.click(within(attention).getByRole('button', { name: 'View task reminders' }))
+  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
   await user.click(within(attention).getByRole('button', { name: 'Mark Completed: Late task' }))
   await waitFor(() => expect(within(attention).queryByRole('heading', { name: 'Late task' })).not.toBeInTheDocument())
   expect(readDb().care.tasks.find((task) => task.id === 'late')?.status).toBe('completed')
@@ -119,4 +120,43 @@ it('hides task details on failed refresh and retries a 502 error', async () => {
   await waitFor(() =>
     expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toHaveTextContent('1 overdue task'),
   )
+})
+
+it('keeps expanded reminders visible during a slow minute refresh and never reuses another profile data', async () => {
+  await seed()
+  const minute = vi.spyOn(clock, 'useMinute').mockReturnValue(new Date(now))
+  const user = userEvent.setup()
+  renderApp('/app/tasks')
+  const attention = await screen.findByRole('region', { name: 'Task Attention Needed' })
+  await user.click(await within(attention).findByRole('button', { name: 'View task reminders' }))
+  await within(attention).findByRole('heading', { name: 'Late task' })
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let requested = false
+  server.use(
+    http.get('/api/circles/:circleId/tasks', async ({ request }) => {
+      if (new URL(request.url).searchParams.get('status') !== 'pending') return
+      requested = true
+      await held
+    }),
+  )
+  try {
+    vi.setSystemTime(new Date(now + 60_000))
+    // Rerender the parent with its next minute while the refresh response is held.
+    minute.mockReturnValue(new Date(now + 60_000))
+    await user.selectOptions(screen.getByLabelText('Status'), 'completed')
+    fireEvent.focus(window)
+    await waitFor(() => expect(requested).toBe(true))
+    expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toBe(attention)
+    expect(within(attention).getByRole('heading', { name: 'Late task' })).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+    await waitFor(() => expect(within(attention).queryByRole('heading', { name: 'Late task' })).not.toBeInTheDocument())
+    expect(within(attention).getByText('Loading task reminders…')).toBeInTheDocument()
+  } finally {
+    release()
+    minute.mockRestore()
+    vi.useRealTimers()
+  }
 })
