@@ -178,7 +178,7 @@ Every error uses the contract's shape, and the client shows `message` to the use
 { "error": { "code": "not_found", "message": "Circle not found." } }
 ```
 
-Codes are lowercase: `validation_error`, `unauthorized`, `forbidden`, `not_found`, `invalid_credentials`, `email_taken`, `already_member`, `user_not_found`, `internal_error`. Responses for unexpected errors (500) never include internal details.
+Codes are lowercase: `validation_error`, `unauthorized`, `forbidden`, `not_found`, `invalid_credentials`, `email_taken`, `already_member`, `internal_error`. Responses for unexpected errors (500) never include internal details.
 
 ## Adding routes for care data
 

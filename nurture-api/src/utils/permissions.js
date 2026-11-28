@@ -7,6 +7,7 @@ const PERMISSIONS = {
   'members:view':     ALL,
   'members:manage':   ['owner'],
   'content:edit':     ['owner', 'member'],
+  'invites:manage': ['owner'],
 };
 
 exports.hasAccess = (role, permission) =>

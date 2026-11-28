@@ -52,7 +52,6 @@ export const addMember = async (ownerToken, circleId, email) => {
     body: { email, role: 'member' },
   });
   if (res.status !== 201) throw new Error(`add member failed: ${res.status} ${JSON.stringify(res.body)}`);
-  return res.body.member;
 };
 
 // Staff admin is only ever granted in the database, never through the API.
