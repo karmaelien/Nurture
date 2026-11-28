@@ -198,6 +198,23 @@ test(
       assert.equal(converged.tasks.length, 4);
       assert.equal(converged.historyPending, false);
       const occurrences = converged.tasks;
+      // Existing JSON progress migrates transactionally without changing saved tasks.
+      const legacyKey = `${filters.dueFrom}|${filters.dueBefore}`;
+      const legacyCursor = new Date(start.getTime() + 4 * 86400000)
+        .toISOString()
+        .slice(0, 10);
+      await db.query('UPDATE task_series SET progress=$2 WHERE id=$1', [
+        first.seriesId,
+        JSON.stringify({ ranges: { [legacyKey]: legacyCursor } }),
+      ]);
+      assert.equal((await list(filters)).tasks.length, 4);
+      const migratedProgress = (
+        await db.query('SELECT progress FROM task_series WHERE id=$1', [
+          first.seriesId,
+        ])
+      ).rows[0].progress;
+      assert.equal(migratedProgress.ranges, undefined);
+      assert.equal(migratedProgress.coverage.length, 1);
       // A fully generated schedule can be read while its parent is locked by an editor.
       // A new range skips the busy parent and reports incomplete history immediately.
       const blocker = await db.connect();
@@ -221,7 +238,23 @@ test(
           .query(newRange)
           .timeout(2000)
           .expect(200);
-        assert.equal(skipped.body.historyPending, true);
+        assert.equal(skipped.body.historyPending, false);
+        // Overlapping views reuse coverage even while the parent is locked.
+        // Reset bookkeeping to simulate genuinely unfinished generation next.
+        await blocker.query('ROLLBACK');
+        await db.query("UPDATE task_series SET progress='{}' WHERE id=$1", [
+          first.seriesId,
+        ]);
+        await blocker.query('BEGIN');
+        await blocker.query(
+          'SELECT id FROM task_series WHERE id=$1 FOR UPDATE',
+          [first.seriesId],
+        );
+        const unfinished = await auth(request(app).get(`${base}/tasks`))
+          .query(newRange)
+          .timeout(2000)
+          .expect(200);
+        assert.equal(unfinished.body.historyPending, true);
         // Locking one schedule must not prevent another schedule from progressing.
         const independent = await create({
           ...details,
