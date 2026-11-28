@@ -1,3 +1,4 @@
+import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
 import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { useEffect, useRef, useState } from 'react'
 import type { CircleSummary, Medication, MedicationOccurrence } from '../../api/types.ts'
@@ -23,6 +24,7 @@ export function MedicationCalendar({
   medicationId = '',
   onAdd,
   onEdit,
+  onDelete,
 }: {
   circle: CircleSummary
   recipientId: string
@@ -30,6 +32,7 @@ export function MedicationCalendar({
   medicationId?: string
   onAdd?: (date: string) => void
   onEdit?: (medication: Medication) => void
+  onDelete?: (medication: Medication) => void
 }) {
   const now = useMinute()
   const [view, setView] = useState<View>('monthly')
@@ -182,44 +185,22 @@ export function MedicationCalendar({
     >
       <h2 className="font-display text-h2 font-bold">Calendar</h2>
       <p className="mt-2 text-muted">Doses for the selected care profiles · Times shown in your local time zone.</p>
-      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Calendar view">
-        {(['daily', 'weekly', 'monthly'] as const).map((option) => (
-          <Button
-            key={option}
-            variant={view === option ? 'primary' : 'secondary'}
-            aria-pressed={view === option}
-            onClick={() => {
-              setView(option)
-              setSelection(null)
-            }}
-          >
-            {option[0].toUpperCase() + option.slice(1)}
-          </Button>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-display text-h3 font-semibold" aria-live="polite">
-          {label}
-        </h3>
-        <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setAnchor(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
-              setPreferredDay(now.getDate())
-              setSelection(null)
-            }}
-          >
-            Today
-          </Button>
-          <Button variant="secondary" aria-label={`Previous ${unit}`} onClick={() => changePeriod(-1)}>
-            Previous
-          </Button>
-          <Button variant="secondary" aria-label={`Next ${unit}`} onClick={() => changePeriod(1)}>
-            Next
-          </Button>
-        </div>
-      </div>
+      <CalendarToolbar
+        view={view}
+        anchor={anchor}
+        label={label}
+        now={now.getTime()}
+        onView={(value) => {
+          setView(value)
+          setSelection(null)
+        }}
+        onDate={(date) => {
+          setAnchor(date)
+          setPreferredDay(date.getDate())
+          setSelection(null)
+        }}
+        onPeriod={changePeriod}
+      />
       {doses.isPending ? (
         <p role="status" className="mt-4">
           Loading calendar…
@@ -370,6 +351,17 @@ export function MedicationCalendar({
             editableMedicationIds={medications
               .filter((medication) => !medication.stoppedAt)
               .map((medication) => medication.id)}
+            deletableMedicationIds={medications.map((medication) => medication.id)}
+            onDelete={
+              onDelete
+                ? (id) => {
+                    const medication = medications.find((item) => item.id === id)
+                    if (!medication) return
+                    closeForEditor()
+                    onDelete(medication)
+                  }
+                : undefined
+            }
             onEdit={
               onEdit &&
               ((id) => {

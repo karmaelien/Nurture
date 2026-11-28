@@ -19,6 +19,7 @@ function Dose({
   now,
   showDate,
   onEdit,
+  onDelete,
 }: {
   circleId: string
   dose: MedicationOccurrence
@@ -26,6 +27,7 @@ function Dose({
   now: number
   showDate: boolean
   onEdit?: () => void
+  onDelete?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -61,10 +63,10 @@ function Dose({
         {showDate && <>{new Date(dose.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · </>}
         {formatTime(dose.scheduledAt)} · {person}
       </p>
-      <p className="text-muted">
-        {dose.name} · {dose.dosage}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-muted">
+          {dose.name} · {dose.dosage}
+        </p>
         <StatusBadge tone={taken ? 'positive' : overdue ? 'danger' : reminder ? 'warning' : 'neutral'}>
           {taken
             ? 'Taken'
@@ -76,6 +78,8 @@ function Dose({
                   : 'Due now'
                 : 'Pending'}
         </StatusBadge>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           variant="outline"
           loading={busy}
@@ -87,6 +91,11 @@ function Dose({
         {onEdit && (
           <Button variant="outline" onClick={onEdit}>
             Edit medication
+          </Button>
+        )}
+        {onDelete && (
+          <Button variant="danger" onClick={onDelete}>
+            Delete medication
           </Button>
         )}
       </div>
@@ -114,7 +123,9 @@ export function MedicationDoseList({
   overdueCountIsPartial = false,
   scrollable = true,
   onEdit,
+  onDelete,
   editableMedicationIds,
+  deletableMedicationIds,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
@@ -124,6 +135,8 @@ export function MedicationDoseList({
   overdueCountIsPartial?: boolean
   scrollable?: boolean
   onEdit?: (medicationId: string) => void
+  onDelete?: (medicationId: string) => void
+  deletableMedicationIds?: string[]
   editableMedicationIds?: string[]
 }) {
   const now = useMinute().getTime()
@@ -149,6 +162,11 @@ export function MedicationDoseList({
             person={personName(dose.recipientId)}
             now={now}
             showDate={showDate}
+            onDelete={
+              onDelete && deletableMedicationIds?.includes(dose.medicationId)
+                ? () => onDelete(dose.medicationId)
+                : undefined
+            }
             onEdit={
               onEdit && editableMedicationIds?.includes(dose.medicationId) ? () => onEdit(dose.medicationId) : undefined
             }

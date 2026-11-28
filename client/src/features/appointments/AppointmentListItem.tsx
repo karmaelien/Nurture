@@ -24,6 +24,7 @@ export function AppointmentListItem({
   onComplete,
   onMarkTodo,
   onEdit,
+  onDelete,
 }: {
   appointment: AppointmentDetailData
   profileName: string
@@ -31,6 +32,7 @@ export function AppointmentListItem({
   onComplete?: () => void
   onMarkTodo?: () => void
   onEdit?: () => void
+  onDelete?: () => void
 }) {
   return (
     <>
@@ -77,22 +79,29 @@ export function AppointmentListItem({
           </span>
         </span>
       </span>
-      {appointment.status === 'scheduled' && onComplete ? (
-        <Button variant="outline" className="mt-2" onClick={onComplete}>
-          Mark completed
-        </Button>
-      ) : appointment.status === 'completed' && onMarkTodo ? (
-        <Button variant="outline" className="mt-2" onClick={onMarkTodo}>
-          Mark as to do
-        </Button>
-      ) : (
-        <AppointmentStatus status={appointment.status} />
-      )}
-      {onEdit && (
-        <Button variant="outline" className="mt-2 ml-2" onClick={onEdit}>
-          Edit appointment
-        </Button>
-      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {appointment.status === 'scheduled' && onComplete ? (
+          <Button variant="outline" onClick={onComplete}>
+            Mark completed
+          </Button>
+        ) : appointment.status === 'completed' && onMarkTodo ? (
+          <Button variant="outline" onClick={onMarkTodo}>
+            Mark as to do
+          </Button>
+        ) : (
+          <AppointmentStatus status={appointment.status} />
+        )}
+        {onEdit && (
+          <Button variant="outline" onClick={onEdit}>
+            Edit appointment
+          </Button>
+        )}
+        {onDelete && (
+          <Button variant="danger" onClick={onDelete}>
+            Delete appointment
+          </Button>
+        )}
+      </div>
     </>
   )
 }

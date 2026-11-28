@@ -272,3 +272,22 @@ runs against the application's configured database.
 
 Task background push/email delivery remains a separate step; current task reminders
 are in-page only.
+
+
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.

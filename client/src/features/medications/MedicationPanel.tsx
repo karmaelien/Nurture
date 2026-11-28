@@ -45,7 +45,6 @@ export function MedicationPanel({
     stopping?: boolean
     restarting?: boolean
     startsOn?: string
-    fromCalendar?: boolean
   } | null>(null)
   const medications = useMedications(circle.id)
   const [selectedMedication, setSelectedMedication] = useState('')
@@ -102,7 +101,7 @@ export function MedicationPanel({
           stopping={editor.stopping}
           restarting={editor.restarting}
           initialStartsOn={editor.startsOn}
-          allowDelete={!editor.fromCalendar}
+          allowDelete
           onClose={() => setEditor(null)}
           onSaved={() => {
             if (!editor.medication || editor.restarting) setSelectedMedication('')
@@ -239,12 +238,13 @@ export function MedicationPanel({
           medications={medications.isError ? [] : (medications.data ?? [])}
           onAdd={
             detail.data && !detail.isError && circle.recipients.length
-              ? (startsOn) => setEditor({ startsOn, fromCalendar: true })
+              ? (startsOn) => setEditor({ startsOn })
               : undefined
           }
-          onEdit={
-            detail.data && !detail.isError ? (medication) => setEditor({ medication, fromCalendar: true }) : undefined
+          onDelete={
+            detail.data && !detail.isError ? (medication) => setEditor({ medication, deleting: true }) : undefined
           }
+          onEdit={detail.data && !detail.isError ? (medication) => setEditor({ medication }) : undefined}
         />
       )}
     </section>

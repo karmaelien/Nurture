@@ -11,6 +11,7 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
   onComplete,
   onMarkTodo,
   onEdit,
+  onDelete,
 }: {
   appointment: T
   profile: CareProfile
@@ -18,6 +19,7 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
   onComplete?: (appointment: T) => void
   onMarkTodo?: (appointment: T) => void
   onEdit?: (appointment: T) => void
+  onDelete?: (appointment: T) => void
 }) {
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
@@ -71,21 +73,28 @@ export function AppointmentDetails<T extends AppointmentDetailData>({
           </dd>
         </div>
       </dl>
-      {appointment.status === 'scheduled' && onComplete && (
-        <Button variant="outline" className="mt-6" onClick={() => onComplete(appointment)}>
-          Mark completed
-        </Button>
-      )}
-      {appointment.status === 'completed' && onMarkTodo && (
-        <Button variant="outline" className="mt-6" onClick={() => onMarkTodo(appointment)}>
-          Mark as to do
-        </Button>
-      )}
-      {onEdit && (
-        <Button variant="outline" className="mt-6 ml-2" onClick={() => onEdit(appointment)}>
-          Edit appointment
-        </Button>
-      )}
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        {appointment.status === 'scheduled' && onComplete && (
+          <Button variant="outline" onClick={() => onComplete(appointment)}>
+            Mark completed
+          </Button>
+        )}
+        {appointment.status === 'completed' && onMarkTodo && (
+          <Button variant="outline" onClick={() => onMarkTodo(appointment)}>
+            Mark as to do
+          </Button>
+        )}
+        {onEdit && (
+          <Button variant="outline" onClick={() => onEdit(appointment)}>
+            Edit appointment
+          </Button>
+        )}
+        {onDelete && (
+          <Button variant="danger" onClick={() => onDelete(appointment)}>
+            Delete appointment
+          </Button>
+        )}
+      </div>
     </>
   )
 }

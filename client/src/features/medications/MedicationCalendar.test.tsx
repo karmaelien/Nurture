@@ -180,7 +180,7 @@ it('adds a medication from an empty calendar date with the date and profile pref
   ).toBeGreaterThan(0)
 })
 
-it('edits the current medication from a dose without offering permanent deletion', async () => {
+it('edits the current medication from a dose with the shared deletion option', async () => {
   const { calendar, user } = await open()
   await user.click(within(calendar).getAllByRole('button', { name: /Calendar medicine for Rose/ })[0])
   const popup = screen.getByRole('dialog', { name: 'Dose Details' })
@@ -189,7 +189,7 @@ it('edits the current medication from a dose without offering permanent deletion
   expect(popup).not.toHaveAttribute('open')
   expect(within(editor).getByLabelText('Medication name')).toHaveValue('Calendar medicine')
   expect(within(editor).getByLabelText('Start date')).toHaveValue('2026-11-25')
-  expect(within(editor).queryByRole('button', { name: 'Delete permanently' })).not.toBeInTheDocument()
+  expect(within(editor).getByRole('button', { name: 'Delete permanently' })).toBeInTheDocument()
   await user.clear(within(editor).getByLabelText('Dosage'))
   await user.type(within(editor).getByLabelText('Dosage'), '2 tablets')
   await user.click(within(editor).getByRole('button', { name: 'Save medication' }))

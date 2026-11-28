@@ -84,3 +84,22 @@ Manual checks:
 1. In demo mode, create an overdue visit for Rose and a future visit for Frank. On Appointments, select only Frank. Verify that the right-hand list shows Frank's visits and the overdue count still opens Rose's overdue visit. On Home, set **Showing** to Frank and confirm the Home list and banner both follow that selection.
 2. Add a visit with a caregiver and location. Edit it from Home, check the time on the calendar, mark it complete, and refresh. Restore it with **Mark as to do**, then delete it and confirm it disappears from both pages.
 3. Check a busy day in Monthly, Daily, and Weekly views. Open the monthly overflow, test an overnight visit, and dismiss dialogs with Escape and an outside click. Check keyboard navigation and the date, time, and AM/PM controls on a narrow screen.
+
+
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.

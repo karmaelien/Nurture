@@ -1,3 +1,4 @@
+import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
 import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { CareTask, CircleSummary } from '../../api/types.ts'
@@ -198,45 +199,22 @@ export function TaskCalendar({
           Loading repeating tasks…
         </p>
       )}
-      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Calendar view">
-        {(['daily', 'weekly', 'monthly'] as const).map((option) => (
-          <Button
-            key={option}
-            variant={view === option ? 'primary' : 'secondary'}
-            aria-pressed={view === option}
-            onClick={() => {
-              setView(option)
-              setSelection(null)
-            }}
-          >
-            {option[0].toUpperCase() + option.slice(1)}
-          </Button>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-display text-h3 font-semibold" aria-live="polite">
-          {label}
-        </h3>
-        <div className="flex gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              const today = new Date(now)
-              setAnchor(new Date(today.getFullYear(), today.getMonth(), today.getDate()))
-              setPreferredDay(today.getDate())
-              setSelection(null)
-            }}
-          >
-            Today
-          </Button>
-          <Button variant="secondary" aria-label={`Previous ${unit}`} onClick={() => changePeriod(-1)}>
-            Previous
-          </Button>
-          <Button variant="secondary" aria-label={`Next ${unit}`} onClick={() => changePeriod(1)}>
-            Next
-          </Button>
-        </div>
-      </div>
+      <CalendarToolbar
+        view={view}
+        anchor={anchor}
+        label={label}
+        now={now}
+        onView={(value) => {
+          setView(value)
+          setSelection(null)
+        }}
+        onDate={(date) => {
+          setAnchor(date)
+          setPreferredDay(date.getDate())
+          setSelection(null)
+        }}
+        onPeriod={changePeriod}
+      />
       {query.isPending ? (
         <p role="status" className="mt-4 h-[38rem]">
           Loading calendar…

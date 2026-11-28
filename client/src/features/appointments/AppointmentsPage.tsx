@@ -35,13 +35,15 @@ export function AppointmentsPage({
   appointments: providedAppointments,
   onAdd,
   onEdit,
+  onDelete,
   headerAside,
 }: {
   careProfiles: CareProfile[]
   appointments: AppointmentSummary[]
   headerAside?: ReactNode
-  onAdd?: () => void
+  onAdd?: (date?: string, recipientId?: string) => void
   onEdit?: (appointment: AppointmentSummary) => void
+  onDelete?: (appointment: AppointmentSummary) => void
 }) {
   // Newly loaded profiles are selected automatically until explicitly unchecked.
   const [excludedProfiles, setExcludedProfiles] = useState<string[]>([])
@@ -142,7 +144,7 @@ export function AppointmentsPage({
         <FeatureToolbar
           actions={
             onAdd && (
-              <Button disabled={!careProfiles.length} onClick={onAdd}>
+              <Button disabled={!careProfiles.length} onClick={() => onAdd()}>
                 Add appointment
               </Button>
             )
@@ -302,6 +304,10 @@ export function AppointmentsPage({
           onComplete={completeAppointment}
           onMarkTodo={markAppointmentTodo}
           onEdit={onEdit}
+          onAdd={
+            onAdd ? (date) => onAdd(date, visibleProfiles.length === 1 ? visibleProfiles[0].id : undefined) : undefined
+          }
+          onDelete={onDelete}
         />
       </section>
     </main>

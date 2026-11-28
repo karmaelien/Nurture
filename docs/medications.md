@@ -78,8 +78,7 @@ Edit medication, which opens the latest medication definition and changes its
 schedule rather than a single occurrence. Historical doses do not restore old
 definitions, and stopped medications cannot be edited from the calendar.
 The dose popup closes before the editor opens. Existing save validation, version
-checks, and query refreshes apply. Permanent deletion remains available from
-Medication List and its editor; the calendar editor does not offer it.
+checks, and query refreshes apply. Permanent deletion is also available from calendar dose details and the calendar editor, through the same confirmation that explains removal of the medication and all dose history.
 Clicking a dose opens its existing dose controls. Monthly overflow opens that day's
 doses; day/week overflow opens only the selected hour's doses.
 Mark taken/pending refreshes the calendar, schedule, attention panel, and Home.
@@ -523,3 +522,22 @@ configured, the integration case is explicitly skipped.
 The integration test covers migration up/down, CRUD, foreign-family access, caregiver
 removal, version conflicts between concurrent caregivers, idempotent dose writes,
 history preservation, never-viewed missed doses, course edits, stopping, and permanent deletion cascades.
+
+
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.

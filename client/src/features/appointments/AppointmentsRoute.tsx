@@ -15,7 +15,13 @@ import { appointmentCalendarRange, toAppointmentSummary } from './appointment-re
 export function AppointmentsRoute() {
   const { user, circles } = useRequiredSession()
   const { circle, selectCircle } = useCircleSelection(circles)
-  const [editor, setEditor] = useState<{ circleId: string; appointment?: Appointment } | null>(null)
+  const [editor, setEditor] = useState<{
+    circleId: string
+    appointment?: Appointment
+    initialDate?: string
+    recipientId?: string
+    deleting?: boolean
+  } | null>(null)
   const appointments = useAppointments(circle?.id ?? null, appointmentCalendarRange)
   const details = useQuery({
     queryKey: ['circle', user.id, circle?.id],
@@ -54,7 +60,11 @@ export function AppointmentsRoute() {
         headerAside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
         careProfiles={profiles}
         appointments={entries}
-        onAdd={() => setEditor({ circleId: circle.id })}
+        onAdd={(initialDate, recipientId) => setEditor({ circleId: circle.id, initialDate, recipientId })}
+        onDelete={(appointment) => {
+          const record = appointments.data.find((item) => item.id === appointment.id)
+          if (record) setEditor({ circleId: circle.id, appointment: record, deleting: true })
+        }}
         onEdit={(appointment) => {
           const record = appointments.data.find((item) => item.id === appointment.id)
           if (record) setEditor({ circleId: circle.id, appointment: record })
@@ -65,6 +75,9 @@ export function AppointmentsRoute() {
           key={JSON.stringify([circle.id, activeEditor.appointment?.id])}
           circleId={circle.id}
           appointment={activeEditor.appointment}
+          initialDate={activeEditor.initialDate}
+          initialRecipientId={activeEditor.recipientId}
+          deleting={activeEditor.deleting}
           profiles={profiles}
           caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
           onClose={() => setEditor(null)}
