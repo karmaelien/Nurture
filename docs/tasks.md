@@ -23,8 +23,8 @@ so its actions cannot target a task hidden by the new selection.
 Attention Needed remains based on the selected care profile's pending deadlines; title,
 caregiver, and status filters do not hide those reminders. Repeating Tasks management
 also keeps its existing profile-only scope so stopping a schedule remains available when
-individual occurrences do not match the list filters. Creating a task clears search and
-assignment filters along with the existing profile/status reset. Tasks beyond the main
+individual occurrences do not match the list filters. Creating or editing a task preserves search, caregiver, person, and status filters
+and shows a save notice. Clear filters restores all four controls to their defaults. Tasks beyond the main
 list date limit are available through the calendar. Editing preserves filters.
 
 Add task opens a dialog with a title, care profile, optional caregiver, optional
@@ -171,7 +171,7 @@ push, email, and background delivery are not implemented for tasks.
 Home has a single summary: the full-width Attention Needed section. The former
 Outstanding Tasks, Today’s Doses Completed, and Upcoming Appointments metric cards
 are removed. Attention Needed shows counts for overdue tasks,
-overdue appointments, and missed medication doses. It follows Home's Showing
+overdue appointments, and missed medication doses. It follows Home's Care profile
 filter. Each count opens its category in the same shared popup used by feature pages, with a link to open that feature page in the selected family. It excludes
 due-soon tasks and medication reminders, completed items, and undated tasks. Missed
 doses count individual occurrences (including multiple missed takes of one medication)
@@ -308,3 +308,9 @@ existing occurrence IDs, saved edits, and deletion exceptions prevent duplicate
 or restored tasks. Browser and server generation use the same rules. PostgreSQL
 keeps migration, generation, and progress writes under the existing per-series
 transaction locks; covered reads still avoid unnecessary exclusive locks.
+
+## Shared collection controls
+
+Home, Tasks, Appointments, Medications, Expenses, and Documents use the same Care profile dropdown: Everyone or one person. Selection is shared during navigation and isolated by signed-in account and family. Clear filters resets the current page's additional search/category/status/name filters and the shared person/date selection. Saves preserve the filters and show a notice.
+
+CalendarDetailsDialog supplies the same date/person context, Add placement, bounded content, and dismissal controls to all three care calendars. Closing on a filter change or failed read clears the old selection, so a retry does not reopen it. QueryFeedback supplies inline loading, errors, and Try again to collection reads and previews. Appointment-page notification counts intentionally cover everyone in the selected family; its list and calendar follow the dropdown. Home's attention summary follows Home's selected person.

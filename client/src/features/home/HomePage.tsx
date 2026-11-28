@@ -1,13 +1,15 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { Alert } from '../../components/ui/Alert.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { circleLink, useCircleSelection } from '../circles/selection.ts'
-import { Link, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ListChecks, Pill, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
 import type { CircleSummary, ExpenseCategory, CareTask } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
-import { buttonClasses } from '../../components/ui/buttonClasses.ts'
+import { ExpenseForm } from '../expenses/ExpensesPage.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { appointmentUpcomingEnd } from '../appointments/appointment-window.ts'
 import { useExpenses, useTasks } from '../care/queries.ts'
@@ -40,8 +42,10 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
   const [editingTask, setEditingTask] = useState<CareTask | null>(null)
   const [addingTask, setAddingTask] = useState(false)
+  const [addingExpense, setAddingExpense] = useState(false)
+  const [notice, setNotice] = useState('')
   const [deletingTask, setDeletingTask] = useState<CareTask | null>(null)
-  const { recipientId, setRecipientId } = useCareSelection(circle)
+  const { recipientId, setRecipientId, resetFilters } = useCareSelection(circle)
   const now = useMinute()
   const windowDates = dashboardWindow(now)
   const recipient = recipientId || undefined
@@ -92,6 +96,17 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     .sort(compareTasks)
   return (
     <>
+      {addingExpense && (
+        <ExpenseForm
+          circle={circle}
+          expense={null}
+          initialRecipientId={recipientId || undefined}
+          onClose={(saved) => {
+            setAddingExpense(false)
+            if (saved) setNotice('Expense saved. Clear filters if it is not shown.')
+          }}
+        />
+      )}
       {deletingTask && (
         <TaskDeleteDialog task={deletingTask} circleId={circle.id} onClose={() => setDeletingTask(null)} />
       )}
@@ -104,20 +119,16 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             setEditingTask(null)
             setAddingTask(false)
           }}
-          onSaved={() => {
-            if (addingTask) setRecipientId('')
-          }}
+          onSaved={() => setNotice('Task saved. Clear filters if it is not shown.')}
         />
       )}
-      <FeatureToolbar>
+      <FeatureToolbar onClear={resetFilters}>
         <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
       </FeatureToolbar>
+      {notice && <Alert tone="success">{notice}</Alert>}
       {details.isError && (
-        <div role="alert" className="mb-6 flex flex-wrap items-center gap-3">
-          <p>Caregiver names could not load.</p>
-          <Button variant="secondary" onClick={() => details.refetch()}>
-            Retry caregiver names
-          </Button>
+        <div className="mb-6">
+          <QueryFeedback query={details} message="Caregiver names could not load." />
         </div>
       )}
       <HomeAttention
@@ -129,12 +140,18 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
         onTaskEdit={details.data && !details.isError ? setEditingTask : undefined}
         onTaskDelete={setDeletingTask}
+        onAppointmentSaved={(action) =>
+          setNotice(
+            action === 'deleted' ? 'Appointment deleted.' : 'Appointment saved. Clear filters if it is not shown.',
+          )
+        }
       />
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <div className="grid content-start gap-5">
           <Panel
             id="tasks"
             title="Tasks"
+            to={circleLink('/app/tasks', circle.id)}
             icon={<ListChecks />}
             query={tasks}
             empty={!taskEntries.length && !tasks.historyPending}
@@ -143,7 +160,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                 disabled={!details.data || details.isError || !circle.recipients.length}
                 onClick={() => setAddingTask(true)}
               >
-                Add Task
+                Add task
               </Button>
             }
           >
@@ -161,7 +178,6 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
                   person={name(task.recipientId)}
                   caregiver={assigned(task.assignedCaregiverId)}
                   now={now.getTime()}
-                  compact
                   onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
                   onDelete={() => setDeletingTask(task)}
                 />
@@ -174,19 +190,26 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             recipientId={recipient}
             now={now.getTime()}
             caregivers={details.data?.circle.members.map((member) => member.user) ?? []}
+            canAdd={!!details.data && !details.isError}
+            onSaved={(action) =>
+              setNotice(
+                action === 'deleted' ? 'Appointment deleted.' : 'Appointment saved. Clear filters if it is not shown.',
+              )
+            }
           />
         </div>
         <div className="grid content-start gap-5">
           <Panel
             id="expenses"
-            title="Care spending"
+            title="Expenses"
+            to={circleLink('/app/expenses', circle.id)}
             icon={<Wallet />}
             query={expenses}
             empty={!expenses.data?.length}
             action={
-              <Link to={circleLink('/app/expenses', circle.id)} className={buttonClasses({ variant: 'secondary' })}>
-                View all expenses
-              </Link>
+              <Button disabled={!circle.recipients.length} onClick={() => setAddingExpense(true)}>
+                Add expense
+              </Button>
             }
           >
             <p className="text-muted">{now.toLocaleDateString(undefined, { month: 'long' })} to date</p>
@@ -204,26 +227,15 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
             ))}
             <p className="mt-6 text-muted">{expenses.data?.length} recorded expenses · USD</p>
           </Panel>
+          <MedicationPanel
+            id="medications"
+            circle={circle}
+            showCaregiverError={false}
+            showProfileFilter={false}
+            showAttention={false}
+            heading={{ title: 'Medications', icon: <Pill />, to: circleLink('/app/medications', circle.id) }}
+          />
         </div>
-      </div>
-      <div className="mt-5">
-        <MedicationPanel
-          id="medications"
-          circle={circle}
-          showCaregiverError={false}
-          showProfileFilter={false}
-          showAttention={false}
-          heading={
-            <Link
-              to={circleLink('/app/medications', circle.id)}
-              aria-label="View medications"
-              className="flex items-center gap-2 rounded-control hover:text-primary"
-            >
-              <h2 className="font-display text-h3 font-semibold">Medications</h2>
-              <Pill className="size-5 text-primary" aria-hidden />
-            </Link>
-          }
-        />
       </div>
     </>
   )
@@ -256,11 +268,6 @@ export function HomePage() {
         )}
         <p className="mt-8 text-muted">
           Signed in as {user.name} ({user.email}).
-        </p>
-        <p className="mt-6">
-          <Link to="/app/appointments" className="link">
-            Appointments
-          </Link>
         </p>
       </main>
     </div>

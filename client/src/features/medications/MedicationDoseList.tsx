@@ -119,6 +119,7 @@ export function MedicationDoseList({
   doses,
   personName,
   showDate = false,
+  missedDate,
   totalOverdueCount,
   overdueCountIsPartial = false,
   scrollable = true,
@@ -131,6 +132,7 @@ export function MedicationDoseList({
   doses: MedicationOccurrence[]
   personName: (id: string) => string
   showDate?: boolean
+  missedDate?: string
   totalOverdueCount?: number
   overdueCountIsPartial?: boolean
   scrollable?: boolean
@@ -145,12 +147,20 @@ export function MedicationDoseList({
     (a, b) => priority(a) - priority(b) || Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt),
   )
   const overdueCount = totalOverdueCount ?? doses.filter((dose) => isDoseOverdue(dose, now)).length
+  const today = new Date(now)
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const missedContext = !missedDate
+    ? ''
+    : missedDate === todayKey
+      ? ' today'
+      : ` on ${new Date(`${missedDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: 'medium' })}`
   return (
     <>
       {overdueCount > 0 && (
         <p role="status" className="mb-3 font-semibold text-danger">
           {overdueCountIsPartial ? 'At least ' : ''}
           {overdueCount} missed {overdueCount === 1 ? 'dose' : 'doses'}
+          {missedContext}
         </p>
       )}
       <ul className={scrollable ? 'max-h-64 divide-y divide-line overflow-y-auto pr-2' : 'divide-y divide-line'}>

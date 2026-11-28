@@ -1,3 +1,4 @@
+import { CalendarDetailsDialog } from '../../components/ui/CalendarDetailsDialog.tsx'
 import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
 import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { TriangleAlert } from 'lucide-react'
@@ -7,7 +8,6 @@ import { AppointmentDetails } from './AppointmentDetails.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
 import { isAppointmentOverdue } from './appointment-overdue.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
-import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
 import { appointmentLayoutEnd, hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
 
@@ -122,13 +122,6 @@ export function AppointmentCalendar({
         .sort(compareAppointmentListOrder)
     : []
   const hasDayDetails = !!selectedDay && profiles.length > 0
-
-  // Reconcile the native dialog with selection, closing it if filtering/navigation removes its content.
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if ((selectedAppointment || hasDayDetails) && !dialog?.open) dialog?.showModal()
-    else if (!selectedAppointment && !hasDayDetails && dialog?.open) dialog.close()
-  }, [selectedAppointment, hasDayDetails])
 
   function closeDetails() {
     dialogRef.current?.close()
@@ -435,21 +428,37 @@ export function AppointmentCalendar({
           </tbody>
         </table>
       </div>
-      <dialog
-        ref={dialogRef}
-        aria-labelledby={`${headingId}-details`}
-        onClick={closeOnBackdropClick}
+      <CalendarDetailsDialog
+        open={!!(selectedAppointment || hasDayDetails)}
+        dialogRef={dialogRef}
+        title={selectedAppointment ? 'Appointment Details' : 'Appointments'}
+        date={selectedAppointment || selectedDay ? new Date(selectedAppointment?.startsAt ?? selectedDay!) : undefined}
+        scope={profiles.length === 1 ? profiles[0].name : 'All care profiles'}
+        action={
+          (selectedAppointment || hasDayDetails) && onAdd ? (
+            <Button
+              onClick={() => {
+                const date = new Date(selectedAppointment?.startsAt ?? selectedDay!)
+                const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                closeDetails()
+                onAdd(key)
+              }}
+            >
+              Add appointment
+            </Button>
+          ) : undefined
+        }
         onClose={() => {
           setSelectedKey(null)
           setSelectedDay(null)
         }}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
       >
         {selectedAppointment && selectedProfile && (
           <AppointmentDetails
             appointment={selectedAppointment}
             profile={selectedProfile}
-            headingId={`${headingId}-details`}
+
+            overdue={isAppointmentOverdue(selectedAppointment, now)}
             onComplete={onComplete}
             onMarkTodo={onMarkTodo}
             onEdit={
@@ -472,10 +481,7 @@ export function AppointmentCalendar({
         )}
         {!selectedAppointment && hasDayDetails && (
           <>
-            <h2 id={`${headingId}-details`} className="font-display text-h2 font-bold">
-              Appointments · {new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(new Date(selectedDay!))}
-            </h2>
-            <ul className="mt-4 divide-y divide-line">
+            <ul className="divide-y divide-line">
               {dayAppointments.map((appointment) => {
                 const profile = profiles.find(
                   (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
@@ -486,6 +492,7 @@ export function AppointmentCalendar({
                       <AppointmentListItem
                         appointment={appointment}
                         profileName={profile.name}
+                        overdue={isAppointmentOverdue(appointment, now)}
                         onComplete={onComplete ? () => onComplete(appointment) : undefined}
                         onMarkTodo={onMarkTodo ? () => onMarkTodo(appointment) : undefined}
                         onEdit={
@@ -513,24 +520,7 @@ export function AppointmentCalendar({
         {hasDayDetails && !dayAppointments.length && (
           <p className="mt-4 text-muted">No appointments for the selected care profiles on this date.</p>
         )}
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          {(selectedAppointment || hasDayDetails) && onAdd && (
-            <Button
-              onClick={() => {
-                const date = new Date(selectedAppointment?.startsAt ?? selectedDay!)
-                const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-                closeDetails()
-                onAdd(key)
-              }}
-            >
-              Add appointment
-            </Button>
-          )}
-          <Button variant="secondary" onClick={closeDetails}>
-            Close
-          </Button>
-        </div>
-      </dialog>
+      </CalendarDetailsDialog>
       {profiles.length === 0 ? (
         <p className="mt-3 text-muted">Select a care profile to view appointments.</p>
       ) : (

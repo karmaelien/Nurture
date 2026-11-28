@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Outlet, ScrollRestoration } from 'react-router'
 import { careApi } from '../api/care.ts'
-import { Alert } from '../components/ui/Alert.tsx'
 import {
   AppointmentCompletionContext,
   useAppointmentCompletionState,
@@ -21,11 +20,6 @@ export function AppLayout() {
       <AppHeader />
       <AppointmentCompletionContext.Provider value={completion}>
         <Outlet />
-        {completion.saveError && (
-          <div className="fixed right-4 bottom-4 z-30 max-w-sm">
-            <Alert tone="danger">{completion.saveError}</Alert>
-          </div>
-        )}
       </AppointmentCompletionContext.Provider>
       {/* Reset new-page scroll, restore history positions, and honor dashboard section links. */}
       <ScrollRestoration />

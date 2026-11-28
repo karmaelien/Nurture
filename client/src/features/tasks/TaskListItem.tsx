@@ -17,7 +17,6 @@ export function TaskListItem({
   person,
   caregiver,
   now,
-  compact = false,
   onEdit,
   onDelete,
 }: {
@@ -26,7 +25,6 @@ export function TaskListItem({
   person: string
   caregiver: string
   now: number
-  compact?: boolean
   onEdit?: () => void
   onDelete?: () => void
 }) {
@@ -57,9 +55,9 @@ export function TaskListItem({
     }
   }
   return (
-    <li className={`${compact ? 'py-4' : 'py-5'} first:pt-0 last:pb-0`}>
+    <li className="py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className={compact ? 'font-semibold' : 'font-display text-h3 font-semibold'}>{task.title}</h2>
+        <h2 className="font-display text-h3 font-semibold">{task.title}</h2>
         <StatusBadge tone={overdue ? 'danger' : completed ? 'positive' : attention === 'soon' ? 'warning' : 'neutral'}>
           {overdue ? 'Overdue' : completed ? 'Completed' : attention === 'soon' ? 'Due soon' : 'To Do'}
         </StatusBadge>

@@ -131,19 +131,19 @@ it('keeps the selected profile and schedule date when navigating between Home an
     await logIn()
     const user = userEvent.setup()
     renderApp('/app')
-    await user.selectOptions(await screen.findByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(await screen.findByLabelText('Care profile'), 'r_frank')
     fireEvent.change(screen.getByLabelText('Dose date'), { target: { value: '2026-12-01' } })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
-    expect(screen.getByLabelText('Showing')).toHaveValue('r_frank')
+    expect(screen.getByLabelText('Care profile')).toHaveValue('r_frank')
     expect(screen.getByLabelText('Dose date')).toHaveValue('2026-12-01')
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
     fireEvent.change(screen.getByLabelText('Dose date'), { target: { value: '2026-12-02' } })
     await closeDoseAttention()
     await user.click(screen.getByRole('link', { name: 'Overview' }))
     await screen.findByRole('heading', { name: 'Overview' })
-    expect(screen.getByLabelText('Showing')).toHaveValue('r_rose')
+    expect(screen.getByLabelText('Care profile')).toHaveValue('r_rose')
     expect(screen.getByLabelText('Dose date')).toHaveValue('2026-12-02')
     await user.click(
       within(screen.getByRole('region', { name: 'Medication Schedule' })).getByRole('button', { name: 'Today' }),
@@ -170,16 +170,16 @@ it('keeps profile and date selections separate for each family', async () => {
     await logIn()
     const user = userEvent.setup()
     renderApp('/app/medications')
-    await user.selectOptions(await screen.findByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(await screen.findByLabelText('Care profile'), 'r_frank')
     fireEvent.change(screen.getByLabelText('Dose date'), { target: { value: '2026-12-01' } })
     await user.selectOptions(screen.getByLabelText('Care circle'), 'c_second')
-    await waitFor(() => expect(screen.getByLabelText('Showing')).toHaveValue(''))
+    await waitFor(() => expect(screen.getByLabelText('Care profile')).toHaveValue(''))
     expect(screen.getByLabelText('Dose date')).toHaveValue('2026-12-03')
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_second')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_second')
     fireEvent.change(screen.getByLabelText('Dose date'), { target: { value: '2026-12-02' } })
     await user.selectOptions(screen.getByLabelText('Care circle'), 'c_demo')
-    await waitFor(() => expect(screen.getByLabelText('Showing')).toHaveValue('r_frank'))
+    await waitFor(() => expect(screen.getByLabelText('Care profile')).toHaveValue('r_frank'))
     expect(screen.getByLabelText('Dose date')).toHaveValue('2026-12-01')
   } finally {
     vi.useRealTimers()
@@ -196,7 +196,7 @@ it.each(['/app', '/app/medications'])('shows one caregiver-loading error on %s',
   renderApp(path)
   await screen.findByText('Caregiver names could not load.')
   expect(screen.getAllByText('Caregiver names could not load.')).toHaveLength(1)
-  expect(screen.getAllByRole('button', { name: 'Retry caregiver names' })).toHaveLength(1)
+  expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1)
 })
 
 it.each(['/app', '/app/medications'])(
@@ -232,17 +232,17 @@ it.each(['/app', '/app/medications'])(
       fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-12-02' } })
       expect(await within(history).findByText(/^Taken on .+ at /)).toBeInTheDocument()
       await closeDoseAttention()
-      await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+      await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
       expect(
         await within(history).findByText('No doses scheduled on this date for this care profile.'),
       ).toBeInTheDocument()
       await closeDoseAttention()
-      await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
+      await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
       await user.click(await within(history).findByRole('button', { name: /^Mark pending: History sample/ }))
       expect(await within(history).findByRole('button', { name: /^Mark taken: History sample/ })).toBeInTheDocument()
       expect(within(history).queryByText(/^Taken on .+ at /)).not.toBeInTheDocument()
       fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-12-01' } })
-      expect(await within(history).findByText(/Dec 1, 2026/)).toBeInTheDocument()
+      expect(await within(history).findByText(/^Dec 1, 2026 ·/)).toBeInTheDocument()
       fireEvent.change(within(history).getByLabelText('Dose date'), { target: { value: '2026-11-30' } })
       expect(
         await within(history).findByText('No doses scheduled on this date for this care profile.'),
@@ -289,10 +289,10 @@ it('opens missed doses before reminders without duplicating rows', async () => {
     expect(screen.queryByRole('region', { name: 'Dose history' })).not.toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Dose reminders' })).not.toBeInTheDocument()
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention Needed' })).not.toBeInTheDocument())
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
     attention = await openDoseAttention()
     await user.click(within(attention).getAllByRole('button', { name: /^Mark taken: Attention sample/ })[0])
     await within(attention).findByText('No doses need attention in this category.')
@@ -321,7 +321,7 @@ it('opens from navigation and filters medications by care profile', async () => 
   expect(within(list).getByText('Daily · 8 AM, 8 PM')).toBeInTheDocument()
   expect(await within(list).findByText('Maya Alvarez')).toBeInTheDocument()
   expect(await within(list).findByText('Daniel Alvarez')).toBeInTheDocument()
-  await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
   expect(screen.queryByRole('heading', { name: 'Sample medication A' })).not.toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'Sample medication B' })).toBeInTheDocument()
 })
@@ -361,10 +361,10 @@ it.each(['/app', '/app/medications'])(
     await logIn()
     const user = userEvent.setup()
     renderApp(path)
-    await user.selectOptions(await screen.findByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(await screen.findByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
     await user.click(await screen.findByRole('button', { name: 'Add medication' }))
-    const form = within(screen.getByRole('dialog', { name: 'Add Medication' }))
+    const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
     const zoneOptions = within(form.getByLabelText('Time zone')).getAllByRole('option')
     const zoneLabels = zoneOptions.map((option) => option.textContent)
     expect(new Set(zoneLabels).size).toBe(zoneLabels.length)
@@ -386,7 +386,7 @@ it.each(['/app', '/app/medications'])(
     await user.selectOptions(form.getByLabelText('Caregiver (optional)'), 'u_daniel')
     await user.click(form.getByRole('button', { name: 'Save medication' }))
     expect(await screen.findByRole('heading', { name: 'Test medication' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Showing')).toHaveValue('r_frank')
+    expect(screen.getByLabelText('Care profile')).toHaveValue('r_frank')
     const { medications } = await careApi.medications('c_demo')
     expect(medications.find((item) => item.name === 'Test medication')).toMatchObject({
       recipientId: 'r_frank',
@@ -403,7 +403,7 @@ it('rejects duplicate times and lets the user dismiss the form by clicking outsi
   renderApp('/app/medications')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
-  const dialog = screen.getByRole('dialog', { name: 'Add Medication' })
+  const dialog = screen.getByRole('dialog', { name: 'Add medication' })
   const form = within(dialog)
   await user.type(form.getByLabelText('Medication name'), 'Not saved')
   await user.type(form.getByLabelText('Dosage'), '1 tablet')
@@ -450,7 +450,7 @@ it('saves a weekly course with twice-per-day times and a fixed duration', async 
   renderApp('/app/medications')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
-  const form = within(screen.getByRole('dialog', { name: 'Add Medication' }))
+  const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Medication name'), 'Weekly sample')
   await user.type(form.getByLabelText('Dosage'), '1 tablet')
   await user.click(form.getByLabelText('Select all'))
@@ -482,7 +482,7 @@ it('matches the dose count to the time fields and preserves the first entered ti
   renderApp('/app/medications')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
-  const form = within(screen.getByRole('dialog', { name: 'Add Medication' }))
+  const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Dose time 1'), '7:30')
   await user.clear(form.getByLabelText('Doses per day'))
   await user.type(form.getByLabelText('Doses per day'), '3')
@@ -528,7 +528,7 @@ it('requires selected weekdays and saves a course ending on an inclusive date', 
   renderApp('/app/medications')
   await waitFor(() => expect(screen.getByRole('button', { name: 'Add medication' })).toBeEnabled())
   await user.click(await screen.findByRole('button', { name: 'Add medication' }))
-  const form = within(screen.getByRole('dialog', { name: 'Add Medication' }))
+  const form = within(screen.getByRole('dialog', { name: 'Add medication' }))
   await user.type(form.getByLabelText('Medication name'), 'Weekday sample')
   await user.type(form.getByLabelText('Dosage'), '1 tablet')
   await user.click(form.getByLabelText('Select all'))
@@ -576,7 +576,7 @@ it.each(['/app', '/app/medications'])(
     const card = (await screen.findByRole('heading', { name: 'Editable sample' })).closest('li')!
     await waitFor(() => expect(within(card).getByRole('button', { name: 'Edit medication' })).toBeEnabled())
     await user.click(within(card).getByRole('button', { name: 'Edit medication' }))
-    const form = within(screen.getByRole('dialog', { name: 'Edit Medication' }))
+    const form = within(screen.getByRole('dialog', { name: 'Edit medication' }))
     expect(form.getByLabelText('Care profile')).toHaveValue('r_frank')
     expect(form.getByLabelText('Missed after (minutes)')).toHaveValue(45)
     expect(form.getByLabelText('Remind before (minutes) (optional)')).toHaveValue(20)
@@ -608,13 +608,13 @@ it.each(['/app', '/app/medications'])(
     const card = (await screen.findByRole('heading', { name: 'Sample medication A' })).closest('li')!
     await waitFor(() => expect(within(card).getByRole('button', { name: 'Delete permanently' })).toBeEnabled())
     await user.click(within(card).getByRole('button', { name: 'Delete permanently' }))
-    let dialog = within(screen.getByRole('dialog', { name: 'Delete Permanently' }))
-    await user.click(dialog.getByRole('button', { name: 'Keep medication' }))
+    let dialog = within(screen.getByRole('dialog', { name: 'Delete medication?' }))
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('heading', { name: 'Sample medication A' })).toBeInTheDocument()
     await waitFor(() => expect(within(card).getByRole('button', { name: 'Delete permanently' })).toBeEnabled())
     await user.click(within(card).getByRole('button', { name: 'Delete permanently' }))
-    dialog = within(screen.getByRole('dialog', { name: 'Delete Permanently' }))
-    await user.click(dialog.getByRole('button', { name: 'Confirm delete' }))
+    dialog = within(screen.getByRole('dialog', { name: 'Delete medication?' }))
+    await user.click(dialog.getByRole('button', { name: 'Delete medication' }))
     await waitFor(() => expect(screen.queryByRole('heading', { name: 'Sample medication A' })).not.toBeInTheDocument())
     expect((await careApi.medications('c_demo')).medications.some((item) => item.id === 'med_rose')).toBe(false)
     const { readDb } = await import('../../mocks/db.ts')
@@ -632,13 +632,13 @@ it.each(['/app', '/app/medications'])(
     const stop = within(card).getByRole('button', { name: 'Stop medication' })
     await waitFor(() => expect(stop).toBeEnabled())
     await user.click(stop)
-    fireEvent.click(screen.getByRole('dialog', { name: 'Stop Medication' }), { clientX: -1, clientY: -1 })
+    fireEvent.click(screen.getByRole('dialog', { name: 'Stop medication' }), { clientX: -1, clientY: -1 })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(
       (await careApi.medications('c_demo')).medications.find((item) => item.id === 'med_rose')?.stoppedAt,
     ).toBeFalsy()
     await user.click(stop)
-    const dialog = within(screen.getByRole('dialog', { name: 'Stop Medication' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Stop medication' }))
     expect(dialog.getByText(/Past taken and missed doses stay/)).toBeInTheDocument()
     await user.click(dialog.getByRole('button', { name: 'Confirm stop' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -681,17 +681,17 @@ it.each(['/app', '/app/medications'])(
       )
       const user = userEvent.setup()
       renderApp(path)
-      await user.selectOptions(await screen.findByLabelText('Showing'), 'r_rose')
+      await user.selectOptions(await screen.findByLabelText('Care profile'), 'r_rose')
       const card = (await screen.findByRole('heading', { name: 'Restart sample' })).closest('li')!
       const restart = within(card).getByRole('button', { name: 'Restart medication' })
       await waitFor(() => expect(restart).toBeEnabled())
       await user.click(restart)
-      fireEvent.click(screen.getByRole('dialog', { name: 'Restart Medication' }), { clientX: -1, clientY: -1 })
+      fireEvent.click(screen.getByRole('dialog', { name: 'Restart medication' }), { clientX: -1, clientY: -1 })
       expect(
         (await careApi.medications('c_demo')).medications.filter((item) => item.name === 'Restart sample'),
       ).toHaveLength(1)
       await user.click(restart)
-      const form = within(screen.getByRole('dialog', { name: 'Restart Medication' }))
+      const form = within(screen.getByRole('dialog', { name: 'Restart medication' }))
       expect(form.getByLabelText('Medication name')).toHaveValue('Restart sample')
       expect(form.getByLabelText('Dosage')).toHaveValue('1 tablet')
       expect(form.getByLabelText('Doses per day')).toHaveValue(2)
@@ -702,7 +702,7 @@ it.each(['/app', '/app/medications'])(
       fireEvent.change(form.getByLabelText('End date'), { target: { value: '2026-12-11' } })
       await user.click(form.getByRole('button', { name: 'Start new course' }))
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-      expect(screen.getByLabelText('Showing')).toHaveValue('r_rose')
+      expect(screen.getByLabelText('Care profile')).toHaveValue('r_rose')
       const courses = (await careApi.medications('c_demo')).medications.filter((item) => item.name === 'Restart sample')
       expect(courses).toHaveLength(2)
       expect(courses.find((item) => item.id === medication.id)).toEqual(stopped)
@@ -870,10 +870,10 @@ it('shows today’s overdue doses on both pages and removes them when taken', as
     let overdue = await openDoseAttention()
     expect(await within(overdue).findByRole('button', { name: '1 missed dose' })).toBeInTheDocument()
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(screen.queryByRole('button', { name: '1 missed dose' })).not.toBeInTheDocument())
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), '')
+    await user.selectOptions(screen.getByLabelText('Care profile'), '')
     await screen.findByRole('region', { name: 'Attention Needed' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
@@ -918,10 +918,10 @@ it('carries previous-day pending doses across both pages without changing today�
     let previous = await openDoseAttention()
     expect(await within(previous).findByRole('button', { name: '1 missed dose' })).toBeInTheDocument()
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(screen.queryByRole('button', { name: '1 missed dose' })).not.toBeInTheDocument())
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), '')
+    await user.selectOptions(screen.getByLabelText('Care profile'), '')
     await screen.findByRole('region', { name: 'Attention Needed' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
@@ -1057,10 +1057,10 @@ it('shows next-day reminders on Medications and keeps Home limited to overdue su
     let reminders = await openDoseAttention('reminders')
     expect(await within(reminders).findByText('Due in 15 min')).toBeInTheDocument()
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
     await waitFor(() => expect(screen.queryByText('Reminder sample · 1 tablet')).not.toBeInTheDocument())
     await closeDoseAttention()
-    await user.selectOptions(screen.getByLabelText('Showing'), '')
+    await user.selectOptions(screen.getByLabelText('Care profile'), '')
     await screen.findByRole('region', { name: 'Attention Needed' })
     await user.click(screen.getByRole('link', { name: 'Medications' }))
     await screen.findByRole('heading', { name: 'Medications', level: 1 })
@@ -1079,3 +1079,49 @@ it('shows next-day reminders on Medications and keeps Home limited to overdue su
     vi.useRealTimers()
   }
 })
+
+it.each(['/app', '/app/medications'])(
+  'labels schedule missed doses by selected date while attention keeps its total on %s',
+  async (path) => {
+    vi.setSystemTime(new Date(2026, 10, 27, 23))
+    try {
+      await logIn()
+      for (const medication of (await careApi.medications('c_demo')).medications)
+        await careApi.deleteMedication('c_demo', medication.id, medication.version)
+      await createTrackedMedication('c_demo', {
+        recipientId: 'r_rose',
+        name: 'Date scope sample',
+        dosage: '1 tablet',
+        assignedCaregiverId: null,
+        schedule: {
+          startsOn: '2026-11-26',
+          end: { kind: 'afterDays', days: 2 },
+          daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+          times: ['08:00', '20:00'],
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+      })
+      const user = userEvent.setup()
+      renderApp(path)
+      const schedule = await screen.findByRole('region', { name: 'Medication Schedule' })
+      expect(await within(schedule).findByText('2 missed doses today')).toBeInTheDocument()
+      expect(
+        await within(screen.getByRole('region', { name: 'Attention Needed' })).findByRole('button', {
+          name: '4 missed doses',
+        }),
+      ).toBeInTheDocument()
+      fireEvent.change(within(schedule).getByLabelText('Dose date'), { target: { value: '2026-11-26' } })
+      const date = new Date(2026, 10, 26).toLocaleDateString(undefined, { dateStyle: 'medium' })
+      expect(await within(schedule).findByText(`2 missed doses on ${date}`)).toBeInTheDocument()
+      expect(
+        within(screen.getByRole('region', { name: 'Attention Needed' })).getByRole('button', {
+          name: '4 missed doses',
+        }),
+      ).toBeInTheDocument()
+      await user.click(within(schedule).getByRole('button', { name: 'Today' }))
+      expect(await within(schedule).findByText('2 missed doses today')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)

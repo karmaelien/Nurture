@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react'
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Lock, Users } from 'lucide-react'
 import type { CareDocument, CircleDetail, CircleSummary } from '../../api/types.ts'
@@ -39,16 +42,7 @@ function FilePreview({ circleId, document }: { circleId: string; document: CareD
     setUrl(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [file.data])
-  if (file.isPending) return <p role="status">Loading preview…</p>
-  if (file.isError)
-    return (
-      <Alert tone="danger">
-        {errorMessage(file.error)}{' '}
-        <Button variant="secondary" onClick={() => void file.refetch()}>
-          Retry preview
-        </Button>
-      </Alert>
-    )
+  if (file.isPending || file.isError) return <QueryFeedback query={file} loading="Loading preview…" />
   return (
     <div className="space-y-3">
       {url &&
@@ -80,11 +74,13 @@ function DocumentDetails({
   circle,
   refresh,
   onDeleted,
+  onSaved,
 }: {
   document: CareDocument
   circle: CircleDetail
   refresh: () => Promise<void>
   onDeleted: () => void
+  onSaved: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -93,8 +89,10 @@ function DocumentDetails({
   const [confirm, setConfirm] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const writing = useRef(false)
   async function remove() {
+    if (writing.current) return
+    writing.current = true
     setPending(true)
     setError('')
     try {
@@ -105,6 +103,7 @@ function DocumentDetails({
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
+      writing.current = false
       setPending(false)
     }
   }
@@ -124,9 +123,17 @@ function DocumentDetails({
       </p>
       <div className="mt-6 border-t border-line pt-5">
         {editing ? (
-          <FormDialog title="Edit document" busy={editingBusy} onClose={() => setEditing(false)}>
+          <FormDialog
+            title="Edit document"
+            isBusy={() => writing.current}
+            busy={editingBusy}
+            onClose={() => setEditing(false)}
+          >
             <DocumentForm
-              onPendingChange={setEditingBusy}
+              onPendingChange={(busy) => {
+                writing.current = busy
+                setEditingBusy(busy)
+              }}
               document={document}
               circle={circle}
               userId={user.id}
@@ -136,7 +143,7 @@ function DocumentDetails({
                 await documentsApi.update(circle.id, document.id, { title, category, sharing, version })
                 await refresh()
                 setEditing(false)
-                setNotice('Document updated.')
+                onSaved()
               }}
             />
           </FormDialog>
@@ -169,7 +176,6 @@ function DocumentDetails({
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setNotice('')
                     setEditing(true)
                     setConfirm(false)
                   }}
@@ -187,7 +193,12 @@ function DocumentDetails({
         )}
       </div>
       {confirm && (
-        <FormDialog title="Delete document?" busy={pending} onClose={() => setConfirm(false)}>
+        <FormDialog
+          title="Delete document?"
+          isBusy={() => writing.current}
+          busy={pending}
+          onClose={() => setConfirm(false)}
+        >
           <p className="mb-4">Delete “{document.title}”? This removes the file for everyone and cannot be undone.</p>
           {error && (
             <div className="mb-4">
@@ -196,10 +207,10 @@ function DocumentDetails({
           )}
           <div className="flex flex-wrap gap-3">
             <Button variant="danger" loading={pending} onClick={() => void remove()}>
-              Confirm delete
+              Delete document
             </Button>
             <Button variant="secondary" disabled={pending} onClick={() => setConfirm(false)}>
-              Cancel deletion
+              Cancel
             </Button>
           </div>
         </FormDialog>
@@ -207,11 +218,6 @@ function DocumentDetails({
       {error && !confirm && (
         <div className="mt-4">
           <Alert tone="danger">{error}</Alert>
-        </div>
-      )}
-      {notice && (
-        <div className="mt-4">
-          <Alert tone="success">{notice}</Alert>
         </div>
       )}
     </aside>
@@ -228,16 +234,17 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
     retry: false,
   })
   const [search, setSearch] = useState('')
-  const [recipient, setRecipient] = useState('all')
+  const { recipientId: recipient, setRecipientId: setRecipient, resetFilters } = useCareSelection(circle)
   const [category, setCategory] = useState('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [upload, setUpload] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const uploadingNow = useRef(false)
   const [notice, setNotice] = useState('')
   const refresh = () => cache.invalidateQueries({ queryKey: key })
   const visible = (documents.data?.documents ?? []).filter(
     (d) =>
-      (recipient === 'all' || d.recipientId === recipient) &&
+      (!recipient || d.recipientId === recipient) &&
       (category === 'all' || d.category === category) &&
       `${d.title} ${d.fileName}`.toLowerCase().includes(search.trim().toLowerCase()),
   )
@@ -245,27 +252,37 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
   return (
     <section className={panel}>
       {upload && detail.data && (
-        <FormDialog title="Upload a document" busy={uploading} onClose={() => setUpload(false)}>
+        <FormDialog
+          title="Upload a document"
+          isBusy={() => uploadingNow.current}
+          busy={uploading}
+          onClose={() => setUpload(false)}
+        >
           <DocumentForm
             circle={detail.data.circle}
             userId={user.id}
-            onPendingChange={setUploading}
+            initialRecipientId={recipient || undefined}
+            onPendingChange={(busy) => {
+              uploadingNow.current = busy
+              setUploading(busy)
+            }}
             cancel={() => setUpload(false)}
             save={async (metadata, file) => {
               const result = await documentsApi.upload(circle.id, file!, metadata)
               await refresh()
-              setSearch('')
-              setCategory('all')
-              setRecipient('all')
               setSelected(result.document.id)
               setUpload(false)
-              setNotice('Document uploaded.')
+              setNotice('Document uploaded. Clear filters if it is not shown.')
             }}
           />
         </FormDialog>
       )}
-      {notice && <Alert tone="success">{notice}</Alert>}
       <FeatureToolbar
+        onClear={() => {
+          resetFilters()
+          setSearch('')
+          setCategory('all')
+        }}
         actions={
           <Button
             disabled={upload || !detail.data || detail.isError || !circle.recipients.length}
@@ -285,14 +302,7 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <DocumentSelect label="Filter by recipient" value={recipient} onChange={setRecipient}>
-          <option value="all">Everyone</option>
-          {circle.recipients.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </DocumentSelect>
+        <CareProfileSelection circle={circle} value={recipient} onChange={setRecipient} />
         <DocumentSelect label="Filter by category" value={category} onChange={setCategory}>
           <option value="all">All categories</option>
           {Object.entries(documentCategories).map(([value, label]) => (
@@ -302,26 +312,22 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
           ))}
         </DocumentSelect>
       </FeatureToolbar>
+      {notice && <Alert tone="success">{notice}</Alert>}
       {mocksEnabled && (
         <p className="mb-4 text-small text-muted">
           Demo documents — uploads and changes are temporary and reset when you reload. Use sample files only.
         </p>
       )}
-      {documents.isPending || detail.isPending ? (
-        <p role="status">Loading documents…</p>
-      ) : documents.isError || detail.isError ? (
-        <Alert tone="danger">
-          {errorMessage(documents.error ?? detail.error)}{' '}
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void documents.refetch()
-              void detail.refetch()
-            }}
-          >
-            Try again
-          </Button>
-        </Alert>
+      {documents.isPending || detail.isPending || documents.isError || detail.isError ? (
+        <QueryFeedback
+          loading="Loading documents…"
+          query={{
+            isPending: documents.isPending || detail.isPending,
+            isError: documents.isError || detail.isError,
+            error: documents.error ?? detail.error,
+            refetch: () => Promise.all([documents.refetch(), detail.refetch()]),
+          }}
+        />
       ) : (
         <>
           <p className="mb-4 text-small text-muted" role="status">
@@ -372,6 +378,7 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
                   document={active}
                   circle={detail.data.circle}
                   refresh={refresh}
+                  onSaved={() => setNotice('Document saved. Clear filters if it is not shown.')}
                   onDeleted={() => {
                     setSelected(null)
                     setNotice('Document deleted.')

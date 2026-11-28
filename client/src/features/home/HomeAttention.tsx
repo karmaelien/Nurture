@@ -31,6 +31,7 @@ export function HomeAttention({
   caregivers,
   onTaskEdit,
   onTaskDelete,
+  onAppointmentSaved,
 }: {
   circle: CircleSummary
   recipientId: string
@@ -40,6 +41,7 @@ export function HomeAttention({
   caregivers: User[]
   onTaskEdit?: (task: CareTask) => void
   onTaskDelete: (task: CareTask) => void
+  onAppointmentSaved: (action: 'saved' | 'deleted') => void
 }) {
   const appointments = useAppointments(
     circle.id,
@@ -51,7 +53,7 @@ export function HomeAttention({
     recipientId || undefined,
   )
   const { applyCompletion, setCompletion } = useAppointmentCompletion()
-  const [editing, setEditing] = useState<Appointment | null>(null)
+  const [editing, setEditing] = useState<{ appointment: Appointment; deleting?: boolean } | null>(null)
   const lateTasks = tasks.isError
     ? []
     : (tasks.data ?? []).filter((task) => taskAttention(task, now) === 'overdue').sort(compareTasks)
@@ -97,13 +99,14 @@ export function HomeAttention({
   const editor = editing && (
     <AppointmentEditor
       circleId={circle.id}
-      appointment={editing}
+      appointment={editing.appointment}
+      deleting={editing.deleting}
+      onSaved={onAppointmentSaved}
       profiles={circle.recipients}
       caregivers={caregivers}
       onClose={() => setEditing(null)}
     />
   )
-  if (rows.every((row) => !row.query.isPending && !row.query.isError && !row.partial && row.count === 0)) return editor
   return (
     <>
       <AttentionNeeded
@@ -147,7 +150,6 @@ export function HomeAttention({
                                 task={task}
                                 circleId={circle.id}
                                 now={now}
-                                compact
                                 person={personName(task.recipientId)}
                                 caregiver={caregiverName(task.assignedCaregiverId)}
                                 onEdit={
@@ -180,11 +182,18 @@ export function HomeAttention({
                                   profileName={personName(appointment.recipientId)}
                                   overdue
                                   onComplete={() => setCompletion(appointment, 'completed')}
+                                  onDelete={() => {
+                                    const record = appointments.data?.find((record) => record.id === appointment.id)
+                                    if (record) {
+                                      close()
+                                      setEditing({ appointment: record, deleting: true })
+                                    }
+                                  }}
                                   onEdit={() => {
                                     const record = appointments.data?.find((record) => record.id === appointment.id)
                                     if (record) {
                                       close()
-                                      setEditing(record)
+                                      setEditing({ appointment: record })
                                     }
                                   }}
                                 />

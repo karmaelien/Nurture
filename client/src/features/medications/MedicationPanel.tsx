@@ -1,7 +1,8 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { PanelHeader } from '../../components/ui/PanelHeader.tsx'
 import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, Medication } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -31,14 +32,14 @@ export function MedicationPanel({
 }: {
   circle: CircleSummary
   showProfileFilter?: boolean
-  heading?: ReactNode
+  heading?: { title: string; icon: ReactNode; to: string }
   id?: string
   showCaregiverError?: boolean
   expanded?: boolean
   showAttention?: boolean
 }) {
   const { user } = useRequiredSession()
-  const { recipientId, setRecipientId } = useCareSelection(circle)
+  const { recipientId, setRecipientId, resetFilters, resetKey } = useCareSelection(circle)
   const [editor, setEditor] = useState<{
     medication?: Medication
     deleting?: boolean
@@ -47,7 +48,10 @@ export function MedicationPanel({
     startsOn?: string
   } | null>(null)
   const medications = useMedications(circle.id)
-  const [selectedMedication, setSelectedMedication] = useState('')
+  const [selection, setSelection] = useState({ id: '', resetKey })
+  const selectedMedication = selection.resetKey === resetKey ? selection.id : ''
+  const setSelectedMedication = (id: string) => setSelection({ id, resetKey })
+  const [notice, setNotice] = useState('')
   const medicationId = medications.data?.some((item) => item.id === selectedMedication) ? selectedMedication : ''
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
@@ -60,26 +64,32 @@ export function MedicationPanel({
         (!recipientId || medication.recipientId === recipientId) && (!medicationId || medication.id === medicationId),
     ) ?? []
 
+  const actions = (
+    <>
+      <MedicationNotifications />
+      <Button disabled={!detail.data || detail.isError || !circle.recipients.length} onClick={() => setEditor({})}>
+        Add medication
+      </Button>
+    </>
+  )
   return (
     <section
       id={id}
       aria-label="Medications"
       className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6"
     >
+      {heading && <PanelHeader {...heading} action={actions} />}
       <FeatureToolbar
-        actions={
-          <>
-            <MedicationNotifications />
-            <Button
-              disabled={!detail.data || detail.isError || !circle.recipients.length}
-              onClick={() => setEditor({})}
-            >
-              Add medication
-            </Button>
-          </>
+        actions={heading ? undefined : actions}
+        onClear={
+          showProfileFilter
+            ? () => {
+                resetFilters()
+                setSelectedMedication('')
+              }
+            : undefined
         }
       >
-        {heading}
         {showProfileFilter && (
           <div className="w-64 max-w-full">
             <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
@@ -104,10 +114,11 @@ export function MedicationPanel({
           allowDelete
           onClose={() => setEditor(null)}
           onSaved={() => {
-            if (!editor.medication || editor.restarting) setSelectedMedication('')
+            setNotice(editor.deleting ? 'Medication deleted.' : 'Medication saved. Clear filters if it is not shown.')
           }}
         />
       )}
+      {notice && <Alert tone="success">{notice}</Alert>}
       {showAttention && <MedicationAttention circle={circle} recipientId={recipientId} />}
       <div className={expanded ? 'grid items-start gap-5 lg:grid-cols-2' : ''}>
         <MedicationDoses circle={circle} recipientId={recipientId} medicationId={medicationId} fillColumn={expanded} />
@@ -119,25 +130,11 @@ export function MedicationPanel({
           <div className={expanded ? 'min-h-0 flex-1 overflow-y-auto pr-2' : ''}>
             {showCaregiverError && detail.isError && (
               <div className="mb-5">
-                <Alert tone="danger">
-                  Caregiver names could not load.{' '}
-                  <Button variant="secondary" onClick={() => void detail.refetch()}>
-                    Retry caregiver names
-                  </Button>
-                </Alert>
+                <QueryFeedback query={detail} message="Caregiver names could not load." />
               </div>
             )}
-            {medications.isPending ? (
-              <p role="status" className="text-muted">
-                Loading medications…
-              </p>
-            ) : medications.isError ? (
-              <Alert tone="danger">
-                {errorMessage(medications.error)}{' '}
-                <Button variant="secondary" onClick={() => void medications.refetch()}>
-                  Try again
-                </Button>
-              </Alert>
+            {medications.isPending || medications.isError ? (
+              <QueryFeedback query={medications} loading="Loading medications…" />
             ) : visible.length === 0 ? (
               <p className="text-muted">No medications for {recipientId ? 'this care profile' : 'this family'}.</p>
             ) : (

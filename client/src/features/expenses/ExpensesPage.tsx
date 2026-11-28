@@ -1,3 +1,6 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { CircleSelection } from '../circles/CircleSelection.tsx'
 import { useCircleSelection } from '../circles/selection.ts'
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
@@ -44,20 +47,24 @@ function Select({
     </SelectField>
   )
 }
-function ExpenseForm({
+export function ExpenseForm({
   circle,
   expense,
   onClose,
+  initialRecipientId,
 }: {
   circle: CircleSummary
   expense: Expense | null
+  initialRecipientId?: string
   onClose: (saved: boolean) => void
 }) {
   const create = useCreateExpense(circle.id)
   const update = useUpdateExpense(circle.id)
   const [description, setDescription] = useState(expense?.description ?? '')
   const [amount, setAmount] = useState(expense ? (expense.amountCents / 100).toFixed(2) : '')
-  const [recipientId, setRecipientId] = useState(expense?.recipientId ?? circle.recipients[0]?.id ?? '')
+  const [recipientId, setRecipientId] = useState(
+    expense?.recipientId ?? initialRecipientId ?? circle.recipients[0]?.id ?? '',
+  )
   const [category, setCategory] = useState<ExpenseCategory>(expense?.category ?? 'other')
   const [today] = useState(() => dateString(new Date()))
   const [date, setDate] = useState(() => expense?.incurredOn ?? today)
@@ -95,7 +102,12 @@ function ExpenseForm({
     }
   }
   return (
-    <FormDialog title={expense ? 'Edit expense' : 'Add expense'} busy={pending} onClose={() => onClose(false)}>
+    <FormDialog
+      isBusy={() => saving.current}
+      title={expense ? 'Edit expense' : 'Add expense'}
+      busy={pending}
+      onClose={() => onClose(false)}
+    >
       <form onSubmit={submit} aria-label={expense ? 'Edit expense' : 'Add expense'}>
         <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
           <TextField
@@ -114,7 +126,7 @@ function ExpenseForm({
             required
             placeholder="0.00"
           />
-          <Select label="Care recipient" value={recipientId} onChange={setRecipientId}>
+          <Select label="Care profile" value={recipientId} onChange={setRecipientId}>
             {circle.recipients.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -157,12 +169,13 @@ function ExpenseForm({
 }
 function CircleExpenses({ circle }: { circle: CircleSummary }) {
   const [months, setMonths] = useState('1')
-  const [recipientId, setRecipientId] = useState('')
+  const { recipientId, setRecipientId, resetFilters } = useCareSelection(circle)
   const [category, setCategory] = useState('')
   const [editor, setEditor] = useState<Expense | null | undefined>(undefined)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const remove = useDeleteExpense(circle.id)
+  const deletingNow = useRef(false)
   const [now] = useState(() => new Date())
   const fromDate = dateString(new Date(now.getFullYear(), now.getMonth() - Number(months) + 1, 1))
   const toDate = dateString(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
@@ -183,14 +196,19 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
           key={editor?.id ?? 'new'}
           circle={circle}
           expense={editor}
+          initialRecipientId={recipientId || undefined}
           onClose={(saved) => {
             setEditor(undefined)
-            if (saved) setNotice('Expense saved. The list shows expenses matching your filters.')
+            if (saved) setNotice('Expense saved. Clear filters if it is not shown.')
           }}
         />
       )}
-      {notice && <Alert tone="success">{notice}</Alert>}
       <FeatureToolbar
+        onClear={() => {
+          resetFilters()
+          setMonths('1')
+          setCategory('')
+        }}
         actions={
           <Button
             disabled={editor !== undefined || !circle.recipients.length}
@@ -208,14 +226,7 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
           <option value="6">Last 6 months</option>
           <option value="12">Last 12 months</option>
         </Select>
-        <Select label="Filter by recipient" value={recipientId} onChange={setRecipientId}>
-          <option value="">Everyone</option>
-          {circle.recipients.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </Select>
+        <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
         <Select label="Filter by category" value={category} onChange={setCategory}>
           <option value="">All categories</option>
           {Object.entries(categories).map(([key, label]) => (
@@ -225,15 +236,9 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
           ))}
         </Select>
       </FeatureToolbar>
-      {query.isPending ? (
-        <p role="status">Loading expenses…</p>
-      ) : query.isError ? (
-        <Alert tone="danger">
-          {errorMessage(query.error)}{' '}
-          <Button variant="secondary" onClick={() => void query.refetch()}>
-            Try again
-          </Button>
-        </Alert>
+      {notice && <Alert tone="success">{notice}</Alert>}
+      {query.isPending || query.isError ? (
+        <QueryFeedback query={query} loading="Loading expenses…" />
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-2">
           <section className={`${panel} grid gap-5`} aria-label="Spending summary">
@@ -310,7 +315,12 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                     </div>
                   </div>
                   {deleting === expense.id && (
-                    <FormDialog title="Delete expense?" busy={remove.isPending} onClose={() => setDeleting(null)}>
+                    <FormDialog
+                      title="Delete expense?"
+                      isBusy={() => deletingNow.current}
+                      busy={remove.isPending}
+                      onClose={() => setDeleting(null)}
+                    >
                       <p className="mb-4">Delete “{expense.description}”? This cannot be undone.</p>
                       {remove.isError && <Alert tone="danger">{errorMessage(remove.error)}</Alert>}
                       <div className="flex gap-3">
@@ -318,6 +328,8 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                           variant="danger"
                           loading={remove.isPending}
                           onClick={async () => {
+                            if (deletingNow.current) return
+                            deletingNow.current = true
                             try {
                               await remove.mutateAsync(expense.id)
                               setDeleting(null)
@@ -325,10 +337,12 @@ function CircleExpenses({ circle }: { circle: CircleSummary }) {
                               setNotice('Expense deleted.')
                             } catch {
                               /* Error is displayed above. */
+                            } finally {
+                              deletingNow.current = false
                             }
                           }}
                         >
-                          Confirm delete
+                          Delete expense
                         </Button>
                         <Button variant="secondary" disabled={remove.isPending} onClick={() => setDeleting(null)}>
                           Cancel

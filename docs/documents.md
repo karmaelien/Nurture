@@ -101,3 +101,7 @@ The frontend API and permissions are unchanged. The frontend currently still use
 Database backups now include the file contents. This simple approach suits the class
 project; files contribute to database size, and uploads/downloads are buffered in memory
 with a 10 MiB per-file limit.
+
+## Shared controls and save feedback
+
+Care profile uses the shared Everyone/single-person selection across Home and the feature pages. Clear filters resets person, search, and category. Uploads and edits preserve those filters and show a workspace notice even when an edited title no longer matches the search. The preview uses the shared inline loading/error/Try again controls. Delete document and Cancel use the shared confirmation shell; duplicate requests and every dismissal path are blocked while a write is pending.

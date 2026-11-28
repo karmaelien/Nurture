@@ -33,10 +33,12 @@ export function DocumentForm({
   circle,
   userId,
   document,
+  initialRecipientId,
   save,
   cancel,
   onPendingChange,
 }: {
+  initialRecipientId?: string
   circle: CircleDetail
   userId: string
   document?: CareDocument
@@ -47,7 +49,9 @@ export function DocumentForm({
   // Keep the version of the form snapshot even if query data refreshes behind it.
   const [version] = useState(document?.version)
   const [title, setTitle] = useState(document?.title ?? '')
-  const [recipientId, setRecipientId] = useState(document?.recipientId ?? circle.recipients[0]?.id ?? '')
+  const [recipientId, setRecipientId] = useState(
+    document?.recipientId ?? initialRecipientId ?? circle.recipients[0]?.id ?? '',
+  )
   const [category, setCategory] = useState<DocumentCategory>(document?.category ?? 'medical')
   const [sharing, setSharing] = useState<DocumentSharing>(document?.sharing ?? { mode: 'selected', memberIds: [] })
   const [file, setFile] = useState<File>()
@@ -112,7 +116,7 @@ export function DocumentForm({
           maxLength={200}
         />
         {!document && (
-          <DocumentSelect label="Document recipient" value={recipientId} onChange={setRecipientId}>
+          <DocumentSelect label="Care profile" value={recipientId} onChange={setRecipientId}>
             {circle.recipients.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}

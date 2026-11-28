@@ -9,10 +9,11 @@ Home and Appointments read the same records for the selected family. In demo mod
 ## Display and selection rules
 
 The page uses the shared title/care-circle header and a workspace toolbar with the
-care-profile selector on the left and Add appointment on the right. The searchable dropdown is the only profile-selection control; the duplicate
-selected-profile card and per-profile popup are removed. Upcoming visits occupy
-a single full-width capped list, with the calendar below. This follows the [shared page design](medications.md#shared-page-design)
-while preserving multi-profile selection and family-wide notification scope.
+care-profile dropdown on the left and Add appointment on the right. Choose Everyone
+or one person, matching Tasks, Medications, Expenses, Documents, and Home. The
+selection follows navigation within the same signed-in account and family. The
+upcoming list and calendar follow that selection; appointment notification counts
+continue to cover everyone in the selected family.
 
 | Where | Who appears |
 | --- | --- |
@@ -20,9 +21,11 @@ while preserving multi-profile selection and family-wide notification scope.
 | **Appointments → Overdue count** | Everyone in the selected family. The count includes scheduled visits that have reached their recorded end time. It stays visible if you deselect the person's profile below. Open it to see overdue visits for the whole family. |
 | **Appointments → Upcoming appointments list** | Only selected care profiles. The filter applies to both overdue and upcoming rows. For example, if Rose has an overdue visit and only Frank is selected, Rose's visit disappears from this list and still counts in the overdue count. |
 | **Appointments → Calendar** | Only selected care profiles, within the visible calendar period. |
-| **Home → Appointments list and Attention Needed summary** | Both follow Home's **Showing** selection. Home starts on **Everyone** in the selected family. The overdue count opens the shared scrolling popup, with direct appointment actions and a link to Appointments. |
+| **Home → Appointments list and Attention Needed summary** | Both follow the shared **Care profile** selection. The default is **Everyone** in the selected family. The overdue count opens the shared scrolling popup, with direct appointment actions and a link to Appointments. |
 
-On Appointments, all profiles start selected. Search narrows the dropdown choices. **Select all**, **Select with upcoming appointments**, and **Clear selection** apply to all profiles regardless of the search text. Uncheck a profile in the dropdown to deselect it. The selection summary covers only the selected profiles.
+The default is Everyone. Clear filters restores Everyone and resets any additional
+filters on the current page. Successful saves preserve filters and show a notice;
+use Clear filters if a saved item is outside the current selection.
 
 Home and Appointments use the same upcoming window, from now through exactly seven 24-hour periods from now, including both endpoints. Upcoming counts include scheduled visits in that window. Overdue visits appear first in the main appointment lists with a red **Overdue** badge. Completed visits in the window remain visible at the bottom with a checkmark. Each group is sorted by start time.
 
@@ -41,6 +44,7 @@ Attention Needed uses the shared compact count buttons: Overdue first, Today sec
 ## Calendar
 
 - Monthly is the initial view. Daily and Weekly use a 24-hour timeline and weeks start on Sunday. Month navigation preserves the preferred day through shorter months. For example, January 31 through February to March lands on March 31.
+- Calendar details use the same CalendarDetailsDialog as Tasks and Medications: date/person context, Add action, bounded content, Close, Escape, and click-away. Single-appointment details reuse the list card, including the map link, duration, overdue badge, completion, edit, and delete actions. Filtering or a failed read closes details without reopening them on retry.
 - Monthly cells show up to three appointment chips. The remaining count opens the full day's list. Clicking a compact chip opens details. Close, Escape, and clicking outside dismiss appointment dialogs.
 - Daily and Weekly position appointments by time and show overlapping blocks side by side. Overnight visits are clipped at midnight. A visit that ends exactly at midnight does not appear the following day.
 - A record without an end time displays only its start time and gets a short calendar block limited to its start date. These records do not trigger overdue warnings.
@@ -103,3 +107,9 @@ Medication doses and task deadlines are points in time, so they use hourly slots
 Medication edits affect its schedule; permanent deletion explicitly confirms removal
 of the medication and all dose history. Task edits/deletes affect one occurrence,
 with stopping repeats retained as a separate schedule action.
+
+
+Home uses the same shared card header as Tasks, Expenses, and Medications: icon
+beside the linked title and Add appointment at the top right. Add opens the existing
+appointment editor with Home's selected profile prefilled. Direct Delete appointment
+uses the existing confirmation; saves and deletions refresh both Home and Appointments.

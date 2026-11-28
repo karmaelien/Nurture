@@ -1,12 +1,12 @@
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { careApi } from '../../api/care.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
 import type { CircleDetail, Medication } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { SelectField, TextField } from '../../components/ui/Field.tsx'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useRequiredSession } from '../auth/session.ts'
 import { TimeZoneSelect } from '../profiles/TimeZoneSelect.tsx'
 import { deviceTimeZone } from '../profiles/schemas.ts'
@@ -62,12 +62,8 @@ export function MedicationEditor({
   const [confirmDelete, setConfirmDelete] = useState(deleting)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const heading = useId()
   const zone = medication?.schedule.timeZone ?? user.timeZone ?? deviceTimeZone()
   const [today] = useState(() => dateInZone(new Date(), zone))
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -139,34 +135,23 @@ export function MedicationEditor({
   }
 
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={heading}
+    <FormDialog
+      title={
+        restarting
+          ? 'Restart medication'
+          : stopping
+            ? 'Stop medication'
+            : confirmDelete
+              ? 'Delete medication?'
+              : medication
+                ? 'Edit medication'
+                : 'Add medication'
+      }
+      dialogRef={dialog}
+      busy={busy}
+      isBusy={() => saving.current}
       onClose={onClose}
-      onCancel={(event) => {
-        if (saving.current) event.preventDefault()
-      }}
-      onClick={(event) => {
-        if (!saving.current) closeOnBackdropClick(event)
-      }}
-      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
     >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={heading} className="font-display text-h2 font-semibold">
-          {restarting
-            ? 'Restart Medication'
-            : stopping
-              ? 'Stop Medication'
-              : confirmDelete
-                ? 'Delete Permanently'
-                : medication
-                  ? 'Edit Medication'
-                  : 'Add Medication'}
-        </h2>
-        <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </div>
       {stopping && medication && (
         <div className="grid gap-4">
           <p>
@@ -182,7 +167,7 @@ export function MedicationEditor({
               Confirm stop
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-              Keep medication
+              Cancel
             </Button>
           </div>
         </div>
@@ -200,7 +185,7 @@ export function MedicationEditor({
               loading={busy}
               onClick={() => void perform(() => careApi.deleteMedication(circle.id, medication.id, medication.version))}
             >
-              Confirm delete
+              Delete medication
             </Button>
             <Button
               variant="secondary"
@@ -213,7 +198,7 @@ export function MedicationEditor({
                 }
               }}
             >
-              Keep medication
+              Cancel
             </Button>
           </div>
         </div>
@@ -437,6 +422,6 @@ export function MedicationEditor({
           </div>
         </fieldset>
       </form>
-    </dialog>
+    </FormDialog>
   )
 }

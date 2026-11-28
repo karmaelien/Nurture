@@ -10,6 +10,7 @@ export function AppointmentAttention({
   onComplete,
   onMarkTodo,
   onEdit,
+  onDelete,
 }: {
   today: AppointmentSummary[]
   overdue: AppointmentSummary[]
@@ -17,6 +18,7 @@ export function AppointmentAttention({
   onComplete: (appointment: AppointmentSummary) => void
   onMarkTodo: (appointment: AppointmentSummary) => void
   onEdit?: (appointment: AppointmentSummary) => void
+  onDelete?: (appointment: AppointmentSummary) => void
 }) {
   const count = today.filter((appointment) => appointment.status === 'scheduled').length
   const scope = JSON.stringify(profiles.map((profile) => [profile.circleId, profile.id]))
@@ -67,6 +69,14 @@ export function AppointmentAttention({
               overdue={overdue.some((item) => appointmentKey(item) === appointmentKey(appointment))}
               onComplete={() => onComplete(appointment)}
               onMarkTodo={() => onMarkTodo(appointment)}
+              onDelete={
+                onDelete
+                  ? () => {
+                      close()
+                      onDelete(appointment)
+                    }
+                  : undefined
+              }
               onEdit={
                 onEdit
                   ? () => {

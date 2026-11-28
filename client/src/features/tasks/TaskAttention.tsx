@@ -90,7 +90,6 @@ export function TaskAttention({
                 }
                 caregiver={caregiverName(task.assignedCaregiverId)}
                 now={now}
-                compact
                 onEdit={
                   onEdit
                     ? () => {

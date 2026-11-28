@@ -1,12 +1,11 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { CalendarDetailsDialog } from '../../components/ui/CalendarDetailsDialog.tsx'
 import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
 import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { CircleSummary, Medication, MedicationOccurrence } from '../../api/types.ts'
-import { errorMessage } from '../../api/client.ts'
-import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { useMedicationOccurrences } from '../care/queries.ts'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
 import { MedicationDoseList } from './MedicationDoseList.tsx'
@@ -89,12 +88,7 @@ export function MedicationCalendar({
           (selection.hour === undefined || new Date(dose.scheduledAt).getHours() === selection.hour),
       )
     : []
-  const hasDetails = !!selection && (selection.wholeDay || selected.length > 0) && !doses.isError
-  // Refetches can remove a dose or revoke access; do not leave stale controls open.
-  useEffect(() => {
-    if (hasDetails && !dialog.current?.open) dialog.current?.showModal()
-    else if (!hasDetails && dialog.current?.open) dialog.current.close()
-  }, [hasDetails])
+  const hasDetails = !!selection && (selection.wholeDay || selected.length > 0) && !doses.isError && !doses.isPending
 
   const unit = view === 'monthly' ? 'month' : view === 'weekly' ? 'week' : 'day'
   const label =
@@ -201,19 +195,8 @@ export function MedicationCalendar({
         }}
         onPeriod={changePeriod}
       />
-      {doses.isPending ? (
-        <p role="status" className="mt-4">
-          Loading calendar…
-        </p>
-      ) : doses.isError ? (
-        <div className="mt-4">
-          <Alert tone="danger">
-            {errorMessage(doses.error)}{' '}
-            <Button variant="secondary" onClick={() => void doses.refetch()}>
-              Retry calendar
-            </Button>
-          </Alert>
-        </div>
+      {doses.isPending || doses.isError ? (
+        <QueryFeedback query={doses} loading="Loading calendar…" />
       ) : (
         <>
           <div
@@ -307,24 +290,14 @@ export function MedicationCalendar({
           {!doses.data?.length && <p className="mt-3 text-muted">No doses scheduled this {unit}.</p>}
         </>
       )}
-      <dialog
-        ref={dialog}
-        aria-labelledby="medication-calendar-details"
-        onClick={closeOnBackdropClick}
-        onClose={() => setSelection(null)}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
-      >
-        <h2 id="medication-calendar-details" className="mb-4 font-display text-h2 font-bold">
-          {selection?.wholeDay ? 'Medications' : selection?.doseId ? 'Dose Details' : 'Scheduled Doses'}
-        </h2>
-        {selection?.wholeDay && (
-          <p className="mb-4 text-muted">
-            {new Date(`${selection.date}T00:00:00`).toLocaleDateString(undefined, { dateStyle: 'full' })} ·{' '}
-            {recipientId ? personName(recipientId) : 'All care profiles'}
-          </p>
-        )}
-        {selection && onAdd && (
-          <div className="mb-4">
+      <CalendarDetailsDialog
+        open={!!hasDetails}
+        dialogRef={dialog}
+        title={selection?.wholeDay ? 'Medications' : selection?.doseId ? 'Dose Details' : 'Scheduled Doses'}
+        date={selection ? new Date(`${selection.date}T00:00:00`) : undefined}
+        scope={recipientId ? personName(recipientId) : 'All care profiles'}
+        action={
+          selection && onAdd ? (
             <Button
               onClick={() => {
                 const date = selection.date
@@ -334,8 +307,10 @@ export function MedicationCalendar({
             >
               Add medication
             </Button>
-          </div>
-        )}
+          ) : undefined
+        }
+        onClose={() => setSelection(null)}
+      >
         {onEdit &&
           selected.some((dose) =>
             medications.some((medication) => medication.id === dose.medicationId && !medication.stoppedAt),
@@ -346,6 +321,7 @@ export function MedicationCalendar({
           <MedicationDoseList
             circleId={circle.id}
             doses={selected}
+            scrollable={false}
             personName={personName}
             showDate
             editableMedicationIds={medications
@@ -377,10 +353,7 @@ export function MedicationCalendar({
             {selection?.wholeDay ? 'No medications scheduled for this date.' : 'No doses available for this selection.'}
           </p>
         )}
-        <Button variant="secondary" className="mt-6" onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </dialog>
+      </CalendarDetailsDialog>
     </section>
   )
 }

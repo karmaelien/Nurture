@@ -31,8 +31,7 @@ it('uses one profile selector for the appointment list and calendar without a du
   )
   expect(screen.queryByRole('region', { name: 'Care profiles' })).not.toBeInTheDocument()
   expect(screen.queryByRole('list', { name: 'Selected care profiles' })).not.toBeInTheDocument()
-  await user.click(screen.getByText('Select care profiles'))
-  await user.click(screen.getByRole('checkbox', { name: /Frank/ }))
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'rose')
   const list = screen.getByRole('region', { name: 'Upcoming appointments' })
   expect(within(list).getByText('Rose visit')).toBeInTheDocument()
   expect(within(list).queryByText('Frank visit')).not.toBeInTheDocument()
@@ -158,7 +157,7 @@ describe('appointment calendar', () => {
         scope = screen.getByRole('region', { name: 'Upcoming appointments' })
       } else {
         await user.click(screen.getAllByRole('button', { name: /Rose checkup for Rose/ })[0])
-        scope = screen.getByRole('dialog', { name: 'Rose checkup' })
+        scope = screen.getByRole('dialog', { name: 'Appointment Details' })
       }
       await user.click(within(scope).getByRole('button', { name: 'Mark completed' }))
       expect(
@@ -170,16 +169,22 @@ describe('appointment calendar', () => {
       expect(within(upcomingList).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
       expect(within(upcomingList).getByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
       const calendar = screen.getByRole('region', { name: 'Calendar' })
-      for (const title of within(calendar).getAllByText('Rose checkup', { selector: 'span' }))
+      for (const title of within(within(calendar).getByRole('table')).getAllByText('Rose checkup', {
+        selector: 'span',
+      }))
         expect(title).toHaveClass('line-through')
+      if (source === 'calendar') {
+        expect(within(scope).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
+        expect(within(scope).getByText('Rose checkup')).not.toHaveClass('line-through')
+      }
       if (source !== 'upcoming') {
         fireEvent.click(scope, { clientX: -1, clientY: -1 })
       }
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       await user.click(screen.getAllByRole('button', { name: /Rose checkup for Rose,.*completed/ })[0])
-      const details = screen.getByRole('dialog', { name: 'Rose checkup' })
+      const details = screen.getByRole('dialog', { name: 'Appointment Details' })
       await user.click(within(details).getByRole('button', { name: 'Mark as to do' }))
-      expect(within(details).getByRole('status')).toHaveTextContent('scheduled')
+      expect(within(details).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
       expect(
         within(screen.getByRole('region', { name: 'Upcoming appointments' })).getByRole('status'),
       ).toHaveTextContent('1 upcoming appointment')
@@ -205,9 +210,9 @@ describe('appointment calendar', () => {
       />,
     )
     await user.click(screen.getByRole('button', { name: /Rose checkup for Rose,.*completed/ }))
-    const details = screen.getByRole('dialog', { name: 'Rose checkup' })
+    const details = screen.getByRole('dialog', { name: 'Appointment Details' })
     await user.click(within(details).getByRole('button', { name: 'Mark as to do' }))
-    expect(within(details).getByRole('status')).toHaveTextContent('scheduled')
+    expect(within(details).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
     // Restoring an earlier start today puts it in today's list, but not the future-only upcoming list.
     expect(screen.getByRole('button', { name: /You have 1 scheduled appointment today/ })).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Upcoming appointments' })).getByRole('status')).toHaveTextContent(
@@ -283,7 +288,7 @@ describe('appointment calendar', () => {
     expect(screen.getByText('Visit 3')).toBeInTheDocument()
     expect(screen.queryByText('Visit 4')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Show 2 more appointments/ }))
-    const dialog = await screen.findByRole('dialog')
+    let dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('Visit 5')).toBeInTheDocument()
     // jsdom has zero-sized bounds: (0, 0) is padding, while (-1, -1) is outside.
     fireEvent.click(dialog, { clientX: 0, clientY: 0 })
@@ -291,6 +296,7 @@ describe('appointment calendar', () => {
     fireEvent.click(dialog, { clientX: -1, clientY: -1 })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Show 2 more appointments/ }))
+    dialog = screen.getByRole('dialog')
     await user.click(within(dialog).getByText('Visit 5'))
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
     expect(within(dialog).queryByRole('button', { name: /Visit 5/ })).not.toBeInTheDocument()
@@ -311,6 +317,17 @@ describe('appointment calendar', () => {
     view.rerender(<AppointmentCalendar profiles={[]} appointments={appointments} now={now} />)
     expect(screen.queryByText('Rose checkup')).not.toBeInTheDocument()
     expect(screen.getByText('Select a care profile to view appointments.')).toBeInTheDocument()
+  })
+
+  it('does not reopen details when a previously removed profile becomes visible again', async () => {
+    const user = userEvent.setup()
+    const view = render(<AppointmentCalendar profiles={profiles} appointments={appointments} now={now} />)
+    await user.click(screen.getByRole('button', { name: /Rose checkup for Rose/ }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    view.rerender(<AppointmentCalendar profiles={[]} appointments={appointments} now={now} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    view.rerender(<AppointmentCalendar profiles={profiles} appointments={appointments} now={now} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('navigates across the year boundary and back', async () => {
@@ -393,8 +410,8 @@ describe('appointment calendar', () => {
     })
     await user.click(screen.getByRole('button', { name: /Frank checkup for Frank/ }))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('Ends')).toBeInTheDocument()
-    expect(within(dialog).getByText('90 minutes')).toBeInTheDocument()
+    expect(within(dialog).getByText(/^Ends /)).toBeInTheDocument()
+    expect(within(dialog).getByText(/90 minutes/)).toBeInTheDocument()
     expect(dialog.querySelector(`time[datetime="${overlapping[1].endsAt}"]`)).toBeInTheDocument()
   })
 })

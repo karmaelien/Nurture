@@ -41,10 +41,10 @@ describe('dashboard', () => {
       )
       writeDb(db)
       renderApp('/app')
-      const home = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+      const home = await screen.findByRole('region', { name: 'Appointments' })
       expect(await within(home).findByText('Seven-day visit')).toBeInTheDocument()
       expect(within(home).queryByText('Later visit')).not.toBeInTheDocument()
-      await userEvent.setup().click(within(home).getByRole('link', { name: 'Appointments · next 7 days' }))
+      await userEvent.setup().click(within(home).getByRole('link', { name: 'View appointments' }))
       const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
       expect(within(upcoming).getByText('Seven-day visit')).toBeInTheDocument()
       expect(within(upcoming).queryByText('Later visit')).not.toBeInTheDocument()
@@ -67,12 +67,12 @@ describe('dashboard', () => {
     const user = userEvent.setup()
     renderApp('/app')
     await screen.findByRole('button', { name: '1 overdue appointment' })
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
-    const filteredPanel = screen.getByRole('region', { name: 'Appointments · next 7 days' })
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
+    const filteredPanel = screen.getByRole('region', { name: 'Appointments' })
     await within(filteredPanel).findByText('Physical therapy')
     expect(within(filteredPanel).queryByText('Past checkup')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '1 overdue appointment' })).not.toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Showing'), 'r_rose')
+    await user.selectOptions(screen.getByLabelText('Care profile'), 'r_rose')
     const warning = await screen.findByRole('button', { name: '1 overdue appointment' })
     const list = await screen.findByRole('list', { name: 'Overdue and upcoming appointments' })
     const first = within(list).getAllByRole('listitem')[0]
@@ -133,7 +133,7 @@ describe('dashboard', () => {
     )
 
     await user.click(screen.getByRole('link', { name: 'Overview' }))
-    const home = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const home = await screen.findByRole('region', { name: 'Appointments' })
     const homeEntry = (await within(home).findByText('Dental follow-up')).closest('li')!
     await user.click(within(homeEntry).getByRole('button', { name: 'Edit appointment' }))
     const homeEditor = screen.getByRole('dialog', { name: 'Edit appointment' })
@@ -142,7 +142,7 @@ describe('dashboard', () => {
     await user.click(within(homeEditor).getByRole('button', { name: 'Save appointment' }))
     expect(await within(homeEntry).findByRole('link', { name: /Dental clinic/ })).toBeInTheDocument()
     await waitFor(() => expect(homeEditor).not.toBeInTheDocument())
-    await user.click(within(home).getByRole('link', { name: 'Appointments · next 7 days' }))
+    await user.click(within(home).getByRole('link', { name: 'View appointments' }))
     expect(router.state.location.pathname).toBe('/app/appointments')
     const list = await screen.findByRole('region', { name: 'Upcoming appointments' })
     const entry = (await within(list).findByText('Dental follow-up')).closest('li')!
@@ -155,7 +155,7 @@ describe('dashboard', () => {
     await user.click(within(confirmation).getByRole('button', { name: 'Delete appointment' }))
     await waitFor(() => expect(within(list).queryByText('Dental follow-up')).not.toBeInTheDocument())
     await user.click(screen.getByRole('link', { name: 'Overview' }))
-    const refreshedHome = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const refreshedHome = await screen.findByRole('region', { name: 'Appointments' })
     await within(refreshedHome).findByText('Annual checkup')
     expect(within(refreshedHome).queryByText('Dental follow-up')).not.toBeInTheDocument()
   })
@@ -163,7 +163,7 @@ describe('dashboard', () => {
     const user = userEvent.setup()
     await login()
     renderApp('/app')
-    const panel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const panel = await screen.findByRole('region', { name: 'Appointments' })
     const entry = (await within(panel).findByText('Annual checkup')).closest('li')!
     expect(within(panel).getByRole('list', { name: 'Appointments in the next 7 days' })).toHaveClass(
       'overflow-y-auto',
@@ -180,7 +180,7 @@ describe('dashboard', () => {
     expect(await within(entry).findByRole('button', { name: 'Mark as to do' })).toBeInTheDocument()
     expect(within(entry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
     expect(within(panel).getAllByRole('listitem').at(-1)).toBe(entry)
-    await user.click(within(panel).getByRole('link', { name: 'Appointments · next 7 days' }))
+    await user.click(within(panel).getByRole('link', { name: 'View appointments' }))
     const upcoming = await screen.findByRole('region', { name: 'Upcoming appointments' })
     const calendarEntry = within(upcoming).getByText('Annual checkup').closest('li')!
     expect(within(calendarEntry).getByRole('img', { name: 'Completed' })).toBeInTheDocument()
@@ -188,7 +188,7 @@ describe('dashboard', () => {
     expect(await within(calendarEntry).findByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('link', { name: 'Overview' }))
-    const homePanel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const homePanel = await screen.findByRole('region', { name: 'Appointments' })
     const restoredEntry = (await within(homePanel).findByText('Annual checkup')).closest('li')!
     expect(within(restoredEntry).getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
     expect(within(restoredEntry).queryByRole('img', { name: 'Completed' })).not.toBeInTheDocument()
@@ -197,7 +197,7 @@ describe('dashboard', () => {
     // Simulate a newer saved change while this app session is still open.
     const saved = readDb().care.appointments.find((appointment) => appointment.title === 'Annual checkup')!
     await careApi.updateAppointmentStatus('c_demo', saved.id, 'completed')
-    await user.click(within(homePanel).getByRole('link', { name: 'Appointments · next 7 days' }))
+    await user.click(within(homePanel).getByRole('link', { name: 'View appointments' }))
     const refreshed = await screen.findByRole('region', { name: 'Upcoming appointments' })
     await waitFor(() => {
       const checkup = within(refreshed).getByText('Annual checkup').closest('li')!
@@ -209,7 +209,7 @@ describe('dashboard', () => {
     const user = userEvent.setup()
     await login()
     renderApp('/app')
-    const panel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const panel = await screen.findByRole('region', { name: 'Appointments' })
     const entry = (await within(panel).findByText('Annual checkup')).closest('li')!
     await user.click(within(entry).getByRole('button', { name: 'Mark completed' }))
     await within(entry).findByRole('img', { name: 'Completed' })
@@ -224,7 +224,7 @@ describe('dashboard', () => {
 
     cleanup()
     renderApp('/app')
-    const restoredPanel = await screen.findByRole('region', { name: 'Appointments · next 7 days' })
+    const restoredPanel = await screen.findByRole('region', { name: 'Appointments' })
     await waitFor(() => {
       // A minute-boundary refetch can replace the row while it is being located.
       const restored = within(restoredPanel).getByText('Annual checkup').closest('li')!
@@ -238,7 +238,7 @@ describe('dashboard', () => {
     await screen.findByRole('heading', { name: 'Overview' })
     const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(navigation).getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
-    const homeAppointments = screen.getByRole('region', { name: 'Appointments · next 7 days' })
+    const homeAppointments = screen.getByRole('region', { name: 'Appointments' })
     expect(await within(homeAppointments).findByText('Annual checkup')).toBeInTheDocument()
     await user.click(within(navigation).getByRole('link', { name: 'Appointments' }))
     await screen.findByRole('heading', { name: 'Appointments', level: 1 })
@@ -269,7 +269,7 @@ describe('dashboard', () => {
     renderApp('/app')
     expect(await screen.findByText('$270.50')).toBeInTheDocument()
     expect(await screen.findByText('Grocery delivery')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Showing'), { target: { value: 'r_frank' } })
+    fireEvent.change(screen.getByLabelText('Care profile'), { target: { value: 'r_frank' } })
     expect(await screen.findByText('$103.00')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Pick up prescription')).not.toBeInTheDocument())
     const medications = screen.getByRole('region', { name: 'Medication Schedule' })
@@ -300,12 +300,12 @@ describe('dashboard', () => {
     writeDb(db)
     renderApp('/app')
     await screen.findByText('$270.50')
-    fireEvent.change(screen.getByLabelText('Showing'), { target: { value: 'r_rose' } })
+    fireEvent.change(screen.getByLabelText('Care profile'), { target: { value: 'r_rose' } })
     fireEvent.change(screen.getByLabelText('Care circle'), { target: { value: 'c_empty' } })
     await waitFor(() => expect(screen.getAllByText('Nothing to show for this period.')).toHaveLength(3))
     expect(await screen.findByText('No doses scheduled on this date for this family.')).toBeInTheDocument()
     expect(await screen.findByText('No medications for this family.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Showing')).toHaveValue('')
+    expect(screen.getByLabelText('Care profile')).toHaveValue('')
     expect(screen.queryByText('Pick up prescription')).not.toBeInTheDocument()
   })
 

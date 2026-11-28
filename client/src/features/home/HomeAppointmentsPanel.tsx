@@ -1,3 +1,4 @@
+import { Button } from '../../components/ui/Button.tsx'
 import { CalendarDays } from 'lucide-react'
 import { useState } from 'react'
 import type { Appointment, CircleSummary, User } from '../../api/types.ts'
@@ -18,14 +19,18 @@ export function HomeAppointmentsPanel({
   recipientId,
   caregivers,
   now,
+  canAdd,
+  onSaved,
 }: {
   appointments: ReturnType<typeof useHomeAppointments>
   circle: CircleSummary
   recipientId?: string
   caregivers: User[]
   now: number
+  canAdd: boolean
+  onSaved: (action: 'saved' | 'deleted') => void
 }) {
-  const [editing, setEditing] = useState<Appointment | null>(null)
+  const [editor, setEditor] = useState<{ appointment?: Appointment; deleting?: boolean } | null>(null)
   const history = useAppointments(
     circle.id,
     recipientId ? { ...appointmentCalendarRange, recipientId } : appointmentCalendarRange,
@@ -45,7 +50,7 @@ export function HomeAppointmentsPanel({
     .sort(compareAppointmentListOrder)
 
   function edit(record: Appointment | undefined) {
-    if (record) setEditing(record)
+    if (record) setEditor({ appointment: record })
   }
 
   const overdueIds = new Set(overdue.map((appointment) => appointment.id))
@@ -56,7 +61,13 @@ export function HomeAppointmentsPanel({
       <DashboardPanel
         id="appointments"
         to={circleLink('/app/appointments', circle.id)}
-        title="Appointments · next 7 days"
+        title="Appointments"
+        description="Overdue and upcoming visits · Next 7 days"
+        action={
+          <Button disabled={!canAdd || !circle.recipients.length} onClick={() => setEditor({})}>
+            Add appointment
+          </Button>
+        }
         icon={<CalendarDays />}
         query={appointments.query}
         empty={!entries.length}
@@ -76,6 +87,12 @@ export function HomeAppointmentsPanel({
                 overdue={overdueIds.has(appointment.id)}
                 onComplete={() => appointments.markCompleted(appointment)}
                 onMarkTodo={() => appointments.markTodo(appointment)}
+                onDelete={() => {
+                  const record = (overdueIds.has(appointment.id) ? history.data : appointments.query.data)?.find(
+                    (item) => item.id === appointment.id,
+                  )
+                  if (record) setEditor({ appointment: record, deleting: true })
+                }}
                 onEdit={() =>
                   edit(
                     (overdueIds.has(appointment.id) ? history.data : appointments.query.data)?.find(
@@ -88,13 +105,16 @@ export function HomeAppointmentsPanel({
           ))}
         </ul>
       </DashboardPanel>
-      {editing && (
+      {editor && (
         <AppointmentEditor
           circleId={circle.id}
-          appointment={editing}
+          appointment={editor.appointment}
+          deleting={editor.deleting}
+          initialRecipientId={recipientId}
           profiles={circle.recipients}
           caregivers={caregivers}
-          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+          onClose={() => setEditor(null)}
         />
       )}
     </div>

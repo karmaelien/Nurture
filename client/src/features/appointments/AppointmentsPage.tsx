@@ -1,6 +1,8 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { QueryFeedback, type QueryState } from '../../components/ui/QueryFeedback.tsx'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
-import { TextField } from '../../components/ui/Field.tsx'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
+import { Alert } from '../../components/ui/Alert.tsx'
 import { AppointmentCalendar } from './AppointmentCalendar.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
 import { AppointmentAttention } from './AppointmentAttention.tsx'
@@ -27,9 +29,6 @@ export type AppointmentSummary = {
   status: 'scheduled' | 'completed' | 'cancelled'
 }
 
-// Profile IDs are scoped to a circle; use both values for selection identity.
-const profileKey = (profile: CareProfile) => JSON.stringify([profile.circleId, profile.id])
-
 export function AppointmentsPage({
   careProfiles,
   appointments: providedAppointments,
@@ -37,19 +36,29 @@ export function AppointmentsPage({
   onEdit,
   onDelete,
   headerAside,
+  recipientId,
+  onRecipientChange,
+  onClear,
+  notice,
+  query,
+  caregiverError,
 }: {
   careProfiles: CareProfile[]
   appointments: AppointmentSummary[]
   headerAside?: ReactNode
+  recipientId?: string
+  onRecipientChange?: (id: string) => void
+  onClear?: () => void
+  notice?: string
+  query?: QueryState
+  caregiverError?: ReactNode
   onAdd?: (date?: string, recipientId?: string) => void
   onEdit?: (appointment: AppointmentSummary) => void
   onDelete?: (appointment: AppointmentSummary) => void
 }) {
-  // Newly loaded profiles are selected automatically until explicitly unchecked.
-  const [excludedProfiles, setExcludedProfiles] = useState<string[]>([])
-  const [profileSearch, setProfileSearch] = useState('')
-  const selectionId = useId()
-  const profileDropdown = useRef<HTMLDetailsElement>(null)
+  const [localRecipient, setLocalRecipient] = useState('')
+  const selectedRecipient = recipientId ?? localRecipient
+  const setRecipient = onRecipientChange ?? setLocalRecipient
   const [now, setNow] = useState(Date.now)
   const { applyCompletion, setCompletion } = useAppointmentCompletion()
   const appointments = providedAppointments.map(applyCompletion)
@@ -65,27 +74,6 @@ export function AppointmentsPage({
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000)
     return () => window.clearInterval(timer)
-  }, [])
-  useEffect(() => {
-    function closeOutside(event: Event) {
-      const dropdown = profileDropdown.current
-      if (dropdown?.open && event.target instanceof Node && !dropdown.contains(event.target)) dropdown.open = false
-    }
-    function closeOnEscape(event: KeyboardEvent) {
-      const dropdown = profileDropdown.current
-      if (event.key === 'Escape' && dropdown?.open) {
-        dropdown.open = false
-        dropdown.querySelector('summary')?.focus()
-      }
-    }
-    document.addEventListener('pointerdown', closeOutside)
-    document.addEventListener('focusin', closeOutside)
-    document.addEventListener('keydown', closeOnEscape)
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside)
-      document.removeEventListener('focusin', closeOutside)
-      document.removeEventListener('keydown', closeOnEscape)
-    }
   }, [])
   // Upcoming includes both endpoints and measures seven elapsed 24-hour periods from now.
   const upcomingBefore = appointmentUpcomingEnd(now)
@@ -109,11 +97,7 @@ export function AppointmentsPage({
         ),
     )
     .sort(compareAppointmentListOrder)
-  const visibleProfiles = careProfiles.filter((item) => !excludedProfiles.includes(profileKey(item)))
-  // Search changes the dropdown choices only, leaving the selected profiles intact.
-  const matchingProfiles = careProfiles.filter((item) =>
-    `${item.name} ${item.circleName}`.toLocaleLowerCase().includes(profileSearch.trim().toLocaleLowerCase()),
-  )
+  const visibleProfiles = careProfiles.filter((item) => !selectedRecipient || item.id === selectedRecipient)
   // Build the upcoming window before applying the selected care profiles.
   const appointmentsInWindow = appointments
     .filter(
@@ -142,173 +126,107 @@ export function AppointmentsPage({
       />
       <section className="min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6">
         <FeatureToolbar
+          onClear={onClear ?? (() => setRecipient(''))}
           actions={
             onAdd && (
-              <Button disabled={!careProfiles.length} onClick={() => onAdd()}>
+              <Button disabled={!careProfiles.length} onClick={() => onAdd(undefined, selectedRecipient || undefined)}>
                 Add appointment
               </Button>
             )
           }
         >
-          <div className="w-72 max-w-full">
-            <p className="mb-1.5 text-small font-semibold">Care profiles</p>
-            <details ref={profileDropdown} className="relative">
-              <summary className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-field h-12 bg-surface px-3.5 text-body font-normal">
-                Select care profiles
-                <span aria-hidden="true">▾</span>
-              </summary>
-              <div className="absolute inset-x-0 top-full z-20 mt-2 max-h-[30rem] overflow-y-auto rounded-control border border-line-strong bg-surface p-4 shadow-lg">
-                <TextField
-                  label="Search care profiles"
-                  type="search"
-                  value={profileSearch}
-                  onChange={(event) => setProfileSearch(event.target.value)}
-                />
-                <fieldset>
-                  <legend className="sr-only">Care profiles to show</legend>
-                  {careProfiles.length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <Button variant="secondary" onClick={() => setExcludedProfiles([])}>
-                        Select all
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        className="h-auto min-h-11 whitespace-normal py-2"
-                        onClick={() =>
-                          setExcludedProfiles(
-                            careProfiles
-                              .filter(
-                                (item) =>
-                                  !allUpcoming.some(
-                                    (appointment) =>
-                                      appointment.recipientId === item.id && appointment.circleId === item.circleId,
-                                  ),
-                              )
-                              .map(profileKey),
-                          )
-                        }
-                      >
-                        Select with upcoming appointments
-                      </Button>
-                      <Button variant="secondary" onClick={() => setExcludedProfiles(careProfiles.map(profileKey))}>
-                        Clear selection
-                      </Button>
-                    </div>
-                  )}
-                  <ul className="mt-4 max-h-60 divide-y divide-line overflow-y-auto">
-                    {matchingProfiles.map((item, index) => {
-                      const key = profileKey(item)
-                      return (
-                        <li key={key} className="py-3">
-                          <label htmlFor={`${selectionId}-${index}`} className="flex cursor-pointer items-start gap-3">
-                            <input
-                              id={`${selectionId}-${index}`}
-                              type="checkbox"
-                              checked={!excludedProfiles.includes(key)}
-                              className="mt-1 size-5 shrink-0 cursor-pointer accent-primary"
-                              onChange={() =>
-                                setExcludedProfiles((current) =>
-                                  current.includes(key) ? current.filter((value) => value !== key) : [...current, key],
-                                )
-                              }
-                            />
-                            <span>
-                              <span className="block font-semibold">{item.name}</span>
-                              <span className="block text-muted">{item.circleName}</span>
-                            </span>
-                          </label>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  {matchingProfiles.length === 0 && (
-                    <p className="mt-4 text-muted">
-                      {careProfiles.length === 0 ? 'No care profiles available.' : 'No matching care profiles.'}
-                    </p>
-                  )}
-                </fieldset>
-              </div>
-            </details>
-          </div>
+          <CareProfileSelection profiles={careProfiles} value={selectedRecipient} onChange={setRecipient} />
         </FeatureToolbar>
-        <AppointmentAttention
-          today={appointmentsToday}
-          overdue={overdueAppointments}
-          profiles={careProfiles}
-          onComplete={completeAppointment}
-          onMarkTodo={markAppointmentTodo}
-          onEdit={onEdit}
-        />
+        {notice && <Alert tone="success">{notice}</Alert>}
+        {caregiverError}
+        {query && (query.isPending || query.isError) ? (
+          <QueryFeedback query={query} loading="Loading appointments…" />
+        ) : (
+          <>
+            <AppointmentAttention
+              today={appointmentsToday}
+              overdue={overdueAppointments}
+              profiles={careProfiles}
+              onComplete={completeAppointment}
+              onMarkTodo={markAppointmentTodo}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
 
-        <div className="mt-4">
-          <section
-            className="flex max-h-[38rem] min-w-0 flex-col rounded-panel border border-line bg-surface p-5 sm:p-6"
-            aria-labelledby="upcoming-appointments-heading"
-          >
-            <h2 id="upcoming-appointments-heading" className="font-display text-h3 font-semibold">
-              Upcoming appointments
-            </h2>
-            <p role="status" className="mt-2 text-small text-muted">
-              {visibleProfiles.length} {visibleProfiles.length === 1 ? 'profile' : 'profiles'} selected ·{' '}
-              {upcoming.length} upcoming {upcoming.length === 1 ? 'appointment' : 'appointments'} · Next 7 days
-            </p>
-            <p className="mt-1 text-small text-muted">
-              {visibleProfiles.length === 0
-                ? 'No care profiles selected'
-                : visibleProfiles.length === careProfiles.length
-                  ? 'Across all care profiles'
-                  : visibleProfiles.length === 1
-                    ? `For ${visibleProfiles[0].name}`
-                    : `Across ${visibleProfiles.length} selected care profiles`}{' '}
-              · Times shown in your local timezone.
-            </p>
-            <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
-              {visibleAppointments.length === 0 ? (
-                <p className="text-muted">
-                  {visibleProfiles.length === 0 && careProfiles.length > 0
-                    ? 'Select a care profile to view upcoming appointments.'
-                    : 'No upcoming appointments.'}
+            <div className="mt-4">
+              <section
+                className="flex max-h-[38rem] min-w-0 flex-col rounded-panel border border-line bg-surface p-5 sm:p-6"
+                aria-labelledby="upcoming-appointments-heading"
+              >
+                <h2 id="upcoming-appointments-heading" className="font-display text-h3 font-semibold">
+                  Upcoming appointments
+                </h2>
+                <p role="status" className="mt-2 text-small text-muted">
+                  {visibleProfiles.length} {visibleProfiles.length === 1 ? 'profile' : 'profiles'} selected ·{' '}
+                  {upcoming.length} upcoming {upcoming.length === 1 ? 'appointment' : 'appointments'} · Next 7 days
                 </p>
-              ) : (
-                <ul className="divide-y divide-line">
-                  {visibleAppointments.map((appointment) => {
-                    const person = visibleProfiles.find(
-                      (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
-                    )!
-                    return (
-                      <li
-                        key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
-                        className="py-5 break-words first:pt-0 last:pb-0"
-                      >
-                        <AppointmentListItem
-                          appointment={appointment}
-                          profileName={person.name}
-                          overdue={isAppointmentOverdue(appointment, now)}
-                          onComplete={() => completeAppointment(appointment)}
-                          onMarkTodo={() => markAppointmentTodo(appointment)}
-                          onEdit={onEdit && (() => onEdit(appointment))}
-                        />
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
+                <p className="mt-1 text-small text-muted">
+                  {visibleProfiles.length === 0
+                    ? 'No care profiles selected'
+                    : visibleProfiles.length === careProfiles.length
+                      ? 'Across all care profiles'
+                      : visibleProfiles.length === 1
+                        ? `For ${visibleProfiles[0].name}`
+                        : `Across ${visibleProfiles.length} selected care profiles`}{' '}
+                  · Times shown in your local timezone.
+                </p>
+                <div className="mt-5 min-h-0 flex-1 overflow-y-auto">
+                  {visibleAppointments.length === 0 ? (
+                    <p className="text-muted">
+                      {visibleProfiles.length === 0 && careProfiles.length > 0
+                        ? 'Select a care profile to view upcoming appointments.'
+                        : 'No upcoming appointments.'}
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-line">
+                      {visibleAppointments.map((appointment) => {
+                        const person = visibleProfiles.find(
+                          (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
+                        )!
+                        return (
+                          <li
+                            key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
+                            className="py-5 break-words first:pt-0 last:pb-0"
+                          >
+                            <AppointmentListItem
+                              appointment={appointment}
+                              profileName={person.name}
+                              overdue={isAppointmentOverdue(appointment, now)}
+                              onComplete={() => completeAppointment(appointment)}
+                              onMarkTodo={() => markAppointmentTodo(appointment)}
+                              onEdit={onEdit && (() => onEdit(appointment))}
+                              onDelete={onDelete && (() => onDelete(appointment))}
+                            />
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </section>
             </div>
-          </section>
-        </div>
 
-        <AppointmentCalendar
-          profiles={visibleProfiles}
-          appointments={appointments}
-          now={now}
-          onComplete={completeAppointment}
-          onMarkTodo={markAppointmentTodo}
-          onEdit={onEdit}
-          onAdd={
-            onAdd ? (date) => onAdd(date, visibleProfiles.length === 1 ? visibleProfiles[0].id : undefined) : undefined
-          }
-          onDelete={onDelete}
-        />
+            <AppointmentCalendar
+              profiles={visibleProfiles}
+              appointments={appointments}
+              now={now}
+              onComplete={completeAppointment}
+              onMarkTodo={markAppointmentTodo}
+              onEdit={onEdit}
+              onAdd={
+                onAdd
+                  ? (date) => onAdd(date, visibleProfiles.length === 1 ? visibleProfiles[0].id : undefined)
+                  : undefined
+              }
+              onDelete={onDelete}
+            />
+          </>
+        )}
       </section>
     </main>
   )

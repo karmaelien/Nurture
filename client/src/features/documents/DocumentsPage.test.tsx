@@ -19,6 +19,24 @@ beforeEach(async () => {
   )
 })
 afterEach(() => vi.unstubAllGlobals())
+it('keeps save feedback when an edited title no longer matches the search', async () => {
+  const user = userEvent.setup()
+  renderApp('/app/documents')
+  await screen.findByRole('button', { name: /November visit summary/ })
+  await user.type(screen.getByLabelText('Search documents'), 'November visit summary')
+  await user.click(screen.getByRole('button', { name: 'Edit details & sharing' }))
+  const form = within(screen.getByRole('dialog', { name: 'Edit document' }))
+  await user.clear(form.getByLabelText('Document title'))
+  await user.type(form.getByLabelText('Document title'), 'Renamed visit')
+  await user.click(form.getByRole('button', { name: 'Save changes' }))
+  expect(await screen.findByText('Document saved. Clear filters if it is not shown.')).toBeInTheDocument()
+  expect(screen.getByLabelText('Search documents')).toHaveValue('November visit summary')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'No documents found' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+  expect(await screen.findByRole('button', { name: /Renamed visit/ })).toBeInTheDocument()
+})
+
 it('shows layout C, filters documents, edits sharing and deletes a document', async () => {
   const user = userEvent.setup()
   renderApp('/app/documents?circleId=c_demo')
@@ -32,12 +50,14 @@ it('shows layout C, filters documents, edits sharing and deletes a document', as
   await user.click(screen.getByRole('button', { name: 'Edit details & sharing' }))
   await user.selectOptions(screen.getByLabelText('Who can access'), 'circle')
   await user.click(screen.getByRole('button', { name: 'Save changes' }))
-  await screen.findByText('Document updated.')
+  await screen.findByText('Document saved. Clear filters if it is not shown.')
   expect(
     within(screen.getByRole('complementary', { name: 'Document details' })).getByText('Everyone in this circle'),
   ).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Delete document' }))
-  await user.click(screen.getByRole('button', { name: 'Confirm delete' }))
+  await user.click(
+    within(screen.getByRole('dialog', { name: 'Delete document?' })).getByRole('button', { name: 'Delete document' }),
+  )
   await screen.findByText('Document deleted.')
   expect(screen.getByRole('heading', { name: 'No documents found' })).toBeInTheDocument()
 })

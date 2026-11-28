@@ -56,22 +56,33 @@ it('combines overdue categories once, counts individual missed takes, and follow
   expect(screen.queryByText(/Outstanding tasks ·/)).not.toBeInTheDocument()
   expect(screen.queryByText('Today’s doses completed')).not.toBeInTheDocument()
   expect(screen.queryByText('Upcoming appointments · next 7 days')).not.toBeInTheDocument()
-  expect(await within(summary).findByRole('button', { name: '1 overdue task' })).toHaveAttribute('aria-haspopup', 'dialog')
-  expect(await within(summary).findByRole('button', { name: '2 overdue appointments' })).toHaveAttribute('aria-haspopup', 'dialog')
-  expect(await within(summary).findByRole('button', { name: '2 missed doses' })).toHaveAttribute('aria-haspopup', 'dialog')
+  expect(await within(summary).findByRole('button', { name: '1 overdue task' })).toHaveAttribute(
+    'aria-haspopup',
+    'dialog',
+  )
+  expect(await within(summary).findByRole('button', { name: '2 overdue appointments' })).toHaveAttribute(
+    'aria-haspopup',
+    'dialog',
+  )
+  expect(await within(summary).findByRole('button', { name: '2 missed doses' })).toHaveAttribute(
+    'aria-haspopup',
+    'dialog',
+  )
   expect(screen.getAllByRole('region', { name: 'Attention Needed' })).toHaveLength(1)
   expect(within(summary).getAllByRole('button')).toHaveLength(3)
   expect(screen.queryByRole('button', { name: 'View task reminders' })).not.toBeInTheDocument()
 
-  await user.selectOptions(screen.getByLabelText('Showing'), 'r_frank')
+  await user.selectOptions(screen.getByLabelText('Care profile'), 'r_frank')
   await waitFor(() => expect(within(summary).getByRole('button', { name: '0 overdue tasks' })).toBeInTheDocument())
   expect(await within(summary).findByRole('button', { name: '0 overdue appointments' })).toBeInTheDocument()
   expect(await within(summary).findByRole('button', { name: '2 missed doses' })).toBeInTheDocument()
   await user.click(within(summary).getByRole('button', { name: '2 missed doses' }))
   expect(screen.getByRole('dialog', { name: 'Missed doses' })).toBeInTheDocument()
-  await user.click(within(screen.getByRole('dialog', { name: 'Missed doses' })).getByRole('link', { name: 'Open Medications' }))
+  await user.click(
+    within(screen.getByRole('dialog', { name: 'Missed doses' })).getByRole('link', { name: 'Open Medications' }),
+  )
   await screen.findByRole('heading', { name: 'Medications', level: 1 })
-  expect(screen.getByLabelText('Showing')).toHaveValue('r_frank')
+  expect(screen.getByLabelText('Care profile')).toHaveValue('r_frank')
   await user.click(await screen.findByRole('button', { name: '2 missed doses' }))
   expect(
     await within(screen.getByRole('region', { name: 'Attention Needed' })).findAllByRole('button', {
@@ -97,7 +108,7 @@ it('uses the full missed count rather than the loaded page and labels unfinished
   expect(await within(summary).findByRole('button', { name: 'At least 250 missed doses' })).toBeInTheDocument()
 })
 
-it('shows unavailable counts on errors, retries, and removes the summary after everything is resolved', async () => {
+it('shows unavailable counts on errors, retries, and keeps zero counts after everything is resolved', async () => {
   await seed()
   let failing = true
   server.use(
@@ -124,7 +135,7 @@ it('shows unavailable counts on errors, retries, and removes the summary after e
   writeDb(db)
   renderApp('/app')
   await screen.findByRole('region', { name: 'Medication Schedule' })
-  await waitFor(() => expect(screen.queryByRole('region', { name: 'Attention Needed' })).not.toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: '0 missed doses' })).toBeInTheDocument())
   expect((await careApi.tasks('c_demo')).tasks).toHaveLength(0)
 })
 

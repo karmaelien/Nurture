@@ -1,7 +1,6 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
 import { useCareSelection } from '../care/selection.ts'
 import type { CircleSummary } from '../../api/types.ts'
-import { errorMessage } from '../../api/client.ts'
-import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { useMedicationOccurrences } from '../care/queries.ts'
@@ -32,16 +31,7 @@ function DosesForDate({
     to: tomorrowStart,
     recipientId: recipientId || undefined,
   })
-  if (doses.isPending) return <p role="status">Loading doses…</p>
-  if (doses.isError)
-    return (
-      <Alert tone="danger">
-        {errorMessage(doses.error)}{' '}
-        <Button variant="secondary" onClick={() => void doses.refetch()}>
-          Retry doses
-        </Button>
-      </Alert>
-    )
+  if (doses.isPending || doses.isError) return <QueryFeedback query={doses} loading="Loading doses…" />
   const visible = doses.data.filter((dose) => !medicationId || dose.medicationId === medicationId)
   if (!visible.length)
     return (
@@ -58,6 +48,7 @@ function DosesForDate({
         circleId={circle.id}
         doses={visible}
         showDate
+        missedDate={date}
         scrollable={scrollable}
         personName={(id) => circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'}
       />
@@ -103,9 +94,11 @@ export function MedicationDoses({
               error={date && !valid ? 'Choose a valid date.' : undefined}
             />
           </div>
-          <Button variant="secondary" onClick={() => setSelectedDate(null)}>
-            Today
-          </Button>
+          <div className="flex h-12 items-center">
+            <Button variant="secondary" onClick={() => setSelectedDate(null)}>
+              Today
+            </Button>
+          </div>
         </div>
       </div>
       <div className={fillColumn ? 'min-h-0 max-h-64 flex-1 overflow-y-auto pr-2 lg:max-h-none' : ''}>

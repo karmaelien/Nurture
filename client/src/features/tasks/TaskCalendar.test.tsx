@@ -194,8 +194,9 @@ it('hides stale popup controls on a failed refresh and retries the same calendar
   expect(await within(calendar).findByRole('alert')).toHaveTextContent('502')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   server.resetHandlers()
-  await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Try again' }))
   expect(await within(calendar).findByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('keeps the main list bounded after future calendar browsing generates repeating tasks', async () => {

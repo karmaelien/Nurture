@@ -1,7 +1,9 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import { errorMessage } from '../../api/client.ts'
 import type { CircleSummary, CareTask, TaskSeriesSummary } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
@@ -25,7 +27,8 @@ import { PageHeader } from '../../components/ui/PageHeader.tsx'
 
 function TaskList({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
-  const [recipientId, setRecipientId] = useState('')
+  const { recipientId, setRecipientId, resetFilters } = useCareSelection(circle)
+  const [notice, setNotice] = useState('')
   const [status, setStatus] = useState<CareTask['status'] | ''>('')
   const [search, setSearch] = useState('')
   const [caregiver, setCaregiver] = useState('')
@@ -63,6 +66,12 @@ function TaskList({ circle }: { circle: CircleSummary }) {
       {stopping && <TaskStopSeriesDialog circleId={circle.id} series={stopping} onClose={() => setStopping(null)} />}
       {deleting && <TaskDeleteDialog task={deleting} circleId={circle.id} onClose={() => setDeleting(null)} />}
       <FeatureToolbar
+        onClear={() => {
+          resetFilters()
+          setSearch('')
+          setCaregiver('')
+          setStatus('')
+        }}
         actions={
           <Button
             disabled={!detail.data || detail.isError || !circle.recipients.length}
@@ -84,14 +93,7 @@ function TaskList({ circle }: { circle: CircleSummary }) {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <SelectField label="Care profile" value={recipientId} onChange={(event) => setRecipientId(event.target.value)}>
-          <option value="">All care profiles</option>
-          {circle.recipients.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-            </option>
-          ))}
-        </SelectField>
+        <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
         <SelectField label="Caregiver" value={caregiver} onChange={(event) => setCaregiver(event.target.value)}>
           <option value="">All caregivers</option>
           <option value="unassigned">Unassigned</option>
@@ -114,19 +116,6 @@ function TaskList({ circle }: { circle: CircleSummary }) {
           <option value="pending">To Do</option>
           <option value="completed">Completed</option>
         </SelectField>
-        {(search || caregiver || recipientId || status) && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setSearch('')
-              setCaregiver('')
-              setRecipientId('')
-              setStatus('')
-            }}
-          >
-            Clear filters
-          </Button>
-        )}
       </FeatureToolbar>
       {(adding || editing) && detail.data && !detail.isError && (
         <TaskEditor
@@ -139,24 +128,13 @@ function TaskList({ circle }: { circle: CircleSummary }) {
             setEditing(null)
             setAddDate(undefined)
           }}
-          onSaved={() => {
-            if (!editing) {
-              setRecipientId('')
-              setStatus('pending')
-              setSearch('')
-              setCaregiver('')
-            }
-          }}
+          onSaved={() => setNotice('Task saved. Clear filters if it is not shown.')}
         />
       )}
+      {notice && <Alert tone="success">{notice}</Alert>}
       {detail.isError && (
         <div className="mb-5">
-          <Alert tone="danger">
-            Caregiver names could not load.{' '}
-            <Button variant="secondary" onClick={() => void detail.refetch()}>
-              Retry caregiver names
-            </Button>
-          </Alert>
+          <QueryFeedback query={detail} message="Caregiver names could not load." />
         </div>
       )}
       <div className="grid gap-5">
@@ -178,15 +156,8 @@ function TaskList({ circle }: { circle: CircleSummary }) {
               Loading older repeating tasks…
             </p>
           )}
-          {tasks.isPending ? (
-            <p role="status">Loading tasks…</p>
-          ) : tasks.isError ? (
-            <Alert tone="danger">
-              {errorMessage(tasks.error)}{' '}
-              <Button variant="secondary" onClick={() => void tasks.refetch()}>
-                Retry tasks
-              </Button>
-            </Alert>
+          {tasks.isPending || tasks.isError ? (
+            <QueryFeedback query={tasks} loading="Loading tasks…" />
           ) : !sorted.length ? (
             !tasks.historyPending && <p className="text-muted">No tasks for the selected filters.</p>
           ) : (

@@ -1,12 +1,12 @@
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { careApi } from '../../api/care.ts'
 import { ApiError, errorMessage } from '../../api/client.ts'
 import type { CareTask, CircleDetail } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { SelectField, TextField } from '../../components/ui/Field.tsx'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useRequiredSession } from '../auth/session.ts'
 import { taskDueAt, taskInputSchema } from './task-input.ts'
 import { TaskRepeatFields, type TaskRepeatUnit } from './TaskRepeatFields.tsx'
@@ -34,7 +34,6 @@ export function TaskEditor({
   const [error, setError] = useState<string>()
   const [repeatUnit, setRepeatUnit] = useState<TaskRepeatUnit>('none')
   const [stopping, setStopping] = useState(false)
-  const heading = useId()
   const due = task?.dueAt ? new Date(task.dueAt) : null
   const initialDate = due
     ? `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`
@@ -42,9 +41,6 @@ export function TaskEditor({
   const initialTime = due ? `${due.getHours() % 12 || 12}:${String(due.getMinutes()).padStart(2, '0')}` : ''
   const initialPeriod = due && due.getHours() >= 12 ? 'PM' : 'AM'
   const [dueDate, setDueDate] = useState(initialDate)
-  useEffect(() => {
-    dialog.current?.showModal()
-  }, [])
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -124,26 +120,13 @@ export function TaskEditor({
   }
 
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={heading}
+    <FormDialog
+      title={stopping ? 'Stop repeating?' : task ? 'Edit task' : 'Add task'}
+      dialogRef={dialog}
+      busy={busy}
+      isBusy={() => saving.current}
       onClose={onClose}
-      onCancel={(event) => {
-        if (saving.current) event.preventDefault()
-      }}
-      onClick={(event) => {
-        if (!saving.current) closeOnBackdropClick(event)
-      }}
-      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
     >
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <h2 id={heading} className="font-display text-h2 font-semibold">
-          {stopping ? 'Stop repeating?' : task ? 'Edit task' : 'Add task'}
-        </h2>
-        <Button variant="secondary" disabled={busy} onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </div>
       {stopping && task?.seriesId && task.seriesVersion && (
         <div>
           <p>
@@ -170,7 +153,7 @@ export function TaskEditor({
                 setError(undefined)
               }}
             >
-              Keep repeating
+              Cancel
             </Button>
           </div>
         </div>
@@ -258,6 +241,6 @@ export function TaskEditor({
           </div>
         </fieldset>
       </form>
-    </dialog>
+    </FormDialog>
   )
 }

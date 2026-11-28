@@ -1,11 +1,10 @@
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { CalendarDetailsDialog } from '../../components/ui/CalendarDetailsDialog.tsx'
 import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
 import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { CareTask, CircleSummary } from '../../api/types.ts'
-import { errorMessage } from '../../api/client.ts'
-import { Alert } from '../../components/ui/Alert.tsx'
 import { Button } from '../../components/ui/Button.tsx'
-import { closeOnBackdropClick } from '../appointments/dialog.ts'
 import { useTasks } from '../care/queries.ts'
 import { formatTime } from '../home/dashboard.ts'
 import { TaskListItem } from './TaskListItem.tsx'
@@ -57,7 +56,6 @@ export function TaskCalendar({
   } | null>(null)
   const selection = storedSelection?.filterKey === filterKey ? storedSelection : null
   const dialog = useRef<HTMLDialogElement>(null)
-  const heading = useId()
   const year = anchor.getFullYear()
   const month = anchor.getMonth()
   const start =
@@ -100,10 +98,6 @@ export function TaskCalendar({
         .sort(compareTasks)
     : []
   const hasDetails = !!selection && !query.isError && !query.isPending && (selection.wholeDay || selected.length > 0)
-  useEffect(() => {
-    if (hasDetails && !dialog.current?.open) dialog.current?.showModal()
-    else if (!hasDetails && dialog.current?.open) dialog.current.close()
-  }, [hasDetails])
   const personName = (id: string) =>
     circle.recipients.find((person) => person.id === id)?.name ?? 'Care profile unavailable'
   const unit = view === 'monthly' ? 'month' : view === 'weekly' ? 'week' : 'day'
@@ -215,19 +209,8 @@ export function TaskCalendar({
         }}
         onPeriod={changePeriod}
       />
-      {query.isPending ? (
-        <p role="status" className="mt-4 h-[38rem]">
-          Loading calendar…
-        </p>
-      ) : query.isError ? (
-        <div className="mt-4">
-          <Alert tone="danger">
-            {errorMessage(query.error)}{' '}
-            <Button variant="secondary" onClick={() => void query.refetch()}>
-              Retry calendar
-            </Button>
-          </Alert>
-        </div>
+      {query.isPending || query.isError ? (
+        <QueryFeedback query={query} loading="Loading calendar…" />
       ) : (
         <>
           <div
@@ -318,37 +301,29 @@ export function TaskCalendar({
           {!byDay.size && !query.historyPending && <p className="mt-3 text-muted">No tasks due this {unit}.</p>}
         </>
       )}
-      <dialog
-        ref={dialog}
-        aria-labelledby={heading}
-        onClick={closeOnBackdropClick}
-        onClose={() => setSelection(null)}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
-      >
-        <h2 id={heading} className="mb-4 font-display text-h2 font-bold">
-          {selection?.taskId ? 'Task Details' : 'Tasks'}
-        </h2>
-        {selection && (
-          <>
-            <p className="mb-4 text-muted">
-              {new Date(`${selection.date}T00:00:00`).toLocaleDateString(undefined, { dateStyle: 'full' })} ·{' '}
-              {recipientId ? personName(recipientId) : 'All care profiles'}
-            </p>
+      <CalendarDetailsDialog
+        open={!!hasDetails}
+        dialogRef={dialog}
+        title={selection?.taskId ? 'Task Details' : 'Tasks'}
+        date={selection ? new Date(`${selection.date}T00:00:00`) : undefined}
+        scope={recipientId ? personName(recipientId) : 'All care profiles'}
+        action={
+          selection && onAdd ? (
             <Button
-              className="mb-4"
-              disabled={!onAdd}
               onClick={() => {
                 const date = selection.date
                 closeDetails()
-                onAdd?.(date)
+                onAdd(date)
               }}
             >
               Add task
             </Button>
-          </>
-        )}
+          ) : undefined
+        }
+        onClose={() => setSelection(null)}
+      >
         {hasDetails && selected.length ? (
-          <ul className="max-h-96 divide-y divide-line overflow-y-auto pr-2">
+          <ul className="divide-y divide-line">
             {selected.map((task) => (
               <TaskListItem
                 key={task.id}
@@ -374,10 +349,7 @@ export function TaskCalendar({
         ) : (
           <p className="text-muted">No tasks due for the selected filters on this date.</p>
         )}
-        <Button variant="secondary" className="mt-6" onClick={() => dialog.current?.close()}>
-          Close
-        </Button>
-      </dialog>
+      </CalendarDetailsDialog>
     </section>
   )
 }
