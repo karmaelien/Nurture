@@ -19,13 +19,15 @@ User ──< Membership >── Circle ──< Recipient
 | **Membership**       | Joins a user to a circle. A user can be in many circles, and a circle has many users.                                                                                 | `circleId`, `userId`, `role` (`owner` or `member`), `joinedAt`. Unique on (`circleId`, `userId`). |
 | **Recipient**        | A person being cared for. Belongs to exactly one circle; a circle can have several (for example, two grandparents). Not a user, because many recipients never log in. | `id`, `circleId`, `name`, `preferredName`, `dateOfBirth`, `notes`, `createdAt`                    |
 | **CareRelationship** | Optional label for how one caregiver relates to one recipient: Daniel is Rose's child and Frank's child-in-law. For display only; it never grants access.             | `userId`, `recipientId`, `relationship`. Unique on (`userId`, `recipientId`).                     |
+| **Invite**           | An owner's request for an existing user to join a circle. Grants nothing until the invitee accepts it.                                                                | `circleId`, `inviteeId`, `invitedBy`, `status`, `expiresAt`. Unique on (`circleId`, `inviteeId`). |
 
 Rules:
 
 - **Access comes from membership.** A member of a circle can read and write its care data, except documents, which use the document permissions below. A non-member can't tell the circle exists (requests return 404, not 403).
-- **Owners** can also rename the circle and, later, manage members. Every circle has at least one owner. The user who creates a circle is its owner.
+- **Owners** can also rename the circle and invite people to it. Every circle has at least one owner. The user who creates a circle is its owner.
+- **Joining takes consent.** Sharing with a new member, including their profile, starts only once they accept an invite.
 - **Where care data lives:** medications, appointments, tasks, expenses, and documents belong to a recipient. Messages and budgets belong to the circle.
-- **Not in scope yet:** invites, removing members, leaving or deleting a circle, finer-grained roles (such as view-only), and linking a recipient to their own user account. The model leaves room for each without restructuring.
+- **Not in scope yet:** removing members, leaving or deleting a circle, finer-grained roles (such as view-only), and linking a recipient to their own user account. The model leaves room for each without restructuring.
 
 ## Conventions
 
@@ -100,6 +102,13 @@ type Member = {
 type CircleDetail = CircleSummary & { members: Member[] };
 
 type Session = { user: User; circles: CircleSummary[] };
+
+// A pending invite, as the invitee sees it. Nothing inside the circle is shown until they accept.
+type Invite = {
+  circleId: string;
+  circleName: string;
+  invitedBy: string | null; // the inviting owner's name; null if that account was deleted
+};
 
 type Appointment = {
   id: string;
@@ -339,6 +348,60 @@ The body must also include `version`: the `Recipient.version` the edit is based 
 | 400    | `validation_error` (also when `version` is missing)                                           |
 | 404    | `not_found` (also when the recipient isn't in this circle)                                    |
 | 409    | `edit_conflict`, plus `recipient: Recipient` with the current details: `{ error, recipient }` |
+
+### Invites
+
+An owner invites someone by the email of their existing Nurture account. The invitee sees the invite after logging in and accepts or declines it. Accepting makes them a `member`; until then they get `404 not_found` on the circle, like anyone outside it, and the circle can't see their profile.
+
+Rules:
+
+- **An account is required.** Invites only reach existing accounts. The owner gets the same response whether or not the email has one, so inviting can't be used to find out who uses Nurture. For the same reason, owners can't list pending invites.
+- **One invite per person per circle.** Inviting someone again replaces their earlier invite, whatever its status, with a new pending one.
+- **Invites expire after 7 days.** An expired invite can't be accepted; the owner can send a new one.
+- **The invitee sees only the circle's name and who invited them** until they accept.
+- **Accepting is all or nothing.** The membership is created and the invite marked accepted together, so two accepts at once can't both succeed.
+
+#### `POST /api/circles/:circleId/invites`
+
+Owner only. Body: `{ email }`. Inviting your own email, or an email with no account, does nothing but returns the same response.
+
+| Status | Body                                                                                    |
+| ------ | --------------------------------------------------------------------------------------- |
+| 201    | `{ message }`, always "If that email belongs to a Nurture account, they'll see your invitation." |
+| 400    | `validation_error` (not a valid email)                                                  |
+| 403    | `forbidden` (a member who isn't the owner)                                              |
+| 404    | `not_found` (not in this circle)                                                        |
+
+#### `GET /api/invites`
+
+Requires auth. The signed-in user's pending, unexpired invites, oldest first.
+
+| Status | Body                     |
+| ------ | ------------------------ |
+| 200    | `{ invites: Invite[] }`  |
+| 401    | `unauthorized`           |
+
+#### `POST /api/invites/:circleId/accept`
+
+Requires auth. Accepts the signed-in user's pending invite to that circle and makes them a `member`. No body. Afterwards the circle appears in `GET /api/auth/me`, so the client should refetch the session.
+
+| Status | Body                                                              |
+| ------ | ----------------------------------------------------------------- |
+| 204    | No body                                                           |
+| 401    | `unauthorized`                                                    |
+| 404    | `not_found` (no pending invite: never invited, expired, already answered, or meant for someone else) |
+
+#### `POST /api/invites/:circleId/decline`
+
+Requires auth. Declines the signed-in user's pending invite to that circle. No body.
+
+| Status | Body                                       |
+| ------ | ------------------------------------------ |
+| 204    | No body                                    |
+| 401    | `unauthorized`                             |
+| 404    | `not_found` (no pending invite, as above) |
+
+The `/api/invites` endpoints are rate limited per address and return `429` when the limit is reached.
 
 ### Medication notification subscriptions (real backend)
 
@@ -780,7 +843,6 @@ deletion rolls back and can be retried. A missing or already-deleted document re
 
 These aren't part of this contract yet, but the model is built for them:
 
-- **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Task activation:** migrate and enable the staged PostgreSQL task API alongside real authentication/family endpoints. Task CRUD, repeating schedules, and in-page reminders are implemented; background task notification delivery remains future work.
 - **Medication activation and push delivery:** migrate and enable the PostgreSQL medication API and optional Web Push service when the real app endpoints are ready. Configure VAPID keys and verify provider delivery in a permitted browser; see [medications](medications.md#closed-app-notifications).
 - **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
