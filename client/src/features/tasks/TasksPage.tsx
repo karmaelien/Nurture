@@ -18,6 +18,7 @@ import { TaskDeleteDialog } from './TaskDeleteDialog.tsx'
 import { TaskCalendar } from './TaskCalendar.tsx'
 import { TaskStopSeriesDialog } from './TaskStopSeriesDialog.tsx'
 import { TaskAttention } from './TaskAttention.tsx'
+import { dashboardWindow } from '../home/dashboard.ts'
 import { matchesTask } from './task-filter.ts'
 import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
 import { PageHeader } from '../../components/ui/PageHeader.tsx'
@@ -34,13 +35,24 @@ function TaskList({ circle }: { circle: CircleSummary }) {
   const [deleting, setDeleting] = useState<CareTask | null>(null)
   const [stopping, setStopping] = useState<TaskSeriesSummary | null>(null)
   const now = useMinute().getTime()
-  const tasks = useTasks(circle.id, { recipientId: recipientId || undefined, status: status || undefined })
+  // Bound the list independently of calendar browsing and previously generated occurrences.
+  const dueBefore = dashboardWindow(new Date(now)).to
+  const tasks = useTasks(circle.id, {
+    recipientId: recipientId || undefined,
+    status: status || undefined,
+    dueBefore,
+    includeUndated: true,
+  })
   const detail = useQuery({
     queryKey: ['circle', user.id, circle.id],
     queryFn: () => circlesApi.detail(circle.id),
     retry: false,
   })
-  const sorted = (tasks.data ?? []).filter((task) => matchesTask(task, search, caregiver)).sort(compareTasks)
+  const sorted = (tasks.data ?? [])
+    .filter(
+      (task) => (!task.dueAt || Date.parse(task.dueAt) < Date.parse(dueBefore)) && matchesTask(task, search, caregiver),
+    )
+    .sort(compareTasks)
   const caregiverName = (id: string | null) =>
     id === null
       ? 'Unassigned'
@@ -157,6 +169,10 @@ function TaskList({ circle }: { circle: CircleSummary }) {
           onDelete={setDeleting}
         />
         <section aria-label="Task list" className="rounded-panel border border-line bg-surface p-5 sm:p-6">
+          <p className="mb-3 text-small text-muted">
+            Tasks due before {new Date(dueBefore).toLocaleDateString(undefined, { dateStyle: 'medium' })}, plus undated
+            tasks. Browse the calendar for later dates.
+          </p>
           {tasks.historyPending && (
             <p role="status" className="mb-3 text-muted">
               Loading older repeating tasks…

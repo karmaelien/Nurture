@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { afterEach, expect, it, vi } from 'vitest'
+import { careApi } from '../../api/care.ts'
 import { authApi } from '../../api/auth.ts'
 import { setToken } from '../../api/token.ts'
 import { DEMO_ACCOUNT, readDb, writeDb } from '../../mocks/db.ts'
@@ -195,4 +196,36 @@ it('hides stale popup controls on a failed refresh and retries the same calendar
   server.resetHandlers()
   await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
   expect(await within(calendar).findByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
+})
+
+it('keeps the main list bounded after future calendar browsing generates repeating tasks', async () => {
+  const { calendar, user } = await open()
+  await careApi.createTask('c_demo', {
+    title: 'Future repeating visit',
+    recipientId: 'r_rose',
+    assignedCaregiverId: null,
+    dueAt: new Date(2026, 11, 15, 8).toISOString(),
+    recurrence: {
+      unit: 'days',
+      interval: 1,
+      daysOfWeek: [],
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      end: { kind: 'afterOccurrences', count: 2 },
+    },
+  })
+  await user.click(within(calendar).getByRole('button', { name: 'Next month' }))
+  expect(await within(calendar).findAllByRole('button', { name: /Future repeating visit for Rose/ })).toHaveLength(2)
+  const list = screen.getByRole('region', { name: 'Task list' })
+  fireEvent.focus(window)
+  await within(list).findByRole('heading', { name: 'Undated task' })
+  await waitFor(() =>
+    expect(within(list).queryByRole('heading', { name: 'Future repeating visit' })).not.toBeInTheDocument(),
+  )
+  // A remount must not pull the now-persisted future occurrences into the current list either.
+  await user.click(screen.getByRole('link', { name: 'Overview' }))
+  await screen.findByRole('region', { name: 'Tasks' })
+  await user.click(screen.getByRole('link', { name: 'Tasks' }))
+  const remounted = await screen.findByRole('region', { name: 'Task list' })
+  await within(remounted).findByRole('heading', { name: 'Undated task' })
+  expect(within(remounted).queryByRole('heading', { name: 'Future repeating visit' })).not.toBeInTheDocument()
 })

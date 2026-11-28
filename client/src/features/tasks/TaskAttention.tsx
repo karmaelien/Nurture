@@ -22,17 +22,20 @@ export function TaskAttention({
   onEdit?: (task: CareTask) => void
   onDelete: (task: CareTask) => void
 }) {
+  // Fetch a stable daily window; exact reminder eligibility still updates each minute below.
+  // Include the next hour after midnight so near-midnight reminders remain available.
+  const through = new Date(now)
+  through.setHours(24, taskReminderMinutes, 0, 1)
   const query = useTasks(circle.id, {
     recipientId: recipientId || undefined,
     status: 'pending',
-    // The API upper boundary is exclusive; include the exact one-hour deadline.
-    dueBefore: new Date(now + taskReminderMinutes * 60_000 + 1).toISOString(),
+    dueBefore: through.toISOString(),
   })
   // Never display cached task details after a failed permission/data refresh.
   const tasks = query.isError ? [] : (query.data ?? []).filter((task) => taskAttention(task, now)).sort(compareTasks)
   const overdue = tasks.filter((task) => taskAttention(task, now) === 'overdue').length
   const soon = tasks.length - overdue
-  if (!tasks.length && !query.historyPending && !query.isError) return null
+  if (!tasks.length && !query.isPending && !query.historyPending && !query.isError) return null
   return (
     <AttentionNeeded
       label="Task Attention Needed"

@@ -187,12 +187,69 @@ test(
         dueBefore: new Date(start.getTime() + 5 * 86400000).toISOString(),
       };
       const reads = await Promise.all([list(filters), list(filters)]);
-      assert.equal(reads[0].tasks.length, 4);
-      assert.deepEqual(
-        reads[0].tasks.map((task) => task.id),
-        reads[1].tasks.map((task) => task.id),
-      );
-      const occurrences = reads[0].tasks;
+      for (const read of reads) {
+        assert.ok(read.tasks.length === 4 || read.historyPending);
+        assert.equal(
+          new Set(read.tasks.map((task) => task.id)).size,
+          read.tasks.length,
+        );
+      }
+      const converged = await list(filters);
+      assert.equal(converged.tasks.length, 4);
+      assert.equal(converged.historyPending, false);
+      const occurrences = converged.tasks;
+      // A fully generated schedule can be read while its parent is locked by an editor.
+      // A new range skips the busy parent and reports incomplete history immediately.
+      const blocker = await db.connect();
+      try {
+        await blocker.query('BEGIN');
+        await blocker.query(
+          'SELECT id FROM task_series WHERE id=$1 FOR UPDATE',
+          [first.seriesId],
+        );
+        const unlockedRead = await auth(request(app).get(`${base}/tasks`))
+          .query(filters)
+          .timeout(2000)
+          .expect(200);
+        assert.equal(unlockedRead.body.tasks.length, 4);
+        assert.equal(unlockedRead.body.historyPending, false);
+        const newRange = {
+          ...filters,
+          dueFrom: new Date(start.getTime() - 2 * 86400000).toISOString(),
+        };
+        const skipped = await auth(request(app).get(`${base}/tasks`))
+          .query(newRange)
+          .timeout(2000)
+          .expect(200);
+        assert.equal(skipped.body.historyPending, true);
+        // Locking one schedule must not prevent another schedule from progressing.
+        const independent = await create({
+          ...details,
+          title: 'Independent schedule',
+          dueAt: start.toISOString(),
+          recurrence,
+        });
+        const progressed = await auth(request(app).get(`${base}/tasks`))
+          .query(newRange)
+          .timeout(2000)
+          .expect(200);
+        assert.equal(
+          progressed.body.tasks.filter(
+            (task) => task.seriesId === independent.seriesId,
+          ).length,
+          4,
+        );
+        await auth(
+          request(app).post(`${base}/task-series/${independent.seriesId}/stop`),
+        )
+          .send({ version: 1 })
+          .expect(204);
+        await blocker.query('ROLLBACK');
+        assert.equal((await list(newRange)).historyPending, false);
+      } finally {
+        await blocker.query('ROLLBACK');
+        blocker.release();
+      }
       const saved = await auth(request(app).patch(`${base}/tasks/${first.id}`))
         .send({ ...details, version: 1 })
         .expect(200);
@@ -273,6 +330,44 @@ test(
         (await list(filters)).tasks.some(
           (task) => task.seriesId === racingSeries.seriesId,
         ),
+        false,
+      );
+      // Editing one occurrence's profile preserves the original schedule metadata
+      // without generating the original profile's series during a filtered read.
+      const movedRecipient = await add(
+        `INSERT INTO recipients(name,circle_id) VALUES ('Frank',${circle})`,
+      );
+      const movable = await create({
+        ...details,
+        dueAt: start.toISOString(),
+        recurrence,
+      });
+      await auth(request(app).patch(`${base}/tasks/${movable.id}`))
+        .send({
+          ...details,
+          recipientId: movedRecipient,
+          dueAt: movable.dueAt,
+          version: 1,
+        })
+        .expect(200);
+      const movedList = await list({ ...filters, recipientId: movedRecipient });
+      const moved = movedList.tasks.find((task) => task.id === movable.id);
+      assert.equal(moved.seriesId, movable.seriesId);
+      assert.equal(moved.seriesVersion, 1);
+      assert.equal(moved.seriesTitle, details.title);
+      assert.ok(moved.seriesDescription);
+      assert.equal(movedList.series, undefined);
+      const doneMoved = await auth(
+        request(app).patch(`${base}/tasks/${moved.id}`),
+      )
+        .send({ status: 'completed', version: moved.version })
+        .expect(200);
+      assert.equal(doneMoved.body.task.seriesId, moved.seriesId);
+      await auth(request(app).delete(`${base}/tasks/${moved.id}`))
+        .send({ version: doneMoved.body.task.version })
+        .expect(204);
+      assert.equal(
+        (await list(filters)).tasks.some((task) => task.id === moved.id),
         false,
       );
       const rollbackTask = await create(details);

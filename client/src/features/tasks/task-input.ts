@@ -3,7 +3,10 @@ import { z } from 'zod'
 export const taskDetailsSchema = z.strictObject({
   recipientId: z.string().min(1, 'Choose a care profile.'),
   title: z.string().trim().min(1, 'Enter a task title.').max(200),
-  dueAt: z.iso.datetime().nullable(),
+  dueAt: z.iso
+    .datetime()
+    .refine((value) => value.slice(0, 4) !== '0000', 'Enter a valid due date.')
+    .nullable(),
   assignedCaregiverId: z.string().min(1).nullable(),
 })
 
@@ -47,6 +50,7 @@ export const taskUpdateSchema = taskDetailsSchema.extend({ version: taskStatusSc
  */
 export function taskDueAt(date: string, time: string, period: string): string | null {
   if (!date && !time) return null
+  if (date.startsWith('0000-')) throw new Error('Enter a valid due date.')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Choose a due date before entering a time.')
   let clock = '23:59'
   if (time) {

@@ -113,6 +113,15 @@ it('validates titles and converts optional typed due times without normalizing i
   expect(taskDueAt('2026-11-25', '', 'AM')).toBe(new Date('2026-11-25T23:59').toISOString())
   expect(taskDueAt('2026-11-25', '12:00', 'AM')).toBe(new Date('2026-11-25T00:00').toISOString())
   expect(taskDueAt('2026-11-25', '12:00', 'PM')).toBe(new Date('2026-11-25T12:00').toISOString())
+  expect(() => taskDueAt('0000-01-01', '9:30', 'AM')).toThrow('Enter a valid due date.')
+  expect(
+    taskInputSchema.safeParse({
+      recipientId: 'r',
+      title: 'Task',
+      dueAt: '0000-01-01T09:30:00Z',
+      assignedCaregiverId: null,
+    }).success,
+  ).toBe(false)
   expect(() => taskDueAt('', '9:30', 'AM')).toThrow('Choose a due date')
   expect(() => taskDueAt('2026-02-30', '9', 'AM')).toThrow('does not exist')
 })

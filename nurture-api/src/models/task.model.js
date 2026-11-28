@@ -142,36 +142,60 @@ module.exports = (db) => ({
       const operations = {
         async list(filters) {
           await hasRecipient(filters.recipientId);
-          // Sorted parent locking avoids deadlocks between simultaneous range reads and writes.
+          // Ordinary reads do not lock schedules. Only unfinished generation needs a
+          // parent lock; skip busy parents so another user's read/edit can finish.
           const series = (
             await tx.query(
-              `SELECT ${seriesColumns} FROM task_series WHERE circle_id=$1 ORDER BY id FOR UPDATE`,
-              [circleId],
+              `SELECT ${seriesColumns} FROM task_series WHERE circle_id=$1
+                AND ($2::int IS NULL OR recipient_id=$2) ORDER BY id`,
+              [circleId, filters.recipientId ?? null],
             )
           ).rows.map(seriesValue);
-          let historyPending = false;
-          for (const definition of series) {
+          const generate = (definition) => {
             const store = { taskSeries: [definition], care: { tasks: [] } };
-            historyPending =
-              materializeTaskSeries(
-                store,
-                String(circleId),
-                filters.dueFrom,
-                filters.dueBefore,
-              ) || historyPending;
+            const pending = materializeTaskSeries(
+              store,
+              String(circleId),
+              filters.dueFrom,
+              filters.dueBefore,
+            );
+            return { store, pending };
+          };
+          const progress = (definition) =>
+            JSON.stringify({
+              through: definition.through,
+              ranges: definition.ranges,
+            });
+          let historyPending = false;
+          for (let index = 0; index < series.length; index++) {
+            const snapshot = series[index];
+            const preview = structuredClone(snapshot);
+            const before = progress(preview);
+            generate(preview);
+            if (progress(preview) === before) continue;
+            const locked = await one(
+              `SELECT ${seriesColumns} FROM task_series WHERE circle_id=$1 AND id=$2 FOR UPDATE SKIP LOCKED`,
+              [circleId, snapshot.id],
+            );
+            if (!locked) {
+              // A writer/generator owns this parent. Return available rows and retry
+              // the missing history through the existing historyPending polling.
+              historyPending = true;
+              continue;
+            }
+            const definition = seriesValue(locked);
+            series[index] = definition;
+            const lockedBefore = progress(definition);
+            const { store, pending } = generate(definition);
+            historyPending = pending || historyPending;
             for (const task of store.care.tasks)
               await insert(task, task.id.slice(task.id.indexOf(':') + 1));
-            await tx.query(
-              'UPDATE task_series SET progress=$3 WHERE circle_id=$1 AND id=$2',
-              [
-                circleId,
-                definition.id,
-                JSON.stringify({
-                  through: definition.through,
-                  ranges: definition.ranges,
-                }),
-              ],
-            );
+            if (progress(definition) !== lockedBefore) {
+              await tx.query(
+                'UPDATE task_series SET progress=$3 WHERE circle_id=$1 AND id=$2',
+                [circleId, definition.id, progress(definition)],
+              );
+            }
           }
           const rows = (
             await tx.query(
@@ -192,6 +216,27 @@ module.exports = (db) => ({
               ],
             )
           ).rows;
+          // An occurrence can be moved to another care profile without moving its
+          // schedule. Load its parent metadata without generating that profile's tasks.
+          const missingParents = [
+            ...new Set(
+              rows
+                .map((row) => row.seriesId)
+                .filter(
+                  (id) =>
+                    id && !series.some((definition) => definition.id === id),
+                ),
+            ),
+          ];
+          const parents = missingParents.length
+            ? (
+                await tx.query(
+                  `SELECT ${seriesColumns} FROM task_series WHERE circle_id=$1 AND id=ANY($2::int[])`,
+                  [circleId, missingParents],
+                )
+              ).rows.map(seriesValue)
+            : [];
+          const displaySeries = [...series, ...parents];
           const summaries = series
             .filter(
               (item) =>
@@ -200,7 +245,7 @@ module.exports = (db) => ({
             )
             .map(taskSeriesSummary);
           return {
-            tasks: rows.map((row) => decorate(row, series)),
+            tasks: rows.map((row) => decorate(row, displaySeries)),
             ...(summaries.length ? { series: summaries, historyPending } : {}),
           };
         },
