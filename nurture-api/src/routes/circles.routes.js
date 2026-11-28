@@ -7,6 +7,9 @@ const invites = require('../controllers/invites.controller')
 const recipients = require('../controllers/recipient.controller');
 
 router.use(authenticate);
+if (process.env.ENABLE_TASKS_API === 'true') {
+  router.use('/:circleId', require('./tasks.routes')());
+}
 // Keep the new PostgreSQL medication endpoints staged until the real API is enabled.
 if (process.env.ENABLE_MEDICATIONS_API === 'true') {
   router.use('/:circleId', require('./medications.routes')());

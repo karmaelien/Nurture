@@ -3,6 +3,7 @@ import { dateInZone, everyDay } from '../features/medications/medication-schedul
 import type { CircleDetail, Member, User } from '../api/types.ts'
 import { DB_KEY, MockStorageError } from './storage.ts'
 import type { MedicationRevisions } from '../features/medications/medication-occurrences.ts'
+import type { TaskSeries } from '../features/tasks/task-recurrence.ts'
 
 // A tiny localStorage-backed stand-in for the real database.
 // Passwords are stored in plain text because this only ever runs in the browser as a mock.
@@ -10,6 +11,8 @@ import type { MedicationRevisions } from '../features/medications/medication-occ
 type DbUser = User & { password: string }
 
 export type Db = {
+  taskSeries?: TaskSeries[]
+  deletedTaskOccurrences?: string[]
   changeId?: string
   medicationHistory?: Record<string, { version: number; through: string }>
   medicationRevisions?: MedicationRevisions
@@ -83,6 +86,8 @@ export function readDb(): Db {
     const raw = localStorage.getItem(DB_KEY)
     if (raw) {
       const db = JSON.parse(raw) as Db
+      // Upgrade task versions without resetting saved tasks.
+      for (const task of db.care.tasks) task.version ??= 1
       // Older demo sessions lack medication definitions; preserve their existing care data.
       db.care.medications ??= seedCareData().medications
       for (const medication of db.care.medications) {

@@ -75,12 +75,19 @@ export function useOverdueMedicationDoses(circleId: string, before: string, reci
 
 export function useTasks(circleId: string | null, filters: TaskFilters = {}) {
   const { user } = useRequiredSession()
-  return useQuery({
+  const query = useQuery({
     queryKey: careKeys.tasks(user.id, circleId, filters),
     queryFn: circleId ? () => careApi.tasks(circleId, filters) : skipToken,
-    select: (data) => data.tasks,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (query.state.data?.historyPending ? 1000 : 60_000),
     retry: false,
   })
+  return {
+    ...query,
+    data: query.data?.tasks,
+    historyPending: query.data?.historyPending ?? false,
+    series: query.data?.series ?? [],
+  }
 }
 
 export function useExpenses(circleId: string | null, filters: ExpenseFilters) {

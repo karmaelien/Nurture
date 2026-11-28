@@ -208,6 +208,21 @@ Appointments, medications, tasks, expenses, and documents belong to a circle or 
 
 These are designed with HIPAA's Security Rule safeguards in mind. Nurture hasn't been assessed for HIPAA compliance.
 
+## Staged task API
+
+The task API is staged behind `ENABLE_TASKS_API=true` (off by default). Apply
+`1795824000000_create-tasks.sql` with the normal migrations before activation.
+The frontend still uses its browser mock; enabling this flag does not switch its
+storage. Task endpoints use the shared authentication, database connection, and
+error handler, with transactional membership/version checks. See [Tasks](../docs/tasks.md#staged-postgresql-backend).
+
+`npm run test:tasks` runs task unit tests and, when `TASK_TEST_DATABASE_URL` points
+to a separate local database named with `test`, PostgreSQL integration tests.
+Install repository/client dependencies too for the frontend/server scheduler parity test.
+Integration tests create/drop an isolated schema and reject the application's
+`DATABASE_URL`. The task tables require PostgreSQL 15 or later, consistent with the
+existing medication migration's column-specific `ON DELETE SET NULL` constraints.
+
 ## Known gaps
 
 - `audit_log` exists but nothing writes to it yet.
