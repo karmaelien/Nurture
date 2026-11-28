@@ -111,13 +111,37 @@ export type MedicationOccurrence = {
 
 export type CareTask = {
   id: string
+  version: number // stale status writes are rejected
   recipientId: string
   title: string
   dueAt: string | null // UTC timestamp, or no due date
   assignedCaregiverId: string | null
   status: 'pending' | 'completed'
   completedAt: string | null // non-null exactly when status is completed
+  seriesId?: string
+  seriesVersion?: number
+  seriesStoppedAt?: string | null
+  seriesTitle?: string
+  seriesDescription?: string
 }
+
+export type TaskRepeat = {
+  unit: 'days' | 'weeks'
+  interval: number
+  daysOfWeek: number[]
+  end: { kind: 'never' } | { kind: 'onDate'; date: string } | { kind: 'afterOccurrences'; count: number }
+}
+export type TaskRecurrence = TaskRepeat & { timeZone: string }
+export type TaskSeriesSummary = {
+  id: string
+  version: number
+  title: string
+  recipientId: string
+  description: string
+  stoppedAt: string | null
+}
+
+export type TaskInput = Pick<CareTask, 'recipientId' | 'title' | 'dueAt' | 'assignedCaregiverId'>
 
 export type ExpenseCategory = 'medication' | 'appointment' | 'insurance' | 'utilities' | 'other'
 
@@ -162,6 +186,7 @@ export type ApiErrorBody = {
 export type AppointmentFilters = { from: string; to: string; recipientId?: string }
 export type MedicationOccurrenceFilters = AppointmentFilters & { status?: MedicationOccurrence['status'] }
 export type TaskFilters = {
+  includeUndated?: boolean
   dueFrom?: string
   dueBefore?: string
   completedFrom?: string

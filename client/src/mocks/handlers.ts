@@ -16,6 +16,7 @@ import { readDb, toUser, writeDb, type Db } from './db.ts'
 import { expenseHandlers } from './expenseHandlers.ts'
 import { appointmentHandlers } from './appointmentHandlers.ts'
 import { careHandlers } from './careHandlers.ts'
+import { taskHandlers } from './taskHandlers.ts'
 import { medicationHandlers } from './medicationHandlers.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
@@ -76,6 +77,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 }
 
 export const handlers = [
+  ...taskHandlers,
   ...medicationHandlers,
   ...documentHandlers,
   ...careHandlers,

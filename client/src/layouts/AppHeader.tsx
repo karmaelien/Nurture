@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { CalendarDays, Files, LayoutDashboard, Pill, Users, Wallet } from 'lucide-react'
+import { CalendarDays, Files, LayoutDashboard, ListChecks, Pill, Users, Wallet } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, NavLink, useLocation, useMatch, useParams } from 'react-router'
 import { Button } from '../components/ui/Button.tsx'
@@ -79,10 +79,10 @@ export function AppHeader() {
         </NavLink>
         {circle && (
           <>
-            <Link to={`${overview}#tasks`} className={`${navClass} hover:bg-wash`}>
-              <CalendarDays className="size-5" aria-hidden />
+            <NavLink to={circleLink('/app/tasks', circle.id)} className={activeNavClass}>
+              <ListChecks className="size-5" aria-hidden />
               Tasks
-            </Link>
+            </NavLink>
             <NavLink to={circleLink('/app/appointments', circle.id)} className={activeNavClass}>
               <CalendarDays className="size-5" aria-hidden />
               Appointments

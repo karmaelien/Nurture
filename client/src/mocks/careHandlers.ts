@@ -4,6 +4,7 @@ import { expenseCategorySchema } from '../features/expenses/schemas.ts'
 import { readDb, writeDb } from './db.ts'
 import { maxDoseRange, reconcileMedicationDoses } from '../features/medications/medication-occurrences.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
+import { materializeTaskSeries, withTaskSeries, taskSeriesSummary } from '../features/tasks/task-recurrence.ts'
 
 const notFound = () => error(404, 'not_found', 'This care circle or recipient is unavailable.')
 const invalid = () => error(400, 'validation_error', 'Check the date range and filters, then try again.')
@@ -61,6 +62,7 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       'recipientId',
       ...(config.statuses ? ['status'] : []),
       ...(resource === 'expenses' ? ['category'] : []),
+      ...(resource === 'tasks' ? ['includeUndated'] : []),
     ]
     if ([...query.keys()].some((key) => !allowed.includes(key) || query.getAll(key).length !== 1)) return invalid()
     if (config.required.some((key) => !query.has(key))) return invalid()
@@ -76,6 +78,8 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
     const status = query.get('status')
     if (status !== null && status !== 'pending' && status !== 'completed') return invalid()
     if (status === 'pending' && (query.has('completedFrom') || query.has('completedBefore'))) return invalid()
+    const includeUndated = query.get('includeUndated')
+    if (includeUndated !== null && includeUndated !== 'true' && includeUndated !== 'false') return invalid()
     const included = (record: { recipientId: string }) =>
       circle.recipients.some((recipient) => recipient.id === record.recipientId) &&
       (!recipientId || recipientId === record.recipientId)
@@ -115,14 +119,29 @@ export const careHandlers = Object.entries(resources).map(([resource, config]) =
       })
     }
     if (resource === 'tasks') {
+      const historyPending = materializeTaskSeries(
+        db,
+        String(params.circleId),
+        query.get('dueFrom'),
+        query.get('dueBefore'),
+      )
+      if (db.taskSeries?.some((series) => series.circleId === params.circleId)) writeDb(db, false)
       const tasks = db.care.tasks.filter(
         (record) =>
           included(record) &&
           (!status || record.status === status) &&
-          inRange(record.dueAt, query.get('dueFrom'), query.get('dueBefore')) &&
+          ((includeUndated === 'true' && record.dueAt === null) ||
+            inRange(record.dueAt, query.get('dueFrom'), query.get('dueBefore'))) &&
           inRange(record.completedAt, query.get('completedFrom'), query.get('completedBefore')),
       )
-      return HttpResponse.json({ tasks: tasks.sort(byDate((record) => record.dueAt)) })
+      const series = (db.taskSeries ?? [])
+        .filter((series) => series.circleId === circle.id && included(series))
+        .map(taskSeriesSummary)
+      const descriptions = new Map(series.map((series) => [series.id, series.description]))
+      return HttpResponse.json({
+        tasks: tasks.sort(byDate((record) => record.dueAt)).map((task) => withTaskSeries(task, db, descriptions)),
+        ...(series.length ? { historyPending, series } : {}),
+      })
     }
     const expenses = db.care.expenses.filter(
       (record) =>

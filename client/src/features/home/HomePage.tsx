@@ -3,9 +3,9 @@ import { circleLink, useCircleSelection } from '../circles/selection.ts'
 import { Link, useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ListChecks, Pill, UserPlus, Wallet } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { circlesApi } from '../../api/circles.ts'
-import type { CircleSummary, ExpenseCategory } from '../../api/types.ts'
+import type { CircleSummary, ExpenseCategory, CareTask } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 import { useRequiredSession } from '../auth/session.ts'
@@ -13,8 +13,13 @@ import { appointmentUpcomingEnd } from '../appointments/appointment-window.ts'
 import { useExpenses, useMedicationOccurrences, useTasks } from '../care/queries.ts'
 import { DashboardPanel as Panel, type QueryState } from './DashboardPanel.tsx'
 import { HomeAppointmentsPanel } from './HomeAppointmentsPanel.tsx'
+import { TaskListItem } from '../tasks/TaskListItem.tsx'
+import { TaskEditor } from '../tasks/TaskEditor.tsx'
+import { TaskDeleteDialog } from '../tasks/TaskDeleteDialog.tsx'
+import { TaskAttention } from '../tasks/TaskAttention.tsx'
+import { compareTasks } from '../tasks/task-order.ts'
 import { useHomeAppointments } from './useHomeAppointments.ts'
-import { dashboardWindow, formatDate, formatMoney, formatTime } from './dashboard.ts'
+import { dashboardWindow, formatMoney } from './dashboard.ts'
 import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
 import { useCareSelection } from '../care/selection.ts'
 import { MedicationPanel } from '../medications/MedicationPanel.tsx'
@@ -39,6 +44,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function CircleDashboard({ circle }: { circle: CircleSummary }) {
   const { user } = useRequiredSession()
+  const [editingTask, setEditingTask] = useState<CareTask | null>(null)
+  const [addingTask, setAddingTask] = useState(false)
+  const [deletingTask, setDeletingTask] = useState<CareTask | null>(null)
   const { recipientId, setRecipientId } = useCareSelection(circle)
   const now = useMinute()
   const windowDates = dashboardWindow(now)
@@ -48,7 +56,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     to: windowDates.tomorrowStart,
     recipientId: recipient,
   })
-  const tasks = useTasks(circle.id, { status: 'pending', dueBefore: windowDates.to, recipientId: recipient })
+  const tasks = useTasks(circle.id, { dueBefore: windowDates.to, includeUndated: true, recipientId: recipient })
   const expenses = useExpenses(circle.id, {
     fromDate: windowDates.fromDate,
     toDate: windowDates.toDate,
@@ -85,11 +93,40 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
     }))
     .filter((category) => category.amount > 0)
     .sort((a, b) => b.amount - a.amount)
-  const count = (query: QueryState & { data?: unknown[] }) =>
-    query.isError ? 'Unavailable' : query.isPending ? '…' : String(query.data?.length ?? 0)
+  const count = (query: QueryState & { data?: CareTask[]; historyPending?: boolean }) =>
+    query.isError
+      ? 'Unavailable'
+      : query.isPending
+        ? '…'
+        : `${query.historyPending ? 'At least ' : ''}${query.data?.filter((task) => task.status === 'pending').length ?? 0}`
 
+  // Home retains today's completions for undo; its outstanding count includes only pending tasks.
+  const taskEntries = (tasks.data ?? [])
+    .filter(
+      (task) =>
+        task.status === 'pending' ||
+        (task.completedAt && Date.parse(task.completedAt) >= Date.parse(windowDates.todayStart)),
+    )
+    .sort(compareTasks)
   return (
     <>
+      {deletingTask && (
+        <TaskDeleteDialog task={deletingTask} circleId={circle.id} onClose={() => setDeletingTask(null)} />
+      )}
+      {(addingTask || editingTask) && details.data && !details.isError && (
+        <TaskEditor
+          circle={details.data.circle}
+          recipientId={recipientId}
+          task={editingTask ?? undefined}
+          onClose={() => {
+            setEditingTask(null)
+            setAddingTask(false)
+          }}
+          onSaved={() => {
+            if (addingTask) setRecipientId('')
+          }}
+        />
+      )}
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <p className="text-muted">
           {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
@@ -97,7 +134,7 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
         <CareProfileSelection circle={circle} value={recipientId} onChange={setRecipientId} />
       </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Outstanding tasks · next 7 days + overdue" value={count(tasks)} />
+        <Stat label="Outstanding tasks · next 7 days + overdue + undated" value={count(tasks)} />
         <Stat
           label="Today’s doses completed"
           value={
@@ -120,26 +157,47 @@ function CircleDashboard({ circle }: { circle: CircleSummary }) {
       )}
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <div className="grid content-start gap-5">
+          <TaskAttention
+            circle={circle}
+            recipientId={recipientId}
+            now={now.getTime()}
+            caregiverName={assigned}
+            onEdit={details.data && !details.isError ? setEditingTask : undefined}
+            onDelete={setDeletingTask}
+          />
           <Panel
             id="tasks"
-            title="Tasks to take care of"
+            title="Tasks"
             icon={<ListChecks />}
             query={tasks}
-            empty={!tasks.data?.length}
+            empty={!taskEntries.length && !tasks.historyPending}
+            action={
+              <Button
+                disabled={!details.data || details.isError || !circle.recipients.length}
+                onClick={() => setAddingTask(true)}
+              >
+                Add Task
+              </Button>
+            }
           >
+            {tasks.historyPending && (
+              <p role="status" className="mb-3 text-muted">
+                Loading older repeating tasks…
+              </p>
+            )}
             <ul className="max-h-[26rem] divide-y divide-line overflow-y-auto pr-2">
-              {tasks.data?.map((task) => (
-                <li key={task.id} className="py-4 first:pt-0 last:pb-0">
-                  <p className="font-semibold">{task.title}</p>
-                  <p className="text-muted">
-                    {name(task.recipientId)} · {assigned(task.assignedCaregiverId)}
-                  </p>
-                  <p className="mt-2">
-                    {task.dueAt
-                      ? `${Date.parse(task.dueAt) < now.getTime() ? 'Overdue · ' : ''}${formatDate(task.dueAt)} · ${formatTime(task.dueAt)}`
-                      : 'No due date'}
-                  </p>
-                </li>
+              {taskEntries.map((task) => (
+                <TaskListItem
+                  key={task.id}
+                  task={task}
+                  circleId={circle.id}
+                  person={name(task.recipientId)}
+                  caregiver={assigned(task.assignedCaregiverId)}
+                  now={now.getTime()}
+                  compact
+                  onEdit={details.data && !details.isError ? () => setEditingTask(task) : undefined}
+                  onDelete={() => setDeletingTask(task)}
+                />
               ))}
             </ul>
           </Panel>
