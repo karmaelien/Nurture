@@ -10,6 +10,8 @@ import { formatTime } from '../home/dashboard.ts'
 import { useMinute } from '../profiles/time.ts'
 import { isDoseOverdue, isDoseReminderActive, overdueDoseLabel } from './medication-schedule.ts'
 
+import { StatusBadge } from '../../components/ui/StatusBadge.tsx'
+
 function Dose({
   circleId,
   dose,
@@ -17,6 +19,8 @@ function Dose({
   now,
   showDate,
   onEdit,
+  onDelete,
+  onAssistance,
 }: {
   circleId: string
   dose: MedicationOccurrence
@@ -24,6 +28,8 @@ function Dose({
   now: number
   showDate: boolean
   onEdit?: () => void
+  onDelete?: () => void
+  onAssistance?: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
@@ -59,13 +65,11 @@ function Dose({
         {showDate && <>{new Date(dose.scheduledAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · </>}
         {formatTime(dose.scheduledAt)} · {person}
       </p>
-      <p className="text-muted">
-        {dose.name} · {dose.dosage}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <span
-          className={`inline-flex h-11 items-center rounded-control border px-4 text-[15px] ${taken ? 'border-primary text-primary' : overdue ? 'border-danger text-danger' : reminder ? 'border-warning text-warning' : 'border-line text-muted'}`}
-        >
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-muted">
+          {dose.name} · {dose.dosage}
+        </p>
+        <StatusBadge tone={taken ? 'positive' : overdue ? 'danger' : reminder ? 'warning' : 'neutral'}>
           {taken
             ? 'Taken'
             : overdue
@@ -75,7 +79,9 @@ function Dose({
                   ? `Due in ${minutesUntil} min`
                   : 'Due now'
                 : 'Pending'}
-        </span>
+        </StatusBadge>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button
           variant="outline"
           loading={busy}
@@ -87,6 +93,16 @@ function Dose({
         {onEdit && (
           <Button variant="outline" onClick={onEdit}>
             Edit medication
+          </Button>
+        )}
+        {onAssistance && (
+          <Button variant="outline" disabled={busy} onClick={onAssistance}>
+            Patient Assistance
+          </Button>
+        )}
+        {onDelete && (
+          <Button variant="danger" onClick={onDelete}>
+            Delete medication
           </Button>
         )}
       </div>
@@ -110,20 +126,28 @@ export function MedicationDoseList({
   doses,
   personName,
   showDate = false,
+  missedDate,
   totalOverdueCount,
   overdueCountIsPartial = false,
   scrollable = true,
   onEdit,
+  onDelete,
+  onAssistance,
   editableMedicationIds,
+  deletableMedicationIds,
 }: {
   circleId: string
   doses: MedicationOccurrence[]
   personName: (id: string) => string
   showDate?: boolean
+  missedDate?: string
   totalOverdueCount?: number
   overdueCountIsPartial?: boolean
   scrollable?: boolean
   onEdit?: (medicationId: string) => void
+  onDelete?: (medicationId: string) => void
+  onAssistance?: (medicationId: string) => void
+  deletableMedicationIds?: string[]
   editableMedicationIds?: string[]
 }) {
   const now = useMinute().getTime()
@@ -132,12 +156,20 @@ export function MedicationDoseList({
     (a, b) => priority(a) - priority(b) || Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt),
   )
   const overdueCount = totalOverdueCount ?? doses.filter((dose) => isDoseOverdue(dose, now)).length
+  const today = new Date(now)
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+  const missedContext = !missedDate
+    ? ''
+    : missedDate === todayKey
+      ? ' today'
+      : ` on ${new Date(`${missedDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: 'medium' })}`
   return (
     <>
       {overdueCount > 0 && (
         <p role="status" className="mb-3 font-semibold text-danger">
           {overdueCountIsPartial ? 'At least ' : ''}
           {overdueCount} missed {overdueCount === 1 ? 'dose' : 'doses'}
+          {missedContext}
         </p>
       )}
       <ul className={scrollable ? 'max-h-64 divide-y divide-line overflow-y-auto pr-2' : 'divide-y divide-line'}>
@@ -149,6 +181,16 @@ export function MedicationDoseList({
             person={personName(dose.recipientId)}
             now={now}
             showDate={showDate}
+            onAssistance={
+              onAssistance && deletableMedicationIds?.includes(dose.medicationId)
+                ? () => onAssistance(dose.medicationId)
+                : undefined
+            }
+            onDelete={
+              onDelete && deletableMedicationIds?.includes(dose.medicationId)
+                ? () => onDelete(dose.medicationId)
+                : undefined
+            }
             onEdit={
               onEdit && editableMedicationIds?.includes(dose.medicationId) ? () => onEdit(dose.medicationId) : undefined
             }

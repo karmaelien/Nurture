@@ -219,3 +219,38 @@ export type CreateDocumentRequest = Pick<CareDocument, 'recipientId' | 'title' |
 export type UpdateDocumentRequest = { version: number } & Partial<
   Pick<CreateDocumentRequest, 'title' | 'category' | 'sharing'>
 >
+
+export type AssistanceReason = 'price_increase' | 'not_covered'
+export type AssistanceResource = {
+  id: string
+  title: string
+  description: string
+  url: string
+  reasons: AssistanceReason[]
+}
+export type AssistanceInput = {
+  requestId: string // reused on retry so a lost response cannot create a second report
+  medicationId: string
+  reason: AssistanceReason
+  previousCostCents: number | null
+  currentCostCents: number | null
+  notes: string
+}
+export type AssistanceReport = Omit<AssistanceInput, 'requestId' | 'medicationId'> & {
+  id: string
+  circleId: string
+  medicationId: string | null
+  medicationName: string // snapshot; later medication changes do not rewrite reported circumstances
+  recipientId: string
+  createdAt: string
+  reportedBy: string | null
+  dismissedAt: string | null
+  version: number
+}
+export type AssistanceFilters = { recipientId?: string; status: 'active' | 'dismissed' | 'all'; cursor?: string }
+export type AssistanceResponse = {
+  reports: AssistanceReport[]
+  totalCount: number
+  nextCursor: string | null
+  resources: AssistanceResource[]
+}

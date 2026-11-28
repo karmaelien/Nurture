@@ -17,7 +17,7 @@ describe('auth flow', () => {
       await user.type(screen.getByLabelText('Password'), DEMO_ACCOUNT.password)
       await user.click(screen.getByRole('button', { name: 'Log in' }))
 
-      expect(await screen.findByRole('heading', { name: 'A little clarity for your day.' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument()
       expect(screen.getByText('Signed in as Maya Alvarez (demo@nurture.app).')).toBeInTheDocument()
       expect(router.state.location.pathname).toBe('/app')
     },

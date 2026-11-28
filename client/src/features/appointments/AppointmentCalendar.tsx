@@ -1,3 +1,6 @@
+import { CalendarDetailsDialog } from '../../components/ui/CalendarDetailsDialog.tsx'
+import { CalendarToolbar } from '../../components/ui/CalendarToolbar.tsx'
+import { calendarBlockClasses } from '../../components/ui/statusStyles.ts'
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button.tsx'
@@ -5,7 +8,6 @@ import { AppointmentDetails } from './AppointmentDetails.tsx'
 import { AppointmentListItem } from './AppointmentListItem.tsx'
 import { isAppointmentOverdue } from './appointment-overdue.ts'
 import { compareAppointmentListOrder } from './appointment-order.ts'
-import { closeOnBackdropClick } from './dialog.ts'
 import type { AppointmentSummary, CareProfile } from './AppointmentsPage.tsx'
 import { appointmentLayoutEnd, hasValidAppointmentTime, layoutDayAppointments } from './calendar-layout.ts'
 
@@ -20,6 +22,8 @@ export function AppointmentCalendar({
   onComplete,
   onMarkTodo,
   onEdit,
+  onAdd,
+  onDelete,
 }: {
   profiles: CareProfile[]
   appointments: AppointmentSummary[]
@@ -27,9 +31,15 @@ export function AppointmentCalendar({
   onComplete?: (appointment: AppointmentSummary) => void
   onMarkTodo?: (appointment: AppointmentSummary) => void
   onEdit?: (appointment: AppointmentSummary) => void
+  onAdd?: (date: string) => void
+  onDelete?: (appointment: AppointmentSummary) => void
 }) {
   const headingId = useId()
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const profileScope = JSON.stringify(profiles.map((profile) => [profile.circleId, profile.id]))
+  useEffect(() => {
+    if (dialogRef.current?.open) dialogRef.current.close()
+  }, [profileScope])
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [view, setView] = useState<CalendarView>('monthly')
@@ -111,16 +121,19 @@ export function AppointmentCalendar({
         .map((entry) => entry.appointment)
         .sort(compareAppointmentListOrder)
     : []
-  const hasDayDetails = dayAppointments.length > 0
+  const hasDayDetails = !!selectedDay && profiles.length > 0
 
-  // Reconcile the native dialog with selection, closing it if filtering/navigation removes its content.
-  useEffect(() => {
-    const dialog = dialogRef.current
-    if ((selectedAppointment || hasDayDetails) && !dialog?.open) dialog?.showModal()
-    else if (!selectedAppointment && !hasDayDetails && dialog?.open) dialog.close()
-  }, [selectedAppointment, hasDayDetails])
-
+  function closeDetails() {
+    dialogRef.current?.close()
+    setSelectedKey(null)
+    setSelectedDay(null)
+  }
+  function openDay(date: Date) {
+    setSelectedKey(null)
+    setSelectedDay(date.toISOString())
+  }
   function changePeriod(offset: number) {
+    closeDetails()
     if (view === 'monthly') {
       const lastDay = new Date(year, monthIndex + offset + 1, 0).getDate()
       setAnchorDate(new Date(year, monthIndex + offset, Math.min(preferredMonthDay, lastDay)))
@@ -143,31 +156,24 @@ export function AppointmentCalendar({
       <p className="mt-2 text-muted">
         Appointments for the selected care profiles · Times shown in your local timezone.
       </p>
-      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Calendar view">
-        {(['daily', 'weekly', 'monthly'] as const).map((option) => (
-          <Button
-            key={option}
-            variant={view === option ? 'primary' : 'secondary'}
-            aria-pressed={view === option}
-            onClick={() => setView(option)}
-          >
-            {option[0].toUpperCase() + option.slice(1)}
-          </Button>
-        ))}
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-display text-h3 font-semibold" aria-live="polite">
-          {periodLabel}
-        </h3>
-        <div className="flex gap-3">
-          <Button variant="secondary" aria-label={`Previous ${periodUnit}`} onClick={() => changePeriod(-1)}>
-            Previous
-          </Button>
-          <Button variant="secondary" aria-label={`Next ${periodUnit}`} onClick={() => changePeriod(1)}>
-            Next
-          </Button>
-        </div>
-      </div>
+      <CalendarToolbar
+        view={view}
+        anchor={anchorDate}
+        label={periodLabel}
+        now={now}
+        onView={(value) => {
+          setView(value)
+          setSelectedKey(null)
+          setSelectedDay(null)
+        }}
+        onDate={(date) => {
+          setAnchorDate(date)
+          setPreferredMonthDay(date.getDate())
+          setSelectedKey(null)
+          setSelectedDay(null)
+        }}
+        onPeriod={changePeriod}
+      />
       <div
         className="mt-4 h-[38rem] overflow-auto rounded-panel border border-line"
         role="region"
@@ -190,14 +196,22 @@ export function AppointmentCalendar({
                       date!,
                     ),
                   )
-              ).map((day) => (
+              ).map((day, index) => (
                 <th key={day} scope="col" className="border-b border-line bg-wash p-3 text-left font-semibold">
                   {view === 'monthly' ? (
                     <abbr title={day} className="no-underline">
                       {day.slice(0, 3)}
                     </abbr>
                   ) : (
-                    day
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-label={`View appointments for ${weeks[0][index]!.toLocaleDateString(undefined, { dateStyle: 'full' })}`}
+                      className="w-full cursor-pointer rounded-control text-left hover:underline"
+                      onClick={() => openDay(weeks[0][index]!)}
+                    >
+                      {day}
+                    </button>
                   )}
                 </th>
               ))}
@@ -225,13 +239,20 @@ export function AppointmentCalendar({
                     return (
                       <td key={dayIndex} rowSpan={24} className="border border-line p-0 align-top">
                         <div className="relative" style={{ height: hourHeight * 24 }}>
+                          <button
+                            type="button"
+                            className="absolute inset-0 cursor-pointer hover:bg-wash/40 focus-visible:outline-2 focus-visible:outline-primary"
+                            aria-haspopup="dialog"
+                            aria-label={`View appointments for ${cellDate.toLocaleDateString(undefined, { dateStyle: 'full' })}`}
+                            onClick={() => openDay(cellDate)}
+                          />
                           <div aria-hidden="true" className="pointer-events-none absolute inset-0">
                             {Array.from({ length: 24 }, (_, index) => (
                               <div key={index} className="border-b border-line" style={{ height: hourHeight }} />
                             ))}
                           </div>
                           <ul
-                            className="absolute inset-0"
+                            className="pointer-events-none absolute inset-0"
                             aria-label={`Appointments on ${cellDate.toLocaleDateString()}`}
                           >
                             {blocks.map(({ appointment, startMinute, endMinute, column, columns }) => {
@@ -241,7 +262,7 @@ export function AppointmentCalendar({
                               return (
                                 <li
                                   key={JSON.stringify([appointment.circleId, appointment.recipientId, appointment.id])}
-                                  className="absolute min-w-0 p-px"
+                                  className="pointer-events-auto absolute min-w-0 p-px"
                                   style={{
                                     top: (startMinute / 60) * hourHeight,
                                     height: Math.max(1, ((endMinute - startMinute) / 60) * hourHeight),
@@ -252,7 +273,7 @@ export function AppointmentCalendar({
                                   <button
                                     type="button"
                                     aria-haspopup="dialog"
-                                    className="h-full w-full cursor-pointer overflow-hidden rounded-control border border-surface bg-wash px-1.5 py-1 text-left align-top text-small leading-4 hover:bg-sage"
+                                    className={`h-full align-top ${calendarBlockClasses(isAppointmentOverdue(appointment, now), appointment.status === 'completed')}`}
                                     aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
                                     title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                     onClick={() =>
@@ -305,19 +326,29 @@ export function AppointmentCalendar({
                   return (
                     <td
                       key={dayIndex}
-                      className={`${view === 'monthly' ? 'h-48' : 'h-20'} border border-line p-2 align-top`}
+                      className={`relative ${view === 'monthly' ? 'h-48' : 'h-20'} border border-line p-2 align-top`}
                     >
                       {view === 'monthly' && (
-                        <time
-                          dateTime={date}
-                          aria-current={isToday ? 'date' : undefined}
-                          className={`inline-flex size-8 items-center justify-center rounded-control font-semibold ${isToday ? 'bg-primary text-primary-foreground' : ''}`}
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          aria-label={`View appointments for ${cellDate.toLocaleDateString(undefined, { dateStyle: 'full' })}`}
+                          className="cursor-pointer rounded-control after:absolute after:inset-0 hover:bg-wash"
+                          onClick={() => openDay(cellDate)}
                         >
-                          {day}
-                        </time>
+                          <time
+                            dateTime={date}
+                            aria-current={isToday ? 'date' : undefined}
+                            className={`inline-flex size-8 items-center justify-center rounded-control font-semibold ${isToday ? 'bg-primary text-primary-foreground' : ''}`}
+                          >
+                            {day}
+                          </time>
+                        </button>
                       )}
                       {entries.length > 0 && (
-                        <ul className={`grid gap-1 ${view === 'monthly' ? 'mt-2' : 'max-h-16 overflow-y-auto'}`}>
+                        <ul
+                          className={`relative z-[1] grid gap-1 ${view === 'monthly' ? 'mt-2' : 'max-h-16 overflow-y-auto'}`}
+                        >
                           {displayGroups.map(({ key, group }) => (
                             <li key={key} className="min-w-0">
                               <ul className="grid grid-flow-col auto-cols-fr gap-1">
@@ -338,7 +369,7 @@ export function AppointmentCalendar({
                                       <button
                                         type="button"
                                         aria-haspopup="dialog"
-                                        className={`${view === 'monthly' ? 'h-8' : 'h-10'} w-full min-w-0 cursor-pointer overflow-hidden rounded-control bg-wash px-1.5 py-1 text-left text-small leading-4 hover:bg-sage`}
+                                        className={`${view === 'monthly' ? 'h-8' : 'h-10'} min-w-0 ${calendarBlockClasses(isAppointmentOverdue(appointment, now), appointment.status === 'completed')}`}
                                         aria-label={`${appointment.title} for ${profile.name}, ${formatTimeRange(appointment)}, ${statusLabel(appointment)}`}
                                         title={`${appointment.title} · ${profile.name} · ${formatTimeRange(appointment)} · ${statusLabel(appointment)}`}
                                         onClick={() =>
@@ -397,32 +428,60 @@ export function AppointmentCalendar({
           </tbody>
         </table>
       </div>
-      <dialog
-        ref={dialogRef}
-        aria-labelledby={`${headingId}-details`}
-        onClick={closeOnBackdropClick}
+      <CalendarDetailsDialog
+        open={!!(selectedAppointment || hasDayDetails)}
+        dialogRef={dialogRef}
+        title={selectedAppointment ? 'Appointment Details' : 'Appointments'}
+        date={selectedAppointment || selectedDay ? new Date(selectedAppointment?.startsAt ?? selectedDay!) : undefined}
+        scope={profiles.length === 1 ? profiles[0].name : 'All care profiles'}
+        action={
+          (selectedAppointment || hasDayDetails) && onAdd ? (
+            <Button
+              onClick={() => {
+                const date = new Date(selectedAppointment?.startsAt ?? selectedDay!)
+                const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                closeDetails()
+                onAdd(key)
+              }}
+            >
+              Add appointment
+            </Button>
+          ) : undefined
+        }
         onClose={() => {
           setSelectedKey(null)
           setSelectedDay(null)
         }}
-        className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
       >
         {selectedAppointment && selectedProfile && (
           <AppointmentDetails
             appointment={selectedAppointment}
             profile={selectedProfile}
-            headingId={`${headingId}-details`}
+
+            overdue={isAppointmentOverdue(selectedAppointment, now)}
             onComplete={onComplete}
             onMarkTodo={onMarkTodo}
-            onEdit={onEdit}
+            onEdit={
+              onEdit
+                ? (item) => {
+                    closeDetails()
+                    onEdit(item)
+                  }
+                : undefined
+            }
+            onDelete={
+              onDelete
+                ? (item) => {
+                    closeDetails()
+                    onDelete(item)
+                  }
+                : undefined
+            }
           />
         )}
         {!selectedAppointment && hasDayDetails && (
           <>
-            <h2 id={`${headingId}-details`} className="font-display text-h2 font-bold">
-              Appointments · {new Intl.DateTimeFormat(undefined, { dateStyle: 'full' }).format(new Date(selectedDay!))}
-            </h2>
-            <ul className="mt-4 divide-y divide-line">
+            <ul className="divide-y divide-line">
               {dayAppointments.map((appointment) => {
                 const profile = profiles.find(
                   (item) => item.id === appointment.recipientId && item.circleId === appointment.circleId,
@@ -433,9 +492,23 @@ export function AppointmentCalendar({
                       <AppointmentListItem
                         appointment={appointment}
                         profileName={profile.name}
+                        overdue={isAppointmentOverdue(appointment, now)}
                         onComplete={onComplete ? () => onComplete(appointment) : undefined}
                         onMarkTodo={onMarkTodo ? () => onMarkTodo(appointment) : undefined}
-                        onEdit={onEdit && (() => onEdit(appointment))}
+                        onEdit={
+                          onEdit &&
+                          (() => {
+                            closeDetails()
+                            onEdit(appointment)
+                          })
+                        }
+                        onDelete={
+                          onDelete &&
+                          (() => {
+                            closeDetails()
+                            onDelete(appointment)
+                          })
+                        }
                       />
                     </div>
                   </li>
@@ -444,10 +517,10 @@ export function AppointmentCalendar({
             </ul>
           </>
         )}
-        <Button variant="secondary" className="mt-6" onClick={() => dialogRef.current?.close()}>
-          Close
-        </Button>
-      </dialog>
+        {hasDayDetails && !dayAppointments.length && (
+          <p className="mt-4 text-muted">No appointments for the selected care profiles on this date.</p>
+        )}
+      </CalendarDetailsDialog>
       {profiles.length === 0 ? (
         <p className="mt-3 text-muted">Select a care profile to view appointments.</p>
       ) : (

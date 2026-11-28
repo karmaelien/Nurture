@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react'
+import { QueryFeedback } from '../../components/ui/QueryFeedback.tsx'
+import { useCareSelection } from '../care/selection.ts'
+import { CareProfileSelection } from '../care/CareProfileSelection.tsx'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileText, Lock, Users } from 'lucide-react'
 import type { CareDocument, CircleDetail, CircleSummary } from '../../api/types.ts'
@@ -14,6 +17,10 @@ import { useCircleSelection } from '../circles/selection.ts'
 import { mocksEnabled } from '../../mocks/enabled.ts'
 import { DocumentForm, DocumentSelect } from './DocumentForm.tsx'
 import { documentCategories } from './schemas.ts'
+
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 
 const panel = 'min-w-0 rounded-panel border border-line bg-surface p-5 sm:p-6'
 const size = (bytes: number) =>
@@ -35,16 +42,7 @@ function FilePreview({ circleId, document }: { circleId: string; document: CareD
     setUrl(objectUrl)
     return () => URL.revokeObjectURL(objectUrl)
   }, [file.data])
-  if (file.isPending) return <p role="status">Loading preview…</p>
-  if (file.isError)
-    return (
-      <Alert tone="danger">
-        {errorMessage(file.error)}{' '}
-        <Button variant="secondary" onClick={() => void file.refetch()}>
-          Retry preview
-        </Button>
-      </Alert>
-    )
+  if (file.isPending || file.isError) return <QueryFeedback query={file} loading="Loading preview…" />
   return (
     <div className="space-y-3">
       {url &&
@@ -76,20 +74,25 @@ function DocumentDetails({
   circle,
   refresh,
   onDeleted,
+  onSaved,
 }: {
   document: CareDocument
   circle: CircleDetail
   refresh: () => Promise<void>
   onDeleted: () => void
+  onSaved: () => void
 }) {
   const { user } = useRequiredSession()
   const cache = useQueryClient()
   const [editing, setEditing] = useState(false)
+  const [editingBusy, setEditingBusy] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const writing = useRef(false)
   async function remove() {
+    if (writing.current) return
+    writing.current = true
     setPending(true)
     setError('')
     try {
@@ -100,6 +103,7 @@ function DocumentDetails({
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
+      writing.current = false
       setPending(false)
     }
   }
@@ -119,19 +123,30 @@ function DocumentDetails({
       </p>
       <div className="mt-6 border-t border-line pt-5">
         {editing ? (
-          <DocumentForm
-            document={document}
-            circle={circle}
-            userId={user.id}
-            cancel={() => setEditing(false)}
-            save={async ({ title, category, sharing }, _file, version) => {
-              if (version === undefined) throw new Error('Reload the document before editing.')
-              await documentsApi.update(circle.id, document.id, { title, category, sharing, version })
-              await refresh()
-              setEditing(false)
-              setNotice('Document updated.')
-            }}
-          />
+          <FormDialog
+            title="Edit document"
+            isBusy={() => writing.current}
+            busy={editingBusy}
+            onClose={() => setEditing(false)}
+          >
+            <DocumentForm
+              onPendingChange={(busy) => {
+                writing.current = busy
+                setEditingBusy(busy)
+              }}
+              document={document}
+              circle={circle}
+              userId={user.id}
+              cancel={() => setEditing(false)}
+              save={async ({ title, category, sharing }, _file, version) => {
+                if (version === undefined) throw new Error('Reload the document before editing.')
+                await documentsApi.update(circle.id, document.id, { title, category, sharing, version })
+                await refresh()
+                setEditing(false)
+                onSaved()
+              }}
+            />
+          </FormDialog>
         ) : (
           <>
             <h3 className="font-semibold">Who can access</h3>
@@ -159,16 +174,15 @@ function DocumentDetails({
             {document.canManage ? (
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   onClick={() => {
-                    setNotice('')
                     setEditing(true)
                     setConfirm(false)
                   }}
                 >
                   Edit details & sharing
                 </Button>
-                <Button variant="secondary" onClick={() => setConfirm(true)}>
+                <Button variant="danger" onClick={() => setConfirm(true)}>
                   Delete document
                 </Button>
               </div>
@@ -179,26 +193,31 @@ function DocumentDetails({
         )}
       </div>
       {confirm && (
-        <div className="mt-5 space-y-3 rounded-control bg-wash p-4">
-          <p>Delete “{document.title}”? This removes the file for everyone and cannot be undone.</p>
+        <FormDialog
+          title="Delete document?"
+          isBusy={() => writing.current}
+          busy={pending}
+          onClose={() => setConfirm(false)}
+        >
+          <p className="mb-4">Delete “{document.title}”? This removes the file for everyone and cannot be undone.</p>
+          {error && (
+            <div className="mb-4">
+              <Alert tone="danger">{error}</Alert>
+            </div>
+          )}
           <div className="flex flex-wrap gap-3">
-            <Button loading={pending} onClick={() => void remove()}>
-              Confirm delete
+            <Button variant="danger" loading={pending} onClick={() => void remove()}>
+              Delete document
             </Button>
             <Button variant="secondary" disabled={pending} onClick={() => setConfirm(false)}>
-              Cancel deletion
+              Cancel
             </Button>
           </div>
-        </div>
+        </FormDialog>
       )}
-      {error && (
+      {error && !confirm && (
         <div className="mt-4">
           <Alert tone="danger">{error}</Alert>
-        </div>
-      )}
-      {notice && (
-        <div className="mt-4">
-          <Alert tone="success">{notice}</Alert>
         </div>
       )}
     </aside>
@@ -215,63 +234,67 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
     retry: false,
   })
   const [search, setSearch] = useState('')
-  const [recipient, setRecipient] = useState('all')
+  const { recipientId: recipient, setRecipientId: setRecipient, resetFilters } = useCareSelection(circle)
   const [category, setCategory] = useState('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [upload, setUpload] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const uploadingNow = useRef(false)
   const [notice, setNotice] = useState('')
   const refresh = () => cache.invalidateQueries({ queryKey: key })
   const visible = (documents.data?.documents ?? []).filter(
     (d) =>
-      (recipient === 'all' || d.recipientId === recipient) &&
+      (!recipient || d.recipientId === recipient) &&
       (category === 'all' || d.category === category) &&
       `${d.title} ${d.fileName}`.toLowerCase().includes(search.trim().toLowerCase()),
   )
   const active = visible.find((d) => d.id === selected) ?? visible[0]
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display text-h1 font-bold">Care documents</h1>
-          <p className="mt-2 text-muted">The important details, all in one place.</p>
-        </div>
-        <Button
-          disabled={upload || !detail.data || !circle.recipients.length}
-          onClick={() => {
-            setUpload(true)
-            setNotice('')
-          }}
-        >
-          + Upload document
-        </Button>
-      </div>
-      {mocksEnabled && (
-        <p className="text-small text-muted">
-          Demo documents — uploads and changes are temporary and reset when you reload. Use sample files only.
-        </p>
-      )}
+    <section className={panel}>
       {upload && detail.data && (
-        <section className={panel}>
-          <h2 className="mb-5 font-display text-h2 font-semibold">Upload a document</h2>
+        <FormDialog
+          title="Upload a document"
+          isBusy={() => uploadingNow.current}
+          busy={uploading}
+          onClose={() => setUpload(false)}
+        >
           <DocumentForm
             circle={detail.data.circle}
             userId={user.id}
+            initialRecipientId={recipient || undefined}
+            onPendingChange={(busy) => {
+              uploadingNow.current = busy
+              setUploading(busy)
+            }}
             cancel={() => setUpload(false)}
             save={async (metadata, file) => {
               const result = await documentsApi.upload(circle.id, file!, metadata)
               await refresh()
-              setSearch('')
-              setCategory('all')
-              setRecipient('all')
               setSelected(result.document.id)
               setUpload(false)
-              setNotice('Document uploaded.')
+              setNotice('Document uploaded. Clear filters if it is not shown.')
             }}
           />
-        </section>
+        </FormDialog>
       )}
-      {notice && <Alert tone="success">{notice}</Alert>}
-      <div className="grid items-end gap-4 sm:grid-cols-[2fr_1fr_1fr]">
+      <FeatureToolbar
+        onClear={() => {
+          resetFilters()
+          setSearch('')
+          setCategory('all')
+        }}
+        actions={
+          <Button
+            disabled={upload || !detail.data || detail.isError || !circle.recipients.length}
+            onClick={() => {
+              setUpload(true)
+              setNotice('')
+            }}
+          >
+            Upload document
+          </Button>
+        }
+      >
         <TextField
           label="Search documents"
           placeholder="Search titles or filenames"
@@ -279,14 +302,7 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <DocumentSelect label="Filter by recipient" value={recipient} onChange={setRecipient}>
-          <option value="all">Everyone</option>
-          {circle.recipients.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-        </DocumentSelect>
+        <CareProfileSelection circle={circle} value={recipient} onChange={setRecipient} />
         <DocumentSelect label="Filter by category" value={category} onChange={setCategory}>
           <option value="all">All categories</option>
           {Object.entries(documentCategories).map(([value, label]) => (
@@ -295,25 +311,26 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
             </option>
           ))}
         </DocumentSelect>
-      </div>
-      {documents.isPending || detail.isPending ? (
-        <p role="status">Loading documents…</p>
-      ) : documents.isError || detail.isError ? (
-        <Alert tone="danger">
-          {errorMessage(documents.error ?? detail.error)}{' '}
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void documents.refetch()
-              void detail.refetch()
-            }}
-          >
-            Try again
-          </Button>
-        </Alert>
+      </FeatureToolbar>
+      {notice && <Alert tone="success">{notice}</Alert>}
+      {mocksEnabled && (
+        <p className="mb-4 text-small text-muted">
+          Demo documents — uploads and changes are temporary and reset when you reload. Use sample files only.
+        </p>
+      )}
+      {documents.isPending || detail.isPending || documents.isError || detail.isError ? (
+        <QueryFeedback
+          loading="Loading documents…"
+          query={{
+            isPending: documents.isPending || detail.isPending,
+            isError: documents.isError || detail.isError,
+            error: documents.error ?? detail.error,
+            refetch: () => Promise.all([documents.refetch(), detail.refetch()]),
+          }}
+        />
       ) : (
         <>
-          <p className="text-small text-muted" role="status">
+          <p className="mb-4 text-small text-muted" role="status">
             {visible.length} documents · Only documents you can access are shown
           </p>
           {!visible.length ? (
@@ -322,8 +339,8 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
               <p className="mt-2 text-muted">Upload a document or change your search and filters.</p>
             </section>
           ) : (
-            <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr]">
-              <ul className="min-w-0 self-start overflow-hidden rounded-panel border border-line bg-surface">
+            <div className="grid items-start gap-5 lg:grid-cols-2">
+              <ul className="max-h-[38rem] min-w-0 self-start overflow-y-auto rounded-panel border border-line bg-surface">
                 {visible.map((d) => (
                   <li key={d.id} className="border-b border-line last:border-0">
                     <button
@@ -361,6 +378,7 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
                   document={active}
                   circle={detail.data.circle}
                   refresh={refresh}
+                  onSaved={() => setNotice('Document saved. Clear filters if it is not shown.')}
                   onDeleted={() => {
                     setSelected(null)
                     setNotice('Document deleted.')
@@ -371,7 +389,7 @@ function CircleDocuments({ circle }: { circle: CircleSummary }) {
           )}
         </>
       )}
-    </div>
+    </section>
   )
 }
 export function DocumentsPage() {
@@ -379,10 +397,12 @@ export function DocumentsPage() {
   const { circle, selectCircle } = useCircleSelection(circles)
   return (
     <div className="min-h-dvh">
-      <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8">
-        <div className="flex justify-end">
-          <CircleSelection circles={circles} circle={circle} onChange={selectCircle} />
-        </div>
+      <main className="mx-auto max-w-6xl px-5 py-5 sm:px-8">
+        <PageHeader
+          title="Care documents"
+          description="The important details, all in one place."
+          aside={<CircleSelection circles={circles} circle={circle} onChange={selectCircle} />}
+        />
         {circle ? (
           <CircleDocuments key={circle.id} circle={circle} />
         ) : (

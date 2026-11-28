@@ -18,6 +18,7 @@ import { appointmentHandlers } from './appointmentHandlers.ts'
 import { careHandlers } from './careHandlers.ts'
 import { taskHandlers } from './taskHandlers.ts'
 import { medicationHandlers } from './medicationHandlers.ts'
+import { assistanceHandlers } from './assistanceHandlers.ts'
 import { bearerToken, error, unauthorized } from './responses.ts'
 
 async function parseBody<T extends z.ZodType>(request: Request, schema: T) {
@@ -77,6 +78,7 @@ function startSession(db: Db, userId: string): AuthResponse {
 }
 
 export const handlers = [
+  ...assistanceHandlers,
   ...taskHandlers,
   ...medicationHandlers,
   ...documentHandlers,

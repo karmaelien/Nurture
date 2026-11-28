@@ -1,0 +1,23 @@
+[
+  {
+    "id": "needymeds",
+    "title": "NeedyMeds",
+    "description": "Search by medication name for patient assistance programs and other prescription savings resources.",
+    "url": "https://www.needymeds.org/",
+    "reasons": ["price_increase", "not_covered"]
+  },
+  {
+    "id": "rxassist",
+    "title": "RxAssist",
+    "description": "Search medication and manufacturer assistance programs, then review each program's requirements and application process.",
+    "url": "https://www.rxassist.org/patients",
+    "reasons": ["price_increase", "not_covered"]
+  },
+  {
+    "id": "medicare-extra-help",
+    "title": "Medicare Extra Help",
+    "description": "For people with Medicare: review assistance with prescription drug costs and the program's eligibility requirements.",
+    "url": "https://www.medicare.gov/basics/costs/help/drug-costs",
+    "reasons": ["price_increase", "not_covered"]
+  }
+]

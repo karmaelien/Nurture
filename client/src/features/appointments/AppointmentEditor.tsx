@@ -1,5 +1,6 @@
+import { FormDialog } from '../../components/ui/FormDialog.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { careApi } from '../../api/care.ts'
 import { errorMessage } from '../../api/client.ts'
 import type { Appointment } from '../../api/types.ts'
@@ -8,7 +9,6 @@ import { Button } from '../../components/ui/Button.tsx'
 import { SelectField, TextField } from '../../components/ui/Field.tsx'
 import { useRequiredSession } from '../auth/session.ts'
 import { appointmentInputSchema } from './appointment-input.ts'
-import { closeOnBackdropClick } from './dialog.ts'
 
 type Person = { id: string; name: string }
 
@@ -53,15 +53,23 @@ function parseTime(value: string, period: string) {
 export function AppointmentEditor({
   circleId,
   appointment,
+  initialDate,
+  initialRecipientId,
+  deleting = false,
   profiles,
   caregivers,
   onClose,
+  onSaved,
 }: {
   circleId: string
   appointment?: Appointment
+  initialDate?: string
+  initialRecipientId?: string
+  deleting?: boolean
   profiles: Person[]
   caregivers: Person[]
   onClose: () => void
+  onSaved?: (action: 'saved' | 'deleted') => void
 }) {
   const { user } = useRequiredSession()
   const queryClient = useQueryClient()
@@ -70,13 +78,9 @@ export function AppointmentEditor({
   const dialog = useRef<HTMLDialogElement>(null)
   // Claim the write immediately, including submits batched before React disables the button.
   const saving = useRef(false)
-  const heading = useId()
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(deleting)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  useEffect(() => {
-    if (!dialog.current?.open) dialog.current?.showModal()
-  }, [])
 
   async function submit(action: () => Promise<void>) {
     if (saving.current) return
@@ -85,6 +89,7 @@ export function AppointmentEditor({
     setError(undefined)
     try {
       await action()
+      onSaved?.(confirmDelete ? 'deleted' : 'saved')
       dialog.current?.close()
     } catch (error) {
       setError(errorMessage(error))
@@ -139,23 +144,17 @@ export function AppointmentEditor({
     })
   }
 
-  const startDate = localDateTime(appointment?.startsAt).slice(0, 10)
+  const startDate = appointment ? localDateTime(appointment.startsAt).slice(0, 10) : (initialDate ?? '')
   const endDate = localDateTime(appointment?.endsAt).slice(0, 10)
 
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={heading}
+    <FormDialog
+      title={confirmDelete ? 'Delete appointment?' : appointment ? 'Edit appointment' : 'Add appointment'}
+      dialogRef={dialog}
+      busy={busy}
+      isBusy={() => saving.current}
       onClose={onClose}
-      onCancel={(event) => {
-        if (busy) event.preventDefault()
-      }}
-      onClick={busy ? undefined : closeOnBackdropClick}
-      className="m-auto max-h-[85dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-panel border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-ink/40"
     >
-      <h2 id={heading} className="font-display text-h2 font-bold">
-        {confirmDelete ? 'Delete appointment?' : appointment ? 'Edit appointment' : 'Add appointment'}
-      </h2>
       {error && (
         <div className="mt-4">
           <Alert tone="danger">{error}</Alert>
@@ -166,7 +165,7 @@ export function AppointmentEditor({
         <SelectField
           label="Care profile"
           name="recipientId"
-          defaultValue={appointment?.recipientId ?? profiles[0]?.id}
+          defaultValue={appointment?.recipientId ?? initialRecipientId ?? profiles[0]?.id}
           required
         >
           {profiles.map((profile) => (
@@ -254,13 +253,14 @@ export function AppointmentEditor({
             disabled={busy}
             onClick={() => {
               setError(undefined)
-              setConfirmDelete(false)
+              if (deleting) dialog.current?.close()
+              else setConfirmDelete(false)
             }}
           >
-            Keep appointment
+            Cancel
           </Button>
         </div>
       )}
-    </dialog>
+    </FormDialog>
   )
 }

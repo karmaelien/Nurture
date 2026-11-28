@@ -9,13 +9,14 @@ import { useRequiredSession } from '../auth/session.ts'
 import { formatDate, formatTime } from '../home/dashboard.ts'
 import { taskAttention } from './task-attention.ts'
 
+import { StatusBadge } from '../../components/ui/StatusBadge.tsx'
+
 export function TaskListItem({
   task,
   circleId,
   person,
   caregiver,
   now,
-  compact = false,
   onEdit,
   onDelete,
 }: {
@@ -24,7 +25,6 @@ export function TaskListItem({
   person: string
   caregiver: string
   now: number
-  compact?: boolean
   onEdit?: () => void
   onDelete?: () => void
 }) {
@@ -55,14 +55,12 @@ export function TaskListItem({
     }
   }
   return (
-    <li className={`${compact ? 'py-4' : 'py-5'} first:pt-0 last:pb-0`}>
+    <li className="py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className={compact ? 'font-semibold' : 'font-display text-h3 font-semibold'}>{task.title}</h2>
-        <span
-          className={`rounded-control border px-3 py-1 text-small ${overdue ? 'border-danger text-danger' : completed ? 'border-primary text-primary' : 'border-line text-muted'}`}
-        >
+        <h2 className="font-display text-h3 font-semibold">{task.title}</h2>
+        <StatusBadge tone={overdue ? 'danger' : completed ? 'positive' : attention === 'soon' ? 'warning' : 'neutral'}>
           {overdue ? 'Overdue' : completed ? 'Completed' : attention === 'soon' ? 'Due soon' : 'To Do'}
-        </span>
+        </StatusBadge>
       </div>
       <p className="mt-2">
         {person} · Caregiver: {caregiver}
@@ -85,25 +83,17 @@ export function TaskListItem({
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           variant="outline"
-          size="sm"
           loading={busy}
           onClick={() => void changeStatus()}
           aria-label={`${action}: ${task.title}`}
         >
           {action}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy || !onEdit}
-          onClick={onEdit}
-          aria-label={`Edit task: ${task.title}`}
-        >
+        <Button variant="outline" disabled={busy || !onEdit} onClick={onEdit} aria-label={`Edit task: ${task.title}`}>
           Edit task
         </Button>
         <Button
           variant="danger"
-          size="sm"
           disabled={busy || !onDelete}
           onClick={onDelete}
           aria-label={`Delete task: ${task.title}`}

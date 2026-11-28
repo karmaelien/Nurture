@@ -7,7 +7,7 @@ import { buttonClasses } from '../../components/ui/buttonClasses.ts'
 /** The page column under the app header: full width for lists, narrow for one person. */
 export function PageMain({ narrow = false, children }: { narrow?: boolean; children: ReactNode }) {
   return (
-    <main className={clsx('mx-auto w-full px-5 py-8 sm:px-8', narrow ? 'max-w-[640px]' : 'max-w-6xl')}>{children}</main>
+    <main className={clsx('mx-auto w-full px-5 py-5 sm:px-8', narrow ? 'max-w-[640px]' : 'max-w-6xl')}>{children}</main>
   )
 }
 
@@ -24,7 +24,7 @@ export function BackLink({ to, children }: { to: string; children: ReactNode }) 
 export function ProfileSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-panel border border-line bg-surface p-5 sm:p-6" aria-label={title}>
-      <h2 className="mb-3 font-semibold">{title}</h2>
+      <h2 className="mb-4 font-display text-h3 font-semibold">{title}</h2>
       {children}
     </section>
   )

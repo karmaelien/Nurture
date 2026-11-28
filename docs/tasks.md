@@ -9,6 +9,8 @@ midnight seven days ahead, plus undated tasks and earlier deadlines. The calenda
 its own visible range; browsing future months does not add those occurrences to the
 current list.
 
+Its header, grouped search/dropdown toolbar, right-aligned Add task action, and workspace cards follow the [shared page design](medications.md#shared-page-design).
+
 Search tasks matches task titles, ignoring case and surrounding whitespace. The
 Caregiver filter supports all caregivers, a named family member (with You beside
 the signed-in member), or Unassigned. Search and assignment combine with the
@@ -21,8 +23,8 @@ so its actions cannot target a task hidden by the new selection.
 Attention Needed remains based on the selected care profile's pending deadlines; title,
 caregiver, and status filters do not hide those reminders. Repeating Tasks management
 also keeps its existing profile-only scope so stopping a schedule remains available when
-individual occurrences do not match the list filters. Creating a task clears search and
-assignment filters along with the existing profile/status reset. Tasks beyond the main
+individual occurrences do not match the list filters. Creating or editing a task preserves search, caregiver, person, and status filters
+and shows a save notice. Clear filters restores all four controls to their defaults. Tasks beyond the main
 list date limit are available through the calendar. Editing preserves filters.
 
 Add task opens a dialog with a title, care profile, optional caregiver, optional
@@ -44,14 +46,13 @@ times as UTC and displays them in local time.
 
 Each task has Mark Completed / Mark To Do controls shared by Tasks and Home.
 Completion records the save time; undo clears it. Completed tasks stay visible
-below pending tasks when the status filter includes them. Home counts only pending
-tasks and retains today's completed tasks in its date-bounded panel for undo.
+below pending tasks when the status filter includes them. Home retains today's completed tasks in its date-bounded panel for undo.
 Both lists have capped scrolling areas.
 
 Home's Tasks panel also has Add Task, using the same editor, repeat controls, and
 save/cancel behavior as Tasks. Creation prefills the selected care profile; after
 saving, Home shows all profiles so a task assigned to another profile is not hidden
-by the old selection. Its list and outstanding count include pending undated tasks,
+by the old selection. Its list includes pending undated tasks,
 overdue tasks, and dated tasks within its existing next-seven-days window. Today's
 completed undated tasks remain visible for undo; earlier completions stay on Tasks.
 Undated tasks appear after dated pending tasks and do not create calendar entries
@@ -143,7 +144,7 @@ series version with 409, and is idempotent with the already-stopped current vers
 
 ## Task Reminders
 
-Home and Tasks share an Attention Needed panel for pending tasks past their deadline
+The Tasks page has an Attention Needed panel for pending tasks past their deadline
 or due within the next hour (inclusive). A task due exactly now is Due soon; after
 its deadline it is Overdue. Completed tasks and tasks without deadlines do not alert.
 The panel follows each page's care-profile selection, independently of the Tasks
@@ -151,9 +152,7 @@ status filter, so selecting Completed cannot hide pending deadlines. It uses the
 existing authenticated task API and saved occurrence records, including separate
 occurrences of repeating tasks; it does not create reminder copies of tasks.
 
-The panel shows overdue and due-soon counts. View task reminders expands a capped
-scrolling list, ordered overdue first, then due soon. Hide task reminders collapses
-it. The shared rows support completion, edit, and delete with the same confirmations,
+The panel shows compact count buttons, overdue first and due soon second. Each opens the shared capped, scrolling popup; Close, Escape, and clicking outside dismiss it. The shared rows support completion, edit, and delete with the same confirmations,
 click-away behavior, version checks, and persistence as the main lists. Completing,
 deleting, or moving a deadline out of the window removes it from attention after
 the successful save; marking it To Do makes it eligible again. Main list rows also
@@ -163,11 +162,24 @@ is hidden. Partial repeating-task history is labeled At least while loading.
 Time-dependent labels update each minute; requests refresh each minute and on window
 focus. Attention uses a stable daily query range covering the following midnight plus
 one hour, then applies the exact one-hour cutoff locally. Minute ticks reuse the
-existing data and expanded panel during background refresh. A new day or profile shows
+existing data and open popup during background refresh. A new day or profile shows
 loading without exposing the previous profile’s rows; errors hide cached details. A
 failed reminder request hides its cached details and provides Retry task reminders,
 including for 502 errors. These reminders appear while the website is open; browser
 push, email, and background delivery are not implemented for tasks.
+
+Home has a single summary: the full-width Attention Needed section. The former
+Outstanding Tasks, Today’s Doses Completed, and Upcoming Appointments metric cards
+are removed. Attention Needed shows counts for overdue tasks,
+overdue appointments, and missed medication doses. It follows Home's Care profile
+filter. Each count opens its category in the same shared popup used by feature pages, with a link to open that feature page in the selected family. It excludes
+due-soon tasks and medication reminders, completed items, and undated tasks. Missed
+doses count individual occurrences (including multiple missed takes of one medication)
+and use the API's total across pages. Unfinished history is labeled At least;
+unavailable counts show an error and Retry rather than zero. An access failure hides
+all cached summary counts. The section disappears when all three feeds finish with
+zero overdue items. Home no longer duplicates the individual task, appointment, or
+medication attention panels. Its ordinary lists and their existing controls remain.
 
 ## Individual Task Changes
 
@@ -178,7 +190,7 @@ saving. While deleting, repeat clicks and dismissal are blocked. The confirmatio
 keeps the version from when it opened, so another caregiver's edit or completion
 causes 409 instead of deleting the changed task. Failed saves leave the task stored
 and the confirmation retryable. Successful deletion refreshes every task list and
-Home's outstanding count and survives page refresh.
+Home's attention summary and survives page refresh.
 
 `DELETE /api/circles/:circleId/tasks/:taskId` accepts `{ version }` and returns 204.
 It checks the session, current family membership, task ownership, and version under
@@ -262,6 +274,24 @@ Task background push/email delivery remains a separate step; current task remind
 are in-page only.
 
 
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.
+
 ## Bounded Generation Progress
 
 Calendar browsing stores merged, half-open local-date coverage intervals rather
@@ -278,3 +308,9 @@ existing occurrence IDs, saved edits, and deletion exceptions prevent duplicate
 or restored tasks. Browser and server generation use the same rules. PostgreSQL
 keeps migration, generation, and progress writes under the existing per-series
 transaction locks; covered reads still avoid unnecessary exclusive locks.
+
+## Shared collection controls
+
+Home, Tasks, Appointments, Medications, Expenses, and Documents use the same Care profile dropdown: Everyone or one person. Selection is shared during navigation and isolated by signed-in account and family. Clear filters resets the current page's additional search/category/status/name filters and the shared person/date selection. Saves preserve the filters and show a notice.
+
+CalendarDetailsDialog supplies the same date/person context, Add placement, bounded content, and dismissal controls to all three care calendars. Closing on a filter change or failed read clears the old selection, so a retry does not reopen it. QueryFeedback supplies inline loading, errors, and Try again to collection reads and previews. Appointment-page notification counts intentionally cover everyone in the selected family; its list and calendar follow the dropdown. Home's attention summary follows Home's selected person.

@@ -1,29 +1,28 @@
 import type { CircleSummary } from '../../api/types.ts'
+import { SelectField } from '../../components/ui/Field.tsx'
 
+/** One person selector for Home and every feature page. Empty means Everyone. */
 export function CareProfileSelection({
   circle,
+  profiles,
   value,
   onChange,
 }: {
-  circle: CircleSummary
+  circle?: CircleSummary
+  profiles?: { id: string; name: string }[]
   value: string
   onChange: (id: string) => void
 }) {
   return (
-    <label className="grid gap-2">
-      Showing
-      <select
-        className="max-w-full rounded-control border border-field bg-surface px-3 py-2 text-body"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
+    <div className="w-64 max-w-full">
+      <SelectField label="Care profile" value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">Everyone</option>
-        {circle.recipients.map((person) => (
+        {(profiles ?? circle?.recipients ?? []).map((person) => (
           <option key={person.id} value={person.id}>
             {person.name}
           </option>
         ))}
-      </select>
-    </label>
+      </SelectField>
+    </div>
   )
 }

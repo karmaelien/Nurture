@@ -12,10 +12,11 @@ export function appointmentKey(appointment: AppointmentSummary) {
 
 export function useAppointmentCompletionState(saveCompletion?: SaveCompletion) {
   const [statuses, setStatuses] = useState<CompletionState>({})
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [writes, setWrites] = useState<Record<string, { pending: boolean; error?: string }>>({})
   const pending = useRef(new Set<string>())
   return {
-    saveError,
+    isPending: (appointment: AppointmentSummary) => !!writes[appointmentKey(appointment)]?.pending,
+    completionError: (appointment: AppointmentSummary) => writes[appointmentKey(appointment)]?.error,
     applyCompletion(appointment: AppointmentSummary): AppointmentSummary {
       // Connected pages render the latest query result. Local state is only for standalone previews.
       if (saveCompletion) return appointment
@@ -26,14 +27,23 @@ export function useAppointmentCompletionState(saveCompletion?: SaveCompletion) {
       const key = appointmentKey(appointment)
       if (appointment.status === 'cancelled' || pending.current.has(key)) return
       pending.current.add(key)
-      setSaveError(null)
+      setWrites((current) => ({ ...current, [key]: { pending: true } }))
       try {
         if (saveCompletion) await saveCompletion(appointment.circleId, appointment.id, status)
         else setStatuses((current) => ({ ...current, [key]: status }))
       } catch (error) {
-        setSaveError(`Could not save appointment status. ${errorMessage(error)}`)
+        setWrites((current) => ({
+          ...current,
+          [key]: { pending: true, error: `Could not save appointment status. ${errorMessage(error)}` },
+        }))
       } finally {
         pending.current.delete(key)
+        setWrites((current) => {
+          const next = { ...current }
+          if (next[key]?.error) next[key] = { ...next[key], pending: false }
+          else delete next[key]
+          return next
+        })
       }
     },
   }

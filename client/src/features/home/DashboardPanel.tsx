@@ -1,9 +1,7 @@
-import { Link } from 'react-router'
+import { PanelHeader } from '../../components/ui/PanelHeader.tsx'
 import type { ReactNode } from 'react'
-import { errorMessage } from '../../api/client.ts'
-import { Button } from '../../components/ui/Button.tsx'
-
-export type QueryState = { isPending: boolean; isError: boolean; error: unknown; refetch: () => unknown }
+import { QueryFeedback, type QueryState } from '../../components/ui/QueryFeedback.tsx'
+export type { QueryState } from '../../components/ui/QueryFeedback.tsx'
 
 export function DashboardPanel({
   id,
@@ -13,6 +11,7 @@ export function DashboardPanel({
   query,
   empty,
   action,
+  description,
   children,
 }: {
   id: string
@@ -22,48 +21,23 @@ export function DashboardPanel({
   query: QueryState
   empty: boolean
   action?: ReactNode
+  description?: ReactNode
   children: ReactNode
 }) {
-  const heading = (
-    <>
-      <h2 id={`${id}-title`} className="font-display text-h3 font-semibold">
-        {title}
-      </h2>
-      <span className="text-primary" aria-hidden>
-        {icon}
-      </span>
-    </>
-  )
   return (
     <section
       id={id}
       aria-labelledby={`${id}-title`}
       className="min-w-0 scroll-mt-6 rounded-panel border border-line bg-surface p-5 sm:p-6"
     >
-      {to ? (
-        <Link to={to} className="mb-5 flex items-center justify-between gap-3 rounded-control hover:text-primary">
-          {heading}
-        </Link>
-      ) : (
-        <div className="mb-5 flex items-center justify-between gap-3">{heading}</div>
-      )}
-      {query.isError ? (
-        <div role="alert">
-          <p>{errorMessage(query.error)}</p>
-          <Button variant="secondary" className="mt-3" onClick={() => query.refetch()}>
-            Try again
-          </Button>
-        </div>
-      ) : query.isPending ? (
-        <p role="status" className="text-muted">
-          Loading…
-        </p>
+      <PanelHeader id={`${id}-title`} title={title} icon={icon} to={to} action={action} description={description} />
+      {query.isError || query.isPending ? (
+        <QueryFeedback query={query} />
       ) : empty ? (
         <p className="text-muted">Nothing to show for this period.</p>
       ) : (
         children
       )}
-      {action && <div className="mt-6">{action}</div>}
     </section>
   )
 }

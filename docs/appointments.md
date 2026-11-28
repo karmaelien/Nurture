@@ -8,19 +8,30 @@ Home and Appointments read the same records for the selected family. In demo mod
 
 ## Display and selection rules
 
+The page uses the shared title/care-circle header and a workspace toolbar with the
+care-profile dropdown on the left and Add appointment on the right. Choose Everyone
+or one person, matching Tasks, Medications, Expenses, Documents, and Home. The
+selection follows navigation within the same signed-in account and family. The
+upcoming list and calendar follow that selection; appointment notification counts
+continue to cover everyone in the selected family.
+
 | Where | Who appears |
 | --- | --- |
-| **Appointments → Today banner** | Everyone in the selected family. It always appears and counts scheduled visits starting today in local time, including earlier today. Open it to see today's visits, including any completed ones. |
-| **Appointments → Overdue banner** | Everyone in the selected family. The red banner appears only when at least one scheduled visit has reached its recorded end time. It stays visible if you deselect the person's profile below. Open it to see overdue visits for the whole family. |
-| **Appointments → Upcoming appointments list** | Only selected care profiles. The filter applies to both overdue and upcoming rows. For example, if Rose has an overdue visit and only Frank is selected, Rose's visit disappears from this list and still counts in the red banner. |
+| **Appointments → Today count** | Everyone in the selected family. It always appears and counts scheduled visits starting today in local time, including earlier today. Open it to see today's visits, including any completed ones. |
+| **Appointments → Overdue count** | Everyone in the selected family. The count includes scheduled visits that have reached their recorded end time. It stays visible if you deselect the person's profile below. Open it to see overdue visits for the whole family. |
+| **Appointments → Upcoming appointments list** | Only selected care profiles. The filter applies to both overdue and upcoming rows. For example, if Rose has an overdue visit and only Frank is selected, Rose's visit disappears from this list and still counts in the overdue count. |
 | **Appointments → Calendar** | Only selected care profiles, within the visible calendar period. |
-| **Home → Appointments list and Overdue banner** | Both follow Home's **Showing** selection. Home starts on **Everyone** in the selected family. |
+| **Home → Appointments list and Attention Needed summary** | Both follow the shared **Care profile** selection. The default is **Everyone** in the selected family. The overdue count opens the shared scrolling popup, with direct appointment actions and a link to Appointments. |
 
-On Appointments, all profiles start selected. Search narrows the dropdown choices. **Select all**, **Select with upcoming appointments**, and **Clear selection** apply to all profiles regardless of the search text. **Remove** deselects that profile. The two top metrics cover everyone in the selected family. The selection summary and each profile's count cover the applicable profiles.
+The default is Everyone. Clear filters restores Everyone and resets any additional
+filters on the current page. Successful saves preserve filters and show a notice;
+use Clear filters if a saved item is outside the current selection.
 
-Home and Appointments use the same upcoming window, from now through exactly seven 24-hour periods from now, including both endpoints. Upcoming counts include scheduled visits in that window. Overdue visits appear first in the main appointment lists with a red **Overdue** badge. Completed visits in the window remain visible at the bottom with a checkmark. Each group is sorted by start time. Clicking a profile's upcoming count opens that person's seven-day list, which can still contain completed visits when the count is zero.
+Home and Appointments use the same upcoming window, from now through exactly seven 24-hour periods from now, including both endpoints. Upcoming counts include scheduled visits in that window. Overdue visits appear first in the main appointment lists with a red **Overdue** badge. Completed visits in the window remain visible at the bottom with a checkmark. Each group is sorted by start time.
 
-The two panels on Appointments scroll internally. The Home appointment list also scrolls. Appointment cards show the title, care profile, date and time, location, and caregiver. A location opens a Google Maps search in a new tab. An unassigned caregiver is labelled **Unassigned**. For visits crossing midnight, both dates are shown.
+The appointment list and calendar scroll internally. The Home appointment list also scrolls. Appointment cards show the title, care profile, date and time, location, and caregiver. A location opens a Google Maps search in a new tab. An unassigned caregiver is labelled **Unassigned**. For visits crossing midnight, both dates are shown.
+
+Attention Needed uses the shared compact count buttons: Overdue first, Today second. Each opens the same capped popup used on Home, Tasks, and Medications. Close, Escape, and clicking outside dismiss it. The two green summary cards have been removed.
 
 ## Create, edit, and complete a visit
 
@@ -33,6 +44,7 @@ The two panels on Appointments scroll internally. The Home appointment list also
 ## Calendar
 
 - Monthly is the initial view. Daily and Weekly use a 24-hour timeline and weeks start on Sunday. Month navigation preserves the preferred day through shorter months. For example, January 31 through February to March lands on March 31.
+- Calendar details use the same CalendarDetailsDialog as Tasks and Medications: date/person context, Add action, bounded content, Close, Escape, and click-away. Single-appointment details reuse the list card, including the map link, duration, overdue badge, completion, edit, and delete actions. Filtering or a failed read closes details without reopening them on retry.
 - Monthly cells show up to three appointment chips. The remaining count opens the full day's list. Clicking a compact chip opens details. Close, Escape, and clicking outside dismiss appointment dialogs.
 - Daily and Weekly position appointments by time and show overlapping blocks side by side. Overnight visits are clipped at midnight. A visit that ends exactly at midnight does not appear the following day.
 - A record without an end time displays only its start time and gets a short calendar block limited to its start date. These records do not trigger overdue warnings.
@@ -43,7 +55,7 @@ The two panels on Appointments scroll internally. The Home appointment list also
 | File | Responsibility |
 | --- | --- |
 | `client/src/features/appointments/AppointmentsRoute.tsx` | Loads the selected family and its saved appointments and opens the editor |
-| `client/src/features/appointments/AppointmentsPage.tsx` | Profile selection, totals, banners, and lists |
+| `client/src/features/appointments/AppointmentsPage.tsx` | Profile selection, notifications, and lists |
 | `client/src/features/appointments/AppointmentCalendar.tsx` and `calendar-layout.ts` | Calendar views, dialogs, clipping, and overlapping blocks |
 | `client/src/features/appointments/AppointmentEditor.tsx` | Shared editor, validation, writes, and deletion confirmation |
 | `client/src/features/appointments/AppointmentListItem.tsx` and `OverdueAppointmentsWarning.tsx` | Shared cards and overdue warning |
@@ -73,6 +85,31 @@ Run the calendar tests with `TZ=America/New_York` to cover the repeated-hour reg
 
 Manual checks:
 
-1. In demo mode, create an overdue visit for Rose and a future visit for Frank. On Appointments, select only Frank. Verify that the right-hand list shows Frank's visits and the red banner still opens Rose's overdue visit. On Home, set **Showing** to Frank and confirm the Home list and banner both follow that selection.
+1. In demo mode, create an overdue visit for Rose and a future visit for Frank. On Appointments, select only Frank. Verify that the right-hand list shows Frank's visits and the overdue count still opens Rose's overdue visit. On Home, set **Showing** to Frank and confirm the Home list and banner both follow that selection.
 2. Add a visit with a caregiver and location. Edit it from Home, check the time on the calendar, mark it complete, and refresh. Restore it with **Mark as to do**, then delete it and confirm it disappears from both pages.
 3. Check a busy day in Monthly, Daily, and Weekly views. Open the monthly overflow, test an overnight visit, and dismiss dialogs with Escape and an outside click. Check keyboard navigation and the date, time, and AM/PM controls on a narrow screen.
+
+
+## Shared Calendar Controls
+
+Appointments, Medications, and Tasks use `CalendarToolbar` for Daily/Weekly/Monthly,
+Today, Previous/Next, and a Calendar date picker. Date changes preserve the chosen
+view and reset open details. Month navigation preserves the preferred day through
+shorter months. All three have capped scrolling, clickable dates (including empty
+dates), item details, overflow details, status changes and undo, and Add/Edit/Delete
+through their existing editors and confirmations. Calendar Add prefills the selected
+date; a single selected profile is preserved. Details close before an editor or
+confirmation opens. Close, Escape, and click-away dismiss dialogs, with dismissal
+blocked during writes. Filters and failed access refreshes hide stale controls.
+
+Appointment blocks retain their real start/end durations and overlap layout.
+Medication doses and task deadlines are points in time, so they use hourly slots.
+Medication edits affect its schedule; permanent deletion explicitly confirms removal
+of the medication and all dose history. Task edits/deletes affect one occurrence,
+with stopping repeats retained as a separate schedule action.
+
+
+Home uses the same shared card header as Tasks, Expenses, and Medications: icon
+beside the linked title and Add appointment at the top right. Add opens the existing
+appointment editor with Home's selected profile prefilled. Direct Delete appointment
+uses the existing confirmation; saves and deletions refresh both Home and Appointments.

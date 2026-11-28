@@ -1,6 +1,8 @@
 import { ChevronRight, UserPlus } from 'lucide-react'
 import { Link, useParams } from 'react-router'
 import { errorMessage } from '../../api/client.ts'
+import { PageHeader } from '../../components/ui/PageHeader.tsx'
+import { FeatureToolbar } from '../../components/ui/FeatureToolbar.tsx'
 import type { Member } from '../../api/types.ts'
 import { Alert } from '../../components/ui/Alert.tsx'
 import { buttonClasses } from '../../components/ui/buttonClasses.ts'
@@ -35,46 +37,56 @@ export function FamilyPage() {
 
   return (
     <PageMain>
-      <h1 className="font-display text-h1 font-bold">{circle.name}</h1>
-      <p className="mt-2 text-muted">Everyone in this care circle.</p>
-
-      <div className="mt-8 mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-h3 font-semibold">People you care for</h2>
-        <Link
-          to={profilePaths.addPerson(circle.id)}
-          state={{ from: profilePaths.family(circle.id) }}
-          className={buttonClasses({ variant: 'secondary', size: 'sm' })}
-        >
-          <UserPlus className="size-4" aria-hidden />
-          Add a person
-        </Link>
+      <PageHeader title={circle.name} description="Everyone in this care circle." />
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        <section className="rounded-panel border border-line bg-surface p-5 sm:p-6">
+          <FeatureToolbar
+            actions={
+              <Link
+                to={profilePaths.addPerson(circle.id)}
+                state={{ from: profilePaths.family(circle.id) }}
+                className={buttonClasses({ variant: 'primary' })}
+              >
+                <UserPlus className="size-4" aria-hidden />
+                Add a person
+              </Link>
+            }
+          >
+            <h2 className="flex h-11 items-center font-display text-h3 font-semibold">People you care for</h2>
+          </FeatureToolbar>
+          <ul aria-label="People you care for" className="grid max-h-[38rem] gap-3 overflow-y-auto pr-2">
+            {circle.recipients.map((recipient) => (
+              <li key={recipient.id}>
+                <RecipientCard recipient={recipient} to={profilePaths.person(circle.id, recipient.id)} />
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="rounded-panel border border-line bg-surface p-5 sm:p-6">
+          <FeatureToolbar>
+            <h2 className="flex h-11 items-center font-display text-h3 font-semibold">Caregivers</h2>
+          </FeatureToolbar>
+          {detail.isPending ? (
+            <LoadingPanel label="Loading caregivers" />
+          ) : detail.isError ? (
+            <Alert tone="danger">{errorMessage(detail.error)}</Alert>
+          ) : (
+            <ul aria-label="Caregivers" className="grid max-h-[38rem] gap-3 overflow-y-auto pr-2">
+              {members.map((member) => (
+                <li key={member.user.id}>
+                  <CaregiverCard
+                    member={member}
+                    isYou={member.user.id === user.id}
+                    to={
+                      member.user.id === user.id ? profilePaths.me : profilePaths.caregiver(circle.id, member.user.id)
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-      <ul aria-label="People you care for" className="grid gap-3 md:grid-cols-2">
-        {circle.recipients.map((recipient) => (
-          <li key={recipient.id}>
-            <RecipientCard recipient={recipient} to={profilePaths.person(circle.id, recipient.id)} />
-          </li>
-        ))}
-      </ul>
-
-      <h2 className="mt-10 mb-4 font-display text-h3 font-semibold">Caregivers</h2>
-      {detail.isPending ? (
-        <LoadingPanel label="Loading caregivers" />
-      ) : detail.isError ? (
-        <Alert tone="danger">{errorMessage(detail.error)}</Alert>
-      ) : (
-        <ul aria-label="Caregivers" className="grid gap-3 md:grid-cols-2">
-          {members.map((member) => (
-            <li key={member.user.id}>
-              <CaregiverCard
-                member={member}
-                isYou={member.user.id === user.id}
-                to={member.user.id === user.id ? profilePaths.me : profilePaths.caregiver(circle.id, member.user.id)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
     </PageMain>
   )
 }

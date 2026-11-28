@@ -1,6 +1,6 @@
 import { seedCareData } from './careData.ts'
 import { dateInZone, everyDay } from '../features/medications/medication-schedule.ts'
-import type { CircleDetail, Member, User } from '../api/types.ts'
+import type { AssistanceReport, CircleDetail, Member, User } from '../api/types.ts'
 import { DB_KEY, MockStorageError } from './storage.ts'
 import type { MedicationRevisions } from '../features/medications/medication-occurrences.ts'
 import type { TaskSeries } from '../features/tasks/task-recurrence.ts'
@@ -11,6 +11,8 @@ import type { TaskSeries } from '../features/tasks/task-recurrence.ts'
 type DbUser = User & { password: string }
 
 export type Db = {
+  assistanceReports?: AssistanceReport[]
+  assistanceRequestKeys?: Record<string, string>
   taskSeries?: TaskSeries[]
   deletedTaskOccurrences?: string[]
   changeId?: string
@@ -90,6 +92,7 @@ export function readDb(): Db {
       for (const task of db.care.tasks) task.version ??= 1
       // Older demo sessions lack medication definitions; preserve their existing care data.
       db.care.medications ??= seedCareData().medications
+      normalizeAssistance(db)
       for (const medication of db.care.medications) {
         medication.version ??= 1
         // Upgrade earlier daily-only definitions without resetting saved medications or other care data.
@@ -116,6 +119,7 @@ export function readDb(): Db {
 }
 
 export function writeDb(db: Db, notify = true) {
+  normalizeAssistance(db)
   if (notify) db.changeId = crypto.randomUUID()
   try {
     const serialized = JSON.stringify(db)
@@ -124,6 +128,24 @@ export function writeDb(db: Db, notify = true) {
     throw new MockStorageError(
       'Your changes could not be saved in this browser. Free up browser storage or allow site storage, then try again.',
     )
+  }
+}
+
+// Mirror the report table's cascades and nullable medication reference in demo storage.
+function normalizeAssistance(db: Db) {
+  if (!db.assistanceReports) return
+  db.assistanceReports = db.assistanceReports.filter((report) =>
+    db.circles.some(
+      (circle) => circle.id === report.circleId && circle.recipients.some((person) => person.id === report.recipientId),
+    ),
+  )
+  const retained = new Set(db.assistanceReports.map((report) => report.id))
+  for (const id of Object.keys(db.assistanceRequestKeys ?? {})) {
+    if (!retained.has(id)) delete db.assistanceRequestKeys![id]
+  }
+  for (const report of db.assistanceReports) {
+    if (report.medicationId && !db.care.medications.some((medication) => medication.id === report.medicationId))
+      report.medicationId = null
   }
 }
 

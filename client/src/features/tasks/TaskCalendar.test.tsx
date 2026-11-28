@@ -56,7 +56,7 @@ it('shares case-insensitive title search and assignment filters across the list 
   await user.selectOptions(screen.getByLabelText('Caregiver'), 'u_demo')
   expect(within(list).getByText('No tasks for the selected filters.')).toBeInTheDocument()
   expect(within(calendar).getByText('No tasks due this month.')).toBeInTheDocument()
-  expect(screen.getByRole('region', { name: 'Task Attention Needed' })).toHaveTextContent('4 overdue tasks')
+  expect(screen.getByRole('button', { name: '4 overdue tasks' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Clear filters' }))
   expect(screen.getByLabelText('Search tasks')).toHaveValue('')
   expect(screen.getByLabelText('Caregiver')).toHaveValue('')
@@ -194,8 +194,9 @@ it('hides stale popup controls on a failed refresh and retries the same calendar
   expect(await within(calendar).findByRole('alert')).toHaveTextContent('502')
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   server.resetHandlers()
-  await user.click(within(calendar).getByRole('button', { name: 'Retry calendar' }))
+  await user.click(within(calendar).getByRole('button', { name: 'Try again' }))
   expect(await within(calendar).findByRole('button', { name: /Calendar task for Rose/ })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 
 it('keeps the main list bounded after future calendar browsing generates repeating tasks', async () => {

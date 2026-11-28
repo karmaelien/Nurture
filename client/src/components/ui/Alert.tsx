@@ -1,13 +1,14 @@
 import { clsx } from 'clsx'
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { statusColors } from './statusStyles.ts'
 
 type Tone = 'danger' | 'warning' | 'success' | 'info'
 
 const tones: Record<Tone, { box: string; icon: string; Icon: typeof Info }> = {
-  danger: { box: 'border-danger/30 bg-danger/8', icon: 'text-danger', Icon: CircleAlert },
-  warning: { box: 'border-warning/30 bg-warning/8', icon: 'text-warning', Icon: TriangleAlert },
-  success: { box: 'border-success/30 bg-success/8', icon: 'text-success', Icon: CircleCheck },
+  danger: { box: statusColors.danger, icon: 'text-danger', Icon: CircleAlert },
+  warning: { box: statusColors.warning, icon: 'text-warning', Icon: TriangleAlert },
+  success: { box: statusColors.positive, icon: 'text-primary', Icon: CircleCheck },
   info: { box: 'border-info/30 bg-info/8', icon: 'text-info', Icon: Info },
 }
 

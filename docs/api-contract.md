@@ -776,6 +776,35 @@ deletion rolls back and can be retried. A missing or already-deleted document re
 | 404 | `not_found` |
 | 500 | `internal_error` (database operation failed) |
 
+## Patient Assistance
+
+Staged behind `ENABLE_ASSISTANCE_API=true`, authenticated under
+`/api/circles/:circleId`. See [Patient Assistance](patient-assistance.md) for behavior,
+history rules, activation, and resource sources.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/assistance-reports?status=active&recipientId=...&cursor=...` | `{ reports, totalCount, nextCursor, resources }`; 50 records per page |
+| GET | `/assistance-reports/:reportId` | `{ report, resources }` |
+| POST | `/assistance-reports` | 201 `{ report, resources }`; identical retries return the same report |
+| PATCH | `/assistance-reports/:reportId/notification` | `{ report }`; updates dismissal only |
+
+POST body: `{ requestId, medicationId, reason, previousCostCents,
+currentCostCents, notes }`. `requestId` is a UUID; medication IDs refer to existing
+medications in the selected family. `reason` is `price_increase` or `not_covered`.
+Price increases require integer cents from 0 through 100000000 and current greater
+than previous; missing coverage requires both costs null. Notes are at most 500
+characters. Medication name/person/reporting user come from the server. Reusing a
+request ID for different circumstances returns 409.
+
+PATCH body: `{ dismissed: boolean, version: number }`; stale versions return 409.
+Reports include `id`, `circleId`, nullable `medicationId`, `medicationName`,
+`recipientId`, `reason`, costs, notes, nullable `reportedBy`, `createdAt`, nullable
+`dismissedAt`, and `version`. List status supports `active` (default), `dismissed`,
+and `all`; totalCount applies to filters before pagination. Cursor is an opaque
+`timestamp|UUID` value supplied by nextCursor. Invalid inputs return 400, missing
+authentication 401, and unavailable families/medications/reports 404.
+
 ## Planned next
 
 These aren't part of this contract yet, but the model is built for them:
@@ -783,7 +812,7 @@ These aren't part of this contract yet, but the model is built for them:
 - **Invites:** an owner invites someone by email; accepting creates a `member` membership.
 - **Task activation:** migrate and enable the staged PostgreSQL task API alongside real authentication/family endpoints. Task CRUD, repeating schedules, and in-page reminders are implemented; background task notification delivery remains future work.
 - **Medication activation and push delivery:** migrate and enable the PostgreSQL medication API and optional Web Push service when the real app endpoints are ready. Configure VAPID keys and verify provider delivery in a permitted browser; see [medications](medications.md#closed-app-notifications).
-- **Other resources:** messages, budgets, and patient-assistance notifications. Document lists are only needed on the dashboard if a recent-documents section is added.
+- **Other resources:** messages and budgets. Document lists are only needed on the dashboard if a recent-documents section is added.
 - **Document processing:** parsing and extraction with user review, content search, and source-linked AI summaries.
 
 ## Connecting the real backend

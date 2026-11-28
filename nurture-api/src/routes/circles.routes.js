@@ -5,6 +5,9 @@ const circles = require('../controllers/circles.controller');
 const members = require('../controllers/members.controller');
 const recipients = require('../controllers/recipient.controller');
 router.use(authenticate);
+if (process.env.ENABLE_ASSISTANCE_API === 'true') {
+  router.use('/:circleId', require('./assistance.routes')());
+}
 if (process.env.ENABLE_TASKS_API === 'true') {
   router.use('/:circleId', require('./tasks.routes')());
 }
